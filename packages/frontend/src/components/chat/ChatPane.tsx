@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { MessageSquare, MessageCircleMore } from "lucide-react";
 import type { NormalizedEvent, SessionInfo } from "@bg/shared";
-import MessageStream, {
-  type UserMessageLocal,
-} from "./MessageStream";
+import MessageStream from "./MessageStream";
 import Composer from "./Composer";
 import { cn } from "@/lib/utils";
 
@@ -11,13 +9,11 @@ type Tab = "chat" | "comments";
 
 export default function ChatPane({
   events,
-  userMessages,
   session,
   onSend,
   onOpenFile,
 }: {
   events: NormalizedEvent[];
-  userMessages: UserMessageLocal[];
   session: SessionInfo;
   onSend: (text: string, files: File[]) => void;
   onOpenFile?: (relPath: string) => void;
@@ -48,7 +44,6 @@ export default function ChatPane({
         <>
           <MessageStream
             events={events}
-            userMessages={userMessages}
             session={session}
             onOpenFile={onOpenFile}
           />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   FileDown,
@@ -16,7 +16,11 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { createExport, type ExportFormat, type ExportJob } from "@/api/export";
+import {
+  createExport,
+  listExports,
+  type ExportFormat,
+} from "@/api/export";
 import { useUIStore } from "@/state/uiStore";
 import ExportStatusList from "./ExportStatusList";
 
@@ -35,22 +39,42 @@ const OPTIONS: Option[] = [
 ];
 
 export default function ExportMenu({ projectId }: { projectId: string }) {
-  const [jobs, setJobs] = useState<ExportJob[]>([]);
+  const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
 
-  async function onPick(format: ExportFormat) {
-    try {
-      const job = await createExport(projectId, format);
-      setJobs((prev) => [job, ...prev]);
-      pushToast({ title: `Export queued: ${format}`, tone: "info" });
-    } catch (err) {
+  // Poll while any job is still pending/running. Once everything settles to
+  // succeeded/failed, polling stops and the list stays static until a new
+  // export is queued.
+  const jobsQuery = useQuery({
+    queryKey: ["project", projectId, "exports"],
+    queryFn: () => listExports(projectId),
+    refetchInterval: (query) => {
+      const data = query.state.data ?? [];
+      const hasActive = data.some(
+        (j) => j.status === "pending" || j.status === "running",
+      );
+      return hasActive ? 1000 : false;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (format: ExportFormat) => createExport(projectId, format),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["project", projectId, "exports"],
+      });
+      pushToast({ title: "Export queued", tone: "info" });
+    },
+    onError: (err) => {
       pushToast({
         title: "Export failed to start",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
-    }
-  }
+    },
+  });
+
+  const jobs = jobsQuery.data ?? [];
 
   return (
     <DropdownMenu>
@@ -59,14 +83,19 @@ export default function ExportMenu({ projectId }: { projectId: string }) {
           <Download className="h-3.5 w-3.5" /> Export
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
+      <DropdownMenuContent align="end" className="w-72">
         <DropdownMenuLabel>Export as</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {OPTIONS.map((o) => (
           <DropdownMenuItem
             key={o.id}
-            disabled={Boolean(o.phase)}
-            onClick={() => !o.phase && onPick(o.id)}
+            disabled={Boolean(o.phase) || createMutation.isPending}
+            onClick={(event) => {
+              if (o.phase) return;
+              // Keep the dropdown open so the user can watch the status list.
+              event.preventDefault();
+              createMutation.mutate(o.id);
+            }}
           >
             <o.icon className="h-3.5 w-3.5" />
             <span className="flex-1">{o.label}</span>

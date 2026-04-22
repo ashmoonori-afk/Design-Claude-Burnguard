@@ -73,6 +73,19 @@ export async function runUserTurn(
   const turnId = ulid();
   const startTs = Date.now();
 
+  // Persist the user's own message as a normalized event so that replay
+  // (page reload, history fetch) renders the full conversation — not just
+  // the agent side. `direction=up` user events are filtered out by
+  // listSessionEvents, so without this the user bubble would disappear.
+  await persistAndPublish(sessionId, {
+    id: ulid(),
+    ts: startTs,
+    type: "chat.user_message",
+    turnId,
+    text: payload.text,
+    attachmentCount: sessionContext.attachments.length,
+  });
+
   await persistAndPublish(sessionId, {
     id: ulid(),
     ts: startTs,

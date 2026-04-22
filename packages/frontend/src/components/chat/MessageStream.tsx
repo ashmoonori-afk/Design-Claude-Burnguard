@@ -8,33 +8,16 @@ import ErrorCard from "./blocks/ErrorCard";
 import UsageFooter from "./blocks/UsageFooter";
 import UserMessage from "./blocks/UserMessage";
 
-/**
- * Local-only event used to echo the user's own message into the chat
- * timeline immediately on send. Replaced by a server-emitted event type
- * once BE starts publishing user.message through the broker.
- */
-export interface UserMessageLocal {
-  id: string;
-  ts: number;
-  text: string;
-  attachmentCount?: number;
-}
-
 export default function MessageStream({
   events,
-  userMessages,
   session,
   onOpenFile,
 }: {
   events: NormalizedEvent[];
-  userMessages: UserMessageLocal[];
   session: SessionInfo;
   onOpenFile?: (relPath: string) => void;
 }) {
-  const groups = useMemo(
-    () => buildGroups(events, userMessages),
-    [events, userMessages],
-  );
+  const groups = useMemo(() => buildGroups(events), [events]);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3 relative">
@@ -43,9 +26,9 @@ export default function MessageStream({
           case "user":
             return (
               <UserMessage
-                key={g.msg.id}
-                text={g.msg.text}
-                attachmentCount={g.msg.attachmentCount}
+                key={g.ev.id}
+                text={g.ev.text}
+                attachmentCount={g.ev.attachmentCount}
               />
             );
           case "message":
@@ -92,6 +75,7 @@ export default function MessageStream({
   );
 }
 
+type UserMessageEv = Extract<NormalizedEvent, { type: "chat.user_message" }>;
 type ToolStarted = Extract<NormalizedEvent, { type: "tool.started" }>;
 type ToolFinished = Extract<NormalizedEvent, { type: "tool.finished" }>;
 type ThinkingEv = Extract<NormalizedEvent, { type: "chat.thinking" }>;
@@ -99,30 +83,14 @@ type FileChangeEv = Extract<NormalizedEvent, { type: "file.changed" }>;
 type ErrorEv = Extract<NormalizedEvent, { type: "status.error" }>;
 
 type Group =
-  | { kind: "user"; msg: UserMessageLocal }
+  | { kind: "user"; ev: UserMessageEv }
   | { kind: "message"; text: string }
   | { kind: "thinking"; ev: ThinkingEv }
   | { kind: "tool"; started: ToolStarted; finished: ToolFinished | null }
   | { kind: "file"; ev: FileChangeEv }
   | { kind: "error"; ev: ErrorEv };
 
-type TimelineItem =
-  | { kind: "event"; ts: number; data: NormalizedEvent }
-  | { kind: "user_local"; ts: number; data: UserMessageLocal };
-
-function buildGroups(
-  events: NormalizedEvent[],
-  userMessages: UserMessageLocal[],
-): Group[] {
-  const timeline: TimelineItem[] = [
-    ...events.map((e) => ({ kind: "event" as const, ts: e.ts, data: e })),
-    ...userMessages.map((u) => ({
-      kind: "user_local" as const,
-      ts: u.ts,
-      data: u,
-    })),
-  ].sort((a, b) => a.ts - b.ts);
-
+function buildGroups(events: NormalizedEvent[]): Group[] {
   const finishedById = new Map<string, ToolFinished>();
   for (const ev of events) {
     if (ev.type === "tool.finished") finishedById.set(ev.toolCallId, ev);
@@ -137,14 +105,12 @@ function buildGroups(
     }
   };
 
-  for (const item of timeline) {
-    if (item.kind === "user_local") {
-      flushText();
-      groups.push({ kind: "user", msg: item.data });
-      continue;
-    }
-    const ev = item.data;
+  for (const ev of events) {
     switch (ev.type) {
+      case "chat.user_message":
+        flushText();
+        groups.push({ kind: "user", ev });
+        break;
       case "chat.delta":
         textBuf += ev.text;
         break;

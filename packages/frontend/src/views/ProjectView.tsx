@@ -29,7 +29,6 @@ import {
   subscribeSessionStream,
 } from "@/api/session";
 import ChatPane from "@/components/chat/ChatPane";
-import type { UserMessageLocal } from "@/components/chat/MessageStream";
 import Canvas from "@/components/canvas/Canvas";
 import ModePanel from "@/components/modes/ModePanel";
 import type { CanvasMode } from "@/components/modes/types";
@@ -46,7 +45,6 @@ export default function ProjectView() {
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
-  const [userMessages, setUserMessages] = useState<UserMessageLocal[]>([]);
   const [sessionState, setSessionState] = useState<SessionInfo | null>(null);
   const [activeTabId, setActiveTabId] = useState("design-system");
   const [openFileTabs, setOpenFileTabs] = useState<ArtifactTab[]>([]);
@@ -244,25 +242,12 @@ export default function ProjectView() {
       <div className="flex min-h-0 flex-1">
         <ChatPane
           events={events}
-          userMessages={userMessages}
           session={session}
           onSend={(text, attachedFiles) => {
-            // No status gate — backend accepts the message via fire-and-forget
-            // regardless of current session state. Removing this prevents the
-            // UI from getting stuck when a stale session refetch briefly
-            // reports "running" after a turn just ended.
-
-            // Optimistically echo the user's own message into the chat.
-            setUserMessages((prev) => [
-              ...prev,
-              {
-                id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                ts: Date.now(),
-                text,
-                attachmentCount: attachedFiles.length,
-              },
-            ]);
-
+            // The backend persists+publishes a `chat.user_message` normalized
+            // event as the first step of runUserTurn, so it echoes back
+            // through SSE within ~10ms on localhost. No optimistic local
+            // state needed — and this way history survives a page reload.
             void sendUserEvent(session.id, {
               type: "user.message",
               text,

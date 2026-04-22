@@ -1,4 +1,12 @@
 export type NormalizedEvent =
+  | {
+      id: string;
+      ts: number;
+      type: "chat.user_message";
+      turnId: string;
+      text: string;
+      attachmentCount: number;
+    }
   | { id: string; ts: number; type: "chat.delta"; turnId: string; text: string }
   | {
       id: string;
