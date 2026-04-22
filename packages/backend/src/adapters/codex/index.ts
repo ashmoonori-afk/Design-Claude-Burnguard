@@ -15,6 +15,8 @@ export async function runCodexTurn(
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+    signal: input.signal,
+    killSignal: "SIGKILL",
   });
 
   await Promise.all([
@@ -42,7 +44,11 @@ export async function runCodexTurn(
     id: ulid(),
     ts: Date.now(),
     type: "status.idle",
-    stopReason: exitCode === 0 ? "end_turn" : "error",
+    stopReason: input.signal?.aborted
+      ? "interrupted"
+      : exitCode === 0
+        ? "end_turn"
+        : "error",
   });
 
   return { exitCode };

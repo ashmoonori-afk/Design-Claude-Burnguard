@@ -8,6 +8,7 @@ export interface AdapterRunInput {
   binaryPath: string;
   prompt: string;
   userEvent: Extract<UserEvent, { type: "user.message" }>;
+  signal?: AbortSignal;
   onEvent: (event: NormalizedEvent) => Promise<void>;
   onStderr?: (line: string) => Promise<void>;
 }

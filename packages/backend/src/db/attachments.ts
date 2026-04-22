@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ulid } from "ulid";
 import { getDb } from "./client";
 import { attachmentsTable } from "./schema";
@@ -73,3 +73,30 @@ export async function listSessionAttachments(sessionId: string) {
   return rows satisfies AttachmentRecord[];
 }
 
+export async function assignAttachmentsToTurn(
+  sessionId: string,
+  filePaths: string[],
+  turnId: string,
+) {
+  if (filePaths.length === 0) {
+    return 0;
+  }
+
+  const db = getDb();
+  const where = and(
+    eq(attachmentsTable.sessionId, sessionId),
+    isNull(attachmentsTable.turnId),
+    inArray(attachmentsTable.filePath, filePaths),
+  );
+  const rows = await db
+    .select({ id: attachmentsTable.id })
+    .from(attachmentsTable)
+    .where(where);
+
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  await db.update(attachmentsTable).set({ turnId }).where(where);
+  return rows.length;
+}

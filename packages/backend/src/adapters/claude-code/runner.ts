@@ -13,6 +13,7 @@ export interface RunnerOptions {
   binaryPath: string;
   projectDir: string;
   prompt: string;
+  signal?: AbortSignal;
   onStdoutLine: (line: string) => Promise<void> | void;
   onStderrLine?: (line: string) => Promise<void> | void;
   sessionId?: string;
@@ -48,6 +49,8 @@ export async function runClaudeCode(options: RunnerOptions): Promise<RunnerResul
     stdout: "pipe",
     stderr: "pipe",
     env: { ...process.env },
+    signal: options.signal,
+    killSignal: "SIGKILL",
   });
 
   await Promise.all([

@@ -19,6 +19,7 @@ export async function runClaudeCodeTurn(
     binaryPath: input.binaryPath,
     projectDir: input.projectDir,
     prompt: input.prompt,
+    signal: input.signal,
     sessionId: input.sessionId,
     onStdoutLine: async (line) => {
       const events = parseStreamLine(line, ctx);
@@ -41,7 +42,11 @@ export async function runClaudeCodeTurn(
       id: ulid(),
       ts: Date.now(),
       type: "status.idle",
-      stopReason: result.exitCode === 0 ? "end_turn" : "error",
+      stopReason: input.signal?.aborted
+        ? "interrupted"
+        : result.exitCode === 0
+          ? "end_turn"
+          : "error",
     });
   }
 

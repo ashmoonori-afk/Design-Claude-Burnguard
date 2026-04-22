@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { ulid } from "ulid";
 import type { NormalizedEvent, UserEvent } from "@bg/shared";
+import { assignAttachmentsToTurn } from "../db/attachments";
 import {
   bumpSessionUsage,
   insertNormalizedEvent,
@@ -17,7 +18,12 @@ import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
 import { runAdapterTurn } from "../adapters/registry";
 
-const activeTurnSessionIds = new Set<string>();
+interface ActiveTurn {
+  abortController: AbortController;
+  interrupted: boolean;
+}
+
+const activeTurns = new Map<string, ActiveTurn>();
 
 async function listDirSafe(dir: string): Promise<string[] | string> {
   try {
@@ -49,26 +55,42 @@ async function persistAndPublish(sessionId: string, event: NormalizedEvent) {
  * contract the adapters must satisfy.
  */
 export function isUserTurnRunning(sessionId: string) {
-  return activeTurnSessionIds.has(sessionId);
+  return activeTurns.has(sessionId);
+}
+
+export function interruptUserTurn(sessionId: string) {
+  const active = activeTurns.get(sessionId);
+  if (!active) {
+    return false;
+  }
+
+  active.interrupted = true;
+  active.abortController.abort();
+  return true;
 }
 
 export function startUserTurn(
   sessionId: string,
   payload: Extract<UserEvent, { type: "user.message" }>,
 ) {
-  if (activeTurnSessionIds.has(sessionId)) {
+  if (activeTurns.has(sessionId)) {
     return null;
   }
 
-  activeTurnSessionIds.add(sessionId);
-  return runUserTurnInternal(sessionId, payload).finally(() => {
-    activeTurnSessionIds.delete(sessionId);
+  const activeTurn: ActiveTurn = {
+    abortController: new AbortController(),
+    interrupted: false,
+  };
+  activeTurns.set(sessionId, activeTurn);
+  return runUserTurnInternal(sessionId, payload, activeTurn).finally(() => {
+    activeTurns.delete(sessionId);
   });
 }
 
 async function runUserTurnInternal(
   sessionId: string,
   payload: Extract<UserEvent, { type: "user.message" }>,
+  activeTurn: ActiveTurn,
 ) {
   const sessionContext = await buildSessionContext(sessionId);
   if (!sessionContext) {
@@ -81,16 +103,21 @@ async function runUserTurnInternal(
   }
 
   const backendId = session.backend_id;
+  const turnId = ulid();
+  const attachmentCount = await assignAttachmentsToTurn(
+    sessionId,
+    payload.attachments ?? [],
+    turnId,
+  );
 
   await insertUserEvent(sessionId, payload);
   await appendSessionTrace(sessionId, {
     level: "input",
     payload,
-    attachment_count: sessionContext.attachments.length,
+    attachment_count: attachmentCount,
   });
   await setSessionStatus(sessionId, "running");
 
-  const turnId = ulid();
   const startTs = Date.now();
 
   // Persist the user's own message as a normalized event so that replay
@@ -103,7 +130,7 @@ async function runUserTurnInternal(
     type: "chat.user_message",
     turnId,
     text: payload.text,
-    attachmentCount: sessionContext.attachments.length,
+    attachmentCount,
   });
 
   await persistAndPublish(sessionId, {
@@ -162,6 +189,7 @@ async function runUserTurnInternal(
       projectDir: sessionContext.project.project_dir,
       binaryPath: backend.binary_path,
       prompt,
+      signal: activeTurn.abortController.signal,
       userEvent: payload,
       onEvent: async (event) => {
         await persistAndPublish(sessionId, event);
@@ -182,20 +210,29 @@ async function runUserTurnInternal(
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await persistAndPublish(sessionId, {
-      id: ulid(),
-      ts: Date.now(),
-      type: "status.error",
-      message,
-      recoverable: true,
-    });
-    await persistAndPublish(sessionId, {
-      id: ulid(),
-      ts: Date.now(),
-      type: "status.idle",
-      stopReason: "error",
-    });
+    if (activeTurn.interrupted || activeTurn.abortController.signal.aborted) {
+      await persistAndPublish(sessionId, {
+        id: ulid(),
+        ts: Date.now(),
+        type: "status.idle",
+        stopReason: "interrupted",
+      });
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      await persistAndPublish(sessionId, {
+        id: ulid(),
+        ts: Date.now(),
+        type: "status.error",
+        message,
+        recoverable: true,
+      });
+      await persistAndPublish(sessionId, {
+        id: ulid(),
+        ts: Date.now(),
+        type: "status.idle",
+        stopReason: "error",
+      });
+    }
   }
 
   const postTurnListing = await listDirSafe(projectDir);

@@ -6,7 +6,7 @@ import { insertNormalizedEvent, listSessionEvents, setSessionStatus } from "../d
 import { getSessionInfo } from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
 import { broker } from "../services/broker";
-import { isUserTurnRunning, startUserTurn } from "../services/turns";
+import { interruptUserTurn, isUserTurnRunning, startUserTurn } from "../services/turns";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -135,16 +135,20 @@ sessionRoutes.post("/api/sessions/:id/interrupt", async (c) => {
     return c.json(fail("session_not_found", "Session not found", { id }), 404);
   }
 
-  const event: NormalizedEvent = {
-    id: crypto.randomUUID(),
-    ts: Date.now(),
-    type: "status.idle",
-    stopReason: "interrupted",
-  };
-  await insertNormalizedEvent(id, event);
-  await setSessionStatus(id, "idle");
-  broker.publish(id, event);
-  return c.json(ok({ accepted: true }));
+  const interrupted = interruptUserTurn(id);
+  if (!interrupted && session.status === "running") {
+    const event: NormalizedEvent = {
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      type: "status.idle",
+      stopReason: "interrupted",
+    };
+    await insertNormalizedEvent(id, event);
+    await setSessionStatus(id, "idle");
+    broker.publish(id, event);
+  }
+
+  return c.json(ok({ accepted: true, interrupted }));
 });
 
 sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
