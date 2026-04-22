@@ -77,7 +77,7 @@ export default function Canvas({
   src?: string | null;
   frameKey?: string;
   onModeChange: (m: CanvasMode | null) => void;
-  onSelect: (s: SelectedNode) => void;
+  onSelect: (s: SelectedNode | null) => void;
   onRefresh: () => void;
   comments: Comment[];
   activeRelPath: string | null;
@@ -138,7 +138,12 @@ export default function Canvas({
             className="absolute inset-0 h-full w-full border-0 bg-background"
           />
         )}
-        <SelectorOverlay active={mode === "select"} onSelect={onSelect} />
+        <SelectorOverlay
+          active={mode === "select"}
+          iframeRef={iframeRef}
+          activeRelPath={activeRelPath}
+          onSelect={onSelect}
+        />
         <CommentLayer
           active={mode === "comment"}
           comments={comments}
