@@ -52,12 +52,12 @@ export default function CommentLayer({
     ? comments.filter((c) => {
         if (c.rel_path !== activeRelPath) return false;
         if (c.resolved_at !== null) return false;
-        if (
-          c.slide_index != null &&
-          activeSlideIdx != null &&
-          c.slide_index !== activeSlideIdx
-        ) {
-          return false;
+        if (activeSlideIdx != null) {
+          // Deck context — pin must match the active slide. Legacy pins
+          // from before migration 0003 carry slide_index=NULL; treat them
+          // as if they belong to slide 0 so they don't leak into every page.
+          const pinSlide = c.slide_index ?? 0;
+          if (pinSlide !== activeSlideIdx) return false;
         }
         return true;
       })
