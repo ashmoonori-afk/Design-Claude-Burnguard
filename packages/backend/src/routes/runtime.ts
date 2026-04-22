@@ -5,8 +5,10 @@ export const runtimeRoutes = new Hono();
 
 runtimeRoutes.get("/runtime/deck-stage.js", (c) => {
   c.header("Content-Type", "application/javascript; charset=utf-8");
-  // Moderate TTL — the runtime is small and rarely changes, but we want
-  // users who rebuild the binary to see their update on the next reload.
-  c.header("Cache-Control", "public, max-age=300");
+  // No caching — the runtime ships with the binary and evolves quickly
+  // during development. A stale cached copy caused an infinite-loop build
+  // to persist in the browser after the server-side fix shipped. The file
+  // is ~10 KB so the re-fetch cost is negligible.
+  c.header("Cache-Control", "no-store");
   return c.body(DECK_STAGE_JS);
 });

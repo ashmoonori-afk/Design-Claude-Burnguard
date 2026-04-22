@@ -73,9 +73,16 @@ export const DECK_STAGE_JS = `(function() {
     function refreshNav() {
       var list = slides();
       if (!nav) return;
-      nav.count.textContent = (current + 1) + " / " + Math.max(1, list.length);
-      nav.prev.disabled = current <= 0;
-      nav.next.disabled = current >= list.length - 1;
+      // Only write DOM if the values actually changed. Without this guard,
+      // each textContent assignment triggers the MutationObserver below,
+      // which calls refreshNav again — saturating the main thread and making
+      // arrow keys feel like the tab froze.
+      var nextLabel = (current + 1) + " / " + Math.max(1, list.length);
+      if (nav.count.textContent !== nextLabel) nav.count.textContent = nextLabel;
+      var prevDisabled = current <= 0;
+      var nextDisabled = current >= list.length - 1;
+      if (nav.prev.disabled !== prevDisabled) nav.prev.disabled = prevDisabled;
+      if (nav.next.disabled !== nextDisabled) nav.next.disabled = nextDisabled;
     }
 
     function go(delta) {
@@ -165,10 +172,29 @@ export const DECK_STAGE_JS = `(function() {
     }, { passive: true });
 
     // If the CLI rewrites the deck mid-session, keep the active attribute
-    // on whatever slide lives at the same index (or clamp to last).
-    var mo = new MutationObserver(function() {
+    // on whatever slide lives at the same index (or clamp to last). Skip
+    // mutations that originate from our own nav (otherwise the counter
+    // update would loop: counter → MO fires → refreshNav → counter → ...).
+    var lastSlideCount = all.length;
+    var mo = new MutationObserver(function(records) {
+      var external = false;
+      for (var i = 0; i < records.length; i++) {
+        var target = records[i].target;
+        if (!(nav && nav.root && nav.root.contains(target))) {
+          external = true;
+          break;
+        }
+      }
+      if (!external) return;
       var list = slides();
       if (list.length === 0) return;
+      if (list.length === lastSlideCount) {
+        // Same count — probably an inner edit, not a structural change.
+        // Still make sure the active attribute is honored.
+        setActive(list, Math.min(current, list.length - 1));
+        return;
+      }
+      lastSlideCount = list.length;
       var idx = Math.min(current, list.length - 1);
       current = idx;
       setActive(list, idx);
