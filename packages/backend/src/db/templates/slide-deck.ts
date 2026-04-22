@@ -119,7 +119,7 @@ export function renderSlideDeck(
 <body>
   <section data-slide class="deck-slide deck-cover" data-bg-node-id="slide-1">
     <div class="deck-body">
-      <div class="eyebrow">BurnGuard Deck</div>
+      <div class="eyebrow" data-bg-node-id="slide-1-eyebrow">BurnGuard Deck</div>
       <h1 data-bg-node-id="slide-1-title">${title}</h1>
       <p data-bg-node-id="slide-1-subtitle">Send your first prompt in chat to expand this deck.</p>${notesBlock("Opening cue: introduce the topic and set the stakes.")}
     </div>
@@ -127,7 +127,7 @@ export function renderSlideDeck(
 
   <section data-slide class="deck-slide" data-bg-node-id="slide-2">
     <div class="deck-body">
-      <div class="eyebrow">Section 01</div>
+      <div class="eyebrow" data-bg-node-id="slide-2-eyebrow">Section 01</div>
       <h2 data-bg-node-id="slide-2-title">Your first slide</h2>
       <p data-bg-node-id="slide-2-body">Replace this content via chat. Use arrow keys or space to navigate once the deck runtime loads.</p>${notesBlock("Talk through the key point in 30 seconds.")}
     </div>
@@ -135,7 +135,7 @@ export function renderSlideDeck(
 
   <section data-slide class="deck-slide deck-closing" data-bg-node-id="slide-3">
     <div class="deck-body">
-      <div class="eyebrow">Closing</div>
+      <div class="eyebrow" data-bg-node-id="slide-3-eyebrow">Closing</div>
       <h2 data-bg-node-id="slide-3-title">Thanks</h2>
       <p data-bg-node-id="slide-3-body">End of deck. Append more &lt;section data-slide&gt; blocks to grow it.</p>${notesBlock("Invite questions.")}
     </div>

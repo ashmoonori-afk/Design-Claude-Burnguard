@@ -36,6 +36,10 @@ export async function buildPrompt(
   lines.push(`- type: ${project.project_type}`);
   lines.push(`- entrypoint: ${project.entrypoint}`);
   lines.push(`- directory: ${project.project_dir}`);
+  if (project.project_type === "slide_deck") {
+    const slideDeckOptions = parseSlideDeckOptions(project.options_json);
+    lines.push(`- use_speaker_notes: ${slideDeckOptions.use_speaker_notes ? "true" : "false"}`);
+  }
   lines.push("");
 
   // File list
@@ -148,4 +152,28 @@ async function readOptional(filePath: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function parseSlideDeckOptions(optionsJson: string | null): {
+  use_speaker_notes: boolean;
+} {
+  if (!optionsJson) {
+    return { use_speaker_notes: false };
+  }
+
+  try {
+    const parsed = JSON.parse(optionsJson);
+    if (parsed && typeof parsed === "object") {
+      return {
+        use_speaker_notes:
+          typeof (parsed as Record<string, unknown>).use_speaker_notes === "boolean"
+            ? ((parsed as Record<string, unknown>).use_speaker_notes as boolean)
+            : false,
+      };
+    }
+  } catch {
+    // Ignore malformed options and fall back to the default deck contract.
+  }
+
+  return { use_speaker_notes: false };
 }

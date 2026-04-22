@@ -1,9 +1,11 @@
-import { mkdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { ExportFormat } from "@bg/shared";
 import { createExportJob, getExportJob, updateExportJob } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
 import { exportsDir } from "../lib/paths";
+import { DECK_STAGE_JS } from "../runtime/deck-stage";
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat) {
   const job = await createExportJob(projectId, format);
@@ -45,23 +47,35 @@ async function runExport(jobId: string) {
     await mkdir(exportsDir, { recursive: true });
     const outputPath = path.join(exportsDir, `${project.id}-${job.id}.zip`);
     await rm(outputPath, { force: true });
+    const stagingDir = await mkdtemp(path.join(os.tmpdir(), "burnguard-export-"));
 
-    const sourceWildcard = path.join(project.dir_path, "*");
-    const command = [
-      "powershell",
-      "-NoProfile",
-      "-Command",
-      `Compress-Archive -Path '${escapeForPs(sourceWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
-    ];
+    try {
+      const projectStageDir = path.join(stagingDir, project.id);
+      await cp(project.dir_path, projectStageDir, { recursive: true });
 
-    const proc = Bun.spawn(command, {
-      stdout: "ignore",
-      stderr: "pipe",
-    });
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      const errorText = await new Response(proc.stderr).text();
-      throw new Error(errorText || `Compress-Archive failed with exit code ${exitCode}`);
+      if (project.type === "slide_deck") {
+        await prepareSlideDeckExport(projectStageDir, project.entrypoint);
+      }
+
+      const sourceWildcard = path.join(projectStageDir, "*");
+      const command = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        `Compress-Archive -Path '${escapeForPs(sourceWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
+      ];
+
+      const proc = Bun.spawn(command, {
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        const errorText = await new Response(proc.stderr).text();
+        throw new Error(errorText || `Compress-Archive failed with exit code ${exitCode}`);
+      }
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true });
     }
 
     const info = await stat(outputPath);
@@ -84,3 +98,16 @@ function escapeForPs(value: string) {
   return value.replaceAll("'", "''");
 }
 
+async function prepareSlideDeckExport(projectDir: string, entrypoint: string) {
+  const runtimeDir = path.join(projectDir, "runtime");
+  await mkdir(runtimeDir, { recursive: true });
+  await writeFile(path.join(runtimeDir, "deck-stage.js"), DECK_STAGE_JS, "utf8");
+
+  const entrypointPath = path.join(projectDir, entrypoint);
+  const relativeRuntimePath = path
+    .relative(path.dirname(entrypointPath), path.join(runtimeDir, "deck-stage.js"))
+    .replaceAll("\\", "/");
+  const html = await readFile(entrypointPath, "utf8");
+  const rewritten = html.replaceAll("/runtime/deck-stage.js", relativeRuntimePath);
+  await writeFile(entrypointPath, rewritten, "utf8");
+}

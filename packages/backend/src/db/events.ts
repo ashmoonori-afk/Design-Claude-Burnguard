@@ -160,6 +160,7 @@ export async function getSessionProject(sessionId: string) {
       project_type: projectsTable.type,
       project_dir: projectsTable.dirPath,
       entrypoint: projectsTable.entrypoint,
+      options_json: projectsTable.optionsJson,
       design_system_id: projectsTable.designSystemId,
       backend_id: sessionsTable.backendId,
     })
