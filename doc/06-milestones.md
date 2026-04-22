@@ -131,10 +131,14 @@ High-level focus (see §7 for the concrete commit-sized sprint plan):
 
 ### Phase 3 - Power user features
 
-Planned focus:
-- real tweaks panel
-- draw/present modes
-- handoff export and broader packaging features
+Planned focus (see §8 for the commit-sized sprint plan):
+- real tweaks panel (two-way CSS inspector)
+- draw / present modes
+- handoff export + structured Codex parser + tool-decision round-trip
+- turn rollback UI
+- light UI polish pass (spacing / empty states / a11y / keyboard shortcuts)
+- macOS + Linux builds
+- watcher-driven `file.changed`
 
 ### Phase 4 - Design system ingestion and platform polish
 
@@ -147,9 +151,10 @@ Planned focus:
 
 For the next stretch, the engineering priority should be:
 
-1. finish the missing Phase 1 reliability pieces
-2. avoid pulling more Phase 2 UI placeholders into "implemented" status without behavior behind them
-3. keep docs synchronized with what actually ships in the repo
+1. walk `doc/07-manual-smoke-test.md` to flip Phase 1 / M2.B / M2.C to ✅
+2. keep docs synchronized with what actually ships in the repo
+3. hold the Phase 3 slicing in §8 — resist bundling UI polish with new
+   features; each P3 slice lands in one commit
 
 The harness remains the product. Phase movement should be based on runtime correctness, not just screen count.
 
@@ -195,7 +200,62 @@ reconstructing context.
 ### Out of scope for Phase 2 (deferred to Phase 3 or later)
 
 - Full tweaks two-way inspector (Phase 3 P3.1)
-- Draw mode / Present mode (Phase 3 P3.3 / P3.4)
+- Draw mode / Present mode (Phase 3 P3.2 / P3.3)
 - DS extraction from uploaded design files / GitHub / Figma (Phase 4)
 - macOS / Linux builds (Phase 3 P3.10 / P3.11)
 - Auto-update, SmartScreen signing (Phase 4)
+
+## 8. Phase 3 Sprint Plan
+
+Broken into 11 commit-sized slices across four milestones. Same rules as
+§7: one slice per commit, each ends green, each carries its own DoD.
+
+### Milestone 3.A — Productivity modes 🔲
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P3.1** | 🔲 | **Tweaks mode (two-way CSS inspector)** — Select mode already reads computed styles; Tweaks adds editable inputs for the displayed properties. Editing a value posts an inline-style PATCH to the element's `data-bg-node-id`, mirroring the Edit PATCH contract. Local undo/redo stack (Cmd/Ctrl+Z). | `frontend/src/components/canvas/TweaksLayer.tsx` (new), `frontend/src/components/modes/TweaksPanel.tsx` (new), `backend/src/services/file-patch.ts` (+ inline-style path), `frontend/src/views/ProjectView.tsx` | Drag a font-size input → iframe rerenders → reload preserves the change |
+| **P3.2** | 🔲 | **Draw mode (SVG overlay sketching)** — Freehand + rectangle + arrow tools draw on a transparent SVG layer over the iframe. Saves per-file to `<project>/.meta/draws/<rel_path>.svg`. Not included in html_zip (annotation layer). | `frontend/src/components/canvas/DrawLayer.tsx` (new), `backend/src/routes/artifacts.ts` (+ `GET/PUT /draws/*`), `backend/src/services/files.ts` | Sketch over a slide → navigate away and back → sketch still there |
+| **P3.3** | 🔲 | **Present mode** — Fullscreen deck playback. Leverages existing `data-presenter` + `[data-slide]` runtime; adds a Present launcher in `ProjectTopBar` (the placeholder Play button today), timer, F11 / ESC, space / arrows already work. | `frontend/src/components/present/PresentOverlay.tsx` (new), `frontend/src/components/project/ProjectTopBar.tsx` (wire Play), `backend/src/runtime/deck-stage.ts` (+ present mode CSS hooks if needed) | Click Present → deck fullscreens without nav → arrows advance → Esc returns |
+
+### Milestone 3.B — Distribution & CLI fidelity 🔲
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P3.4** | 🔲 | **Handoff export** — zip bundling entrypoint + design-tokens CSS + a `spec.json` with one entry per `[data-bg-node-id]` (tag, text, computed styles, bounding rect). Target reader: a developer reconstructing the design in another framework. | `backend/src/services/export-handoff.ts` (new), extends `services/exports.ts` format matrix, `frontend/src/components/export/ExportMenu.tsx` | Open zip → `spec.json` + assets → developer rebuilds page in React from spec alone |
+| **P3.5** | 🔲 | **Structured Codex parser** — When Codex ships a structured stream, write a parser that maps to the same `NormalizedEvent` contract as Claude Code (tool.started/finished, file.changed, usage.delta, status.idle reasons). | `backend/src/adapters/codex/parser.ts` (new), `backend/src/adapters/codex/index.ts` refactor, `backend/tests/codex-parser.test.ts` (new) | A Codex turn emits tool.started + tool.finished events visible in the chat — parity with Claude Code adapter |
+| **P3.6** | 🔲 | **Tool-decision round-trip to CLI** — Today Deny interrupts; Allow only records. When Claude Code actually emits `tool.permission_required`, wire the user's Allow/Deny back into the CLI's stdin so the turn resumes. | `backend/src/adapters/claude-code/index.ts` (+ decision channel), `backend/src/services/turns.ts` (route user.tool_decision into adapter) | Allow → CLI proceeds on the gated tool; Deny → CLI cleanly skips and continues |
+| **P3.7** | 🔲 | **Turn rollback UI** — Checkpoints already persist in `<project>/.meta/checkpoints/<turnId>/`. Add a "Revert to turn N" action on each assistant message that restores the project file tree from that checkpoint. | `backend/src/routes/session.ts` (+POST /checkpoints/:turnId/restore), `backend/src/services/checkpoints.ts` (+restore), `frontend/src/components/chat/MessageStream.tsx` | Bad turn → click revert → files return to pre-turn state → continue from there |
+
+### Milestone 3.C — Platform & polish 🔲
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P3.8** | 🔲 | **UI polish pass (light)** — No behavioural changes; tightens visual consistency across the app. <br/> **Scope:** (a) spacing/typography token sweep (standardize px → token references in Tailwind config + component classes); (b) empty states for HomeView "no projects", DesignFilesView "no files", MessageStream "no events" with friendly copy + subtle illustration/icon; (c) keyboard shortcut overlay (`?` or Cmd/Ctrl+/) that lists the existing shortcuts (deck nav, interrupt, switch mode); (d) focus rings + ARIA labels across Dialog, DropdownMenu, Tabs, buttons; (e) toast styling & motion consistency; (f) hover/active states aligned across Buttons + DropdownMenuItem + Canvas mode buttons. <br/> **Out of scope:** dark mode real implementation, layout changes, new widgets. | `frontend/src/components/ui/*`, `frontend/src/views/HomeView.tsx`, `frontend/src/views/DesignFilesView.tsx`, `frontend/src/components/chat/MessageStream.tsx`, `frontend/src/components/keyboard/ShortcutsOverlay.tsx` (new), `frontend/tailwind.config.ts` | Side-by-side before/after screenshot shows tightened spacing + readable empty states; `?` opens the shortcuts overlay; tab navigation reaches every control |
+| **P3.9** | 🔲 | **Watcher-driven `file.changed`** — Today the chat's `file.changed` stream is adapter-driven (parsed from Claude Code's tool_result). Supplement with real fs events so external-editor edits and any future adapter work out of the box. | `backend/src/services/watchers.ts` (promote fs events into broker), `backend/src/services/turns.ts` (dedupe against adapter events by path+mtime) | Edit a deck file in VS Code while the app is open → chat shows file.changed within 1s without a CLI turn |
+| **P3.10** | 🔲 | **macOS build** — `bun build --target=bun-darwin-arm64` + `.icns` icon + dmg packaging script. Frontend serves from the same bundle. | `scripts/build-mac.ts` (new), assets/icon.icns, `package.json` scripts | `bun run build:mac` produces a dmg that mounts and runs on Apple Silicon |
+| **P3.11** | 🔲 | **Linux build** — AppImage via `bun-linux-x64`. Falls back to a plain tarball if AppImage tooling isn't available. | `scripts/build-linux.ts` (new), `package.json` scripts | `bun run build:linux` produces an AppImage that runs on Ubuntu 22.04+ |
+
+### Ground rules for Phase 3
+
+1. **One commit per slice.** Same as Phase 2. Bundle only if two slices
+   share a single surface that would be churn to split (rare).
+2. **UI polish (P3.8) is strictly no-behaviour-change.** If a slot calls
+   for a new widget or layout rearrangement, it belongs in a fresh
+   numbered slice, not inside P3.8.
+3. **Tests track the surface area being shipped.** Tweaks inline-style
+   PATCH gets a pure-function unit test the same way EditLayer did
+   (`applyInlineStylePatch`). Handoff export spec JSON shape gets a
+   snapshot test.
+4. **No Phase 4 creep.** DS ingestion from uploads / Figma / GitHub and
+   auto-update stays Phase 4 even when adjacent to P3.4 or P3.10.
+5. **Merge boundaries:** M3.A (P3.3), M3.B (P3.7), M3.C (P3.11) are
+   three reasonable PR split points.
+
+### Out of scope for Phase 3 (Phase 4 or later)
+
+- Upload a design file → auto-extract a reusable design system
+- Figma / GitHub sync
+- Auto-update + SmartScreen signing
+- Full dark-mode visual design (P3.8 covers the token / focus work but
+  not a polished dark palette)
