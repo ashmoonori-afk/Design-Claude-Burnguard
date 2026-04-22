@@ -1,5 +1,13 @@
 # Milestones and Delivery
 
+> **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
+>
+> **Next-session pickup (2026-04-22):** Phase 1 functionally complete (late
+> alpha). Phase 2 **Milestone A (Slide Deck Foundation)** shipped in 3
+> commits — `15c01e8` (template), `3ef5786`/`8730704` (runtime + hover nav
+> bar), `94762ed` (deck-aware prompt skill). **Resume at P2.4 (Comment
+> mode)** under §7 Phase 2 Sprint Plan below.
+
 ## 1. Current Stage
 
 As of April 22, 2026, BurnGuard Design is in **late Phase 1 / internal alpha**.
@@ -90,11 +98,15 @@ Exit criteria:
 
 ### Phase 2 - Decks, modes, and richer exports
 
-Planned focus:
-- complete the slide deck workflow, not just the starter template/runtime
-- comment and edit modes
-- PDF and PPTX export
-- stronger settings/runtime controls
+Status: **Milestone A complete, Milestone B/C not started**
+
+High-level focus (see §7 for the concrete commit-sized sprint plan):
+- ✅ slide deck workflow foundation (template, runtime, prompt skill)
+- 🔲 comment and edit modes
+- 🔲 PDF and PPTX export
+- 🔲 permission gate UI
+- 🔲 stronger settings/runtime controls
+- 🔲 tutorial seeds
 
 ### Phase 3 - Power user features
 
@@ -113,3 +125,51 @@ For the next stretch, the engineering priority should be:
 3. keep docs synchronized with what actually ships in the repo
 
 The harness remains the product. Phase movement should be based on runtime correctness, not just screen count.
+
+## 7. Phase 2 Sprint Plan
+
+Broken down from the original 9 Phase 2 tasks into 10 commit-sized slices,
+grouped into three milestones. Each slice is a single commit, ends in a
+working state, and has a concrete DoD so the next session can resume without
+reconstructing context.
+
+### Milestone 2.A — Slide Deck Foundation ✅
+
+| # | Status | Commit | Slice | DoD |
+|---|---|---|---|---|
+| **P2.1** | ✅ | `15c01e8` | Slide deck project template + seed (`deck.html`, `<section data-slide>` × 3, speaker-notes option) | Creating a `slide_deck` project writes a valid deck.html referencing the runtime script |
+| **P2.2** | ✅ | `3ef5786` + `8730704` | `deck-stage.js` runtime: pagination, keyboard nav (←/→/Space/Home/End/f/Esc), hash-based routing, touch swipe, MutationObserver for CLI edits, hover-visible nav bar with `N / M` counter | Browser renders one slide at a time, arrows navigate, nav bar fades in on mousemove |
+| **P2.3** | ✅ | `94762ed` | Deck-aware prompt builder — injects `DECK_SKILL_MD` only when `project.type === "slide_deck"` (15-slide pitch scaffold, `data-bg-node-id` rules, inline CSS, no external deps) | Deck-type sessions get the skill block; prototype sessions unchanged (verified via direct buildPrompt import) |
+
+### Milestone 2.B — Interaction Modes 🔲
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P2.4** | 🔲 | **Comment mode (pin + thread)** — `comments` table (`id`, `project_id`, `rel_path`, `node_selector`, `x_pct`, `y_pct`, `resolved_at`). REST: `GET`/`POST`/`PATCH /api/projects/:id/comments`. Canvas: clicking in Comment mode drops a pin; side panel holds the thread. | `backend/src/db/schema.ts`, `backend/src/routes/comments.ts` (new), `backend/src/db/comments.ts` (new), `frontend/src/components/canvas/CommentLayer.tsx` (new), `frontend/src/components/modes/CommentPanel.tsx` | Clicking in comment mode creates a persisted pin that survives a reload; resolve toggles it |
+| **P2.5** | 🔲 | **Edit mode (contenteditable → PATCH)** — iframe elements with `data-bg-node-id` become editable; on blur the runtime posts the new text to a new `PATCH /api/projects/:id/fs/*` handler, which updates only the targeted node via `node-html-parser`. | `backend/src/routes/artifacts.ts` (+PATCH), `backend/src/services/file-patch.ts` (new), `frontend/src/components/modes/EditMode.tsx` (new) | Inline-edit a title → save to disk → reload shows the new value; other DOM untouched |
+| **P2.6** | 🔲 | **Permission gate UI for tool calls** — When a `tool.permission_required` event arrives, open a Radix Dialog. Allow/Deny routes to `POST /api/sessions/:id/tool-decision`. Existing `user.tool_decision` event type already defined. | `frontend/src/components/chat/PermissionDialog.tsx` (new), `backend/src/routes/session.ts` (+decision handler), `frontend/src/views/ProjectView.tsx` (hook the event) | Synthesized permission event triggers a modal; Deny aborts the turn cleanly |
+
+### Milestone 2.C — Exports & Settings 🔲
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P2.7** | 🔲 | **PDF export via Playwright** — `runExport` gains a `pdf` branch. Headless launches Chromium, opens the deck file with `?print=1` (runtime hides nav bar), calls `page.pdf({ format: 'A4 landscape', printBackground: true })`. | `backend/src/services/exports.ts`, `backend/src/services/export-pdf.ts` (new), add Playwright dep | 15-slide deck exports to a 15-page PDF; zero nav-bar artifacts |
+| **P2.8** | 🔲 | **PPTX export via `pptxgenjs`** — Parse the rendered DOM, split text/image into separate pptx layers so the output is editable in PowerPoint. | `backend/src/services/export-pptx.ts` (new), `pptxgenjs` dep | Deck → .pptx opens in PowerPoint with editable text boxes per slide |
+| **P2.9** | 🔲 | **Settings panel** — Claude Code/Codex runtime switch, "Install Playwright" button spawning `npx playwright install chromium`. | `frontend/src/components/settings/SettingsModal.tsx`, `backend/src/routes/settings.ts` (new or extend) | Switch backend at runtime (next turn uses new CLI); Playwright install button actually runs the command |
+| **P2.10** | 🔲 | **Tutorial projects + export smoke tests** — Seed two tutorials (`prototype-demo`, `deck-demo`). Integration test: each tutorial × each export format (html_zip, pdf, pptx) → non-empty output. | `backend/src/db/seed-tutorials.ts` (new), `backend/tests/exports.test.ts` (new) | First launch creates tutorials; `bun test` green |
+
+### Ground rules for the new session
+
+1. **One commit per slice.** No bundling.
+2. **TDD where DB schema changes** — P2.4/P2.5 must ship with unit tests that cover the new handlers before touching the UI.
+3. **Intermediate smokes** — at the end of M2.B, run through comment + edit against a real deck project. At the end of M2.C, verify all three export formats manually.
+4. **Clean pickup points for PR slices:** P2.6 ends M2.B; P2.10 ends M2.C. Either is a reasonable merge boundary if you want to split Phase 2 into 2 PRs.
+
+### Out of scope for Phase 2 (deferred to Phase 3 or later)
+
+- Full tweaks two-way inspector (Phase 3 P3.1)
+- Draw mode / Present mode (Phase 3 P3.3 / P3.4)
+- DS extraction from GitHub/Figma (Phase 3 P3.5 / P3.6)
+- macOS / Linux builds (Phase 3 P3.10 / P3.11)
+- Auto-update, SmartScreen signing (Phase 4)
+
