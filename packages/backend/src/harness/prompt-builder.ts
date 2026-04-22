@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { UserEvent } from "@bg/shared";
 import type { buildSessionContext } from "../services/context";
+import { DECK_SKILL_MD } from "./skills/deck-skill";
 
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
 
@@ -105,6 +106,16 @@ export async function buildPrompt(
     for (const p of userEvent.attachments) {
       lines.push(`- ${p}`);
     }
+    lines.push("");
+  }
+
+  // Project-type-specific authoring skill. Injected AFTER the design system
+  // (which defines *look*) and BEFORE Delivery (which defines *scope*), so
+  // the skill can reference tokens introduced above and still be governed
+  // by the hard rules that come after.
+  if (project.project_type === "slide_deck") {
+    lines.push("## Slide deck skill");
+    lines.push(DECK_SKILL_MD.trim());
     lines.push("");
   }
 
