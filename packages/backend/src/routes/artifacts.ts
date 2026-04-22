@@ -207,12 +207,20 @@ artifactRoutes.post("/api/projects/:id/exports", async (c) => {
   if (!isExportFormat(format)) {
     return c.json(fail("invalid_export_format", "Unsupported export format", { format }), 400);
   }
-  if (format !== "html_zip") {
+  if (format !== "html_zip" && format !== "pdf") {
     return c.json(
       fail("export_not_implemented", `Export format is not implemented yet: ${format}`, {
         format,
       }),
       501,
+    );
+  }
+  if (format === "pdf" && project.type !== "slide_deck") {
+    return c.json(
+      fail("pdf_requires_deck", "PDF export is only available for slide_deck projects", {
+        projectType: project.type,
+      }),
+      400,
     );
   }
 

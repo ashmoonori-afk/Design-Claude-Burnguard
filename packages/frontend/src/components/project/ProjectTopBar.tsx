@@ -35,7 +35,7 @@ export default function ProjectTopBar({
         <Button variant="ghost" size="sm" className="gap-1.5">
           <Play className="h-3.5 w-3.5" /> Present
         </Button>
-        <ExportMenu projectId={project.id} />
+        <ExportMenu projectId={project.id} projectType={project.type} />
         <Button variant="outline" size="sm" className="gap-1.5">
           <Share2 className="h-3.5 w-3.5" /> Share
         </Button>

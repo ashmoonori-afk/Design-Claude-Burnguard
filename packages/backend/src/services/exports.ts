@@ -6,6 +6,7 @@ import { createExportJob, getExportJob, updateExportJob } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
 import { exportsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
+import { renderDeckToPdf } from "./export-pdf";
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat) {
   const job = await createExportJob(projectId, format);
@@ -33,7 +34,7 @@ async function runExport(jobId: string) {
     return;
   }
 
-  if (job.format !== "html_zip") {
+  if (job.format !== "html_zip" && job.format !== "pdf") {
     await updateExportJob(jobId, {
       status: "failed",
       errorMessage: `Unsupported export format: ${job.format}`,
@@ -45,7 +46,8 @@ async function runExport(jobId: string) {
   try {
     await updateExportJob(jobId, { status: "running" });
     await mkdir(exportsDir, { recursive: true });
-    const outputPath = path.join(exportsDir, `${project.id}-${job.id}.zip`);
+    const ext = job.format === "pdf" ? "pdf" : "zip";
+    const outputPath = path.join(exportsDir, `${project.id}-${job.id}.${ext}`);
     await rm(outputPath, { force: true });
     const stagingDir = await mkdtemp(path.join(os.tmpdir(), "burnguard-export-"));
 
@@ -57,22 +59,35 @@ async function runExport(jobId: string) {
         await prepareSlideDeckExport(projectStageDir, project.entrypoint);
       }
 
-      const sourceWildcard = path.join(projectStageDir, "*");
-      const command = [
-        "powershell",
-        "-NoProfile",
-        "-Command",
-        `Compress-Archive -Path '${escapeForPs(sourceWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
-      ];
+      if (job.format === "pdf") {
+        if (project.type !== "slide_deck") {
+          throw new Error(
+            "PDF export is only supported for slide_deck projects",
+          );
+        }
+        await renderDeckToPdf({
+          stagedDir: projectStageDir,
+          entrypoint: project.entrypoint,
+          outputPath,
+        });
+      } else {
+        const sourceWildcard = path.join(projectStageDir, "*");
+        const command = [
+          "powershell",
+          "-NoProfile",
+          "-Command",
+          `Compress-Archive -Path '${escapeForPs(sourceWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
+        ];
 
-      const proc = Bun.spawn(command, {
-        stdout: "ignore",
-        stderr: "pipe",
-      });
-      const exitCode = await proc.exited;
-      if (exitCode !== 0) {
-        const errorText = await new Response(proc.stderr).text();
-        throw new Error(errorText || `Compress-Archive failed with exit code ${exitCode}`);
+        const proc = Bun.spawn(command, {
+          stdout: "ignore",
+          stderr: "pipe",
+        });
+        const exitCode = await proc.exited;
+        if (exitCode !== 0) {
+          const errorText = await new Response(proc.stderr).text();
+          throw new Error(errorText || `Compress-Archive failed with exit code ${exitCode}`);
+        }
       }
     } finally {
       await rm(stagingDir, { recursive: true, force: true });

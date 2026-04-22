@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import type { ProjectType } from "@bg/shared";
 import {
   createExport,
   listExports,
@@ -29,16 +30,29 @@ interface Option {
   label: string;
   icon: LucideIcon;
   phase?: number;
+  /** Restrict the option to specific project types. Empty/undefined = all. */
+  onlyForTypes?: ProjectType[];
 }
 
 const OPTIONS: Option[] = [
   { id: "html_zip", label: "HTML zip", icon: FileDown },
-  { id: "pdf", label: "PDF", icon: FileType2, phase: 2 },
+  {
+    id: "pdf",
+    label: "PDF (deck only)",
+    icon: FileType2,
+    onlyForTypes: ["slide_deck"],
+  },
   { id: "pptx", label: "PowerPoint (.pptx)", icon: Presentation, phase: 2 },
   { id: "handoff", label: "Claude Code handoff", icon: PackagePlus, phase: 3 },
 ];
 
-export default function ExportMenu({ projectId }: { projectId: string }) {
+export default function ExportMenu({
+  projectId,
+  projectType,
+}: {
+  projectId: string;
+  projectType: ProjectType;
+}) {
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
 
@@ -86,26 +100,36 @@ export default function ExportMenu({ projectId }: { projectId: string }) {
       <DropdownMenuContent align="end" className="w-72">
         <DropdownMenuLabel>Export as</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {OPTIONS.map((o) => (
-          <DropdownMenuItem
-            key={o.id}
-            disabled={Boolean(o.phase) || createMutation.isPending}
-            onClick={(event) => {
-              if (o.phase) return;
-              // Keep the dropdown open so the user can watch the status list.
-              event.preventDefault();
-              createMutation.mutate(o.id);
-            }}
-          >
-            <o.icon className="h-3.5 w-3.5" />
-            <span className="flex-1">{o.label}</span>
-            {o.phase && (
-              <span className="text-[10px] text-muted-foreground">
-                Phase {o.phase}
-              </span>
-            )}
-          </DropdownMenuItem>
-        ))}
+        {OPTIONS.map((o) => {
+          const wrongType =
+            o.onlyForTypes && !o.onlyForTypes.includes(projectType);
+          const disabled =
+            Boolean(o.phase) || wrongType || createMutation.isPending;
+          return (
+            <DropdownMenuItem
+              key={o.id}
+              disabled={disabled}
+              onClick={(event) => {
+                if (disabled) return;
+                // Keep the dropdown open so the user can watch the status list.
+                event.preventDefault();
+                createMutation.mutate(o.id);
+              }}
+            >
+              <o.icon className="h-3.5 w-3.5" />
+              <span className="flex-1">{o.label}</span>
+              {o.phase ? (
+                <span className="text-[10px] text-muted-foreground">
+                  Phase {o.phase}
+                </span>
+              ) : wrongType ? (
+                <span className="text-[10px] text-muted-foreground">
+                  deck only
+                </span>
+              ) : null}
+            </DropdownMenuItem>
+          );
+        })}
         {jobs.length > 0 && (
           <>
             <DropdownMenuSeparator />
