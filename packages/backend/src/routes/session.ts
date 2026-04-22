@@ -2,7 +2,13 @@ import { ulid } from "ulid";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ApiErrorBody, ApiSuccess, NormalizedEvent, UserEvent } from "@bg/shared";
-import { insertNormalizedEvent, insertUserEvent, listSessionEvents, setSessionStatus } from "../db/events";
+import {
+  insertNormalizedEvent,
+  insertUserEvent,
+  listSessionEvents,
+  setSessionBackend,
+  setSessionStatus,
+} from "../db/events";
 import { getSessionInfo } from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
 import { broker } from "../services/broker";
@@ -158,6 +164,42 @@ sessionRoutes.post("/api/sessions/:id/interrupt", async (c) => {
  * exercised end-to-end via the dev-only `/dev/synthesize-permission`
  * route below. Deny aborts the active turn so the CLI exits cleanly.
  */
+/**
+ * Switches the CLI backend a session will use on its next turn. Only
+ * allowed while the session is idle — switching mid-turn is undefined.
+ */
+sessionRoutes.patch("/api/sessions/:id/backend", async (c) => {
+  const id = c.req.param("id");
+  const session = await getSessionInfo(id);
+  if (!session) {
+    return c.json(fail("session_not_found", "Session not found", { id }), 404);
+  }
+  if (isUserTurnRunning(id) || session.status === "running") {
+    return c.json(
+      fail("session_busy", "Cannot switch backend while a turn is running", {
+        id,
+      }),
+      409,
+    );
+  }
+
+  const body = await c.req.json<unknown>().catch(() => null);
+  if (!isRecord(body)) {
+    return c.json(fail("invalid_body", "Expected a JSON object"), 400);
+  }
+  const backend = body.backend_id;
+  if (backend !== "claude-code" && backend !== "codex") {
+    return c.json(
+      fail("invalid_backend", "backend_id must be 'claude-code' or 'codex'"),
+      400,
+    );
+  }
+
+  await setSessionBackend(id, backend);
+  const refreshed = await getSessionInfo(id);
+  return c.json(ok(refreshed));
+});
+
 sessionRoutes.post("/api/sessions/:id/tool-decision", async (c) => {
   const id = c.req.param("id");
   const session = await getSessionInfo(id);

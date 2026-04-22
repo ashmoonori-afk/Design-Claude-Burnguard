@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { MessageSquare, MessageCircleMore } from "lucide-react";
-import type { NormalizedEvent, SessionInfo } from "@bg/shared";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { BackendId, NormalizedEvent, SessionInfo } from "@bg/shared";
 import MessageStream from "./MessageStream";
 import Composer from "./Composer";
+import { switchSessionBackend } from "@/api/session";
+import { useUIStore } from "@/state/uiStore";
 import { cn } from "@/lib/utils";
 
 type Tab = "chat" | "comments";
@@ -21,6 +24,28 @@ export default function ChatPane({
   onOpenFile?: (relPath: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("chat");
+  const queryClient = useQueryClient();
+  const pushToast = useUIStore((s) => s.pushToast);
+
+  const switchBackend = useMutation({
+    mutationFn: (backendId: BackendId) =>
+      switchSessionBackend(session.id, backendId),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<SessionInfo>(
+        ["project", updated.project_id, "session"],
+        updated,
+      );
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Could not switch backend",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
+  const sessionRunning = session.status === "running";
 
   return (
     <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0">
@@ -41,6 +66,14 @@ export default function ChatPane({
         >
           Comments
         </ChatTab>
+        <div className="ml-auto flex items-center gap-1 pb-1 text-[10px]">
+          <span className="text-muted-foreground">Backend</span>
+          <BackendToggle
+            current={session.backend_id}
+            disabled={switchBackend.isPending || sessionRunning}
+            onSwitch={(next) => switchBackend.mutate(next)}
+          />
+        </div>
       </div>
       {tab === "chat" ? (
         <>
@@ -57,6 +90,49 @@ export default function ChatPane({
         </div>
       )}
     </aside>
+  );
+}
+
+function BackendToggle({
+  current,
+  disabled,
+  onSwitch,
+}: {
+  current: BackendId;
+  disabled: boolean;
+  onSwitch: (next: BackendId) => void;
+}) {
+  const options: BackendId[] = ["claude-code", "codex"];
+  return (
+    <div className="flex overflow-hidden rounded border border-border">
+      {options.map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => {
+            if (disabled || opt === current) return;
+            onSwitch(opt);
+          }}
+          disabled={disabled || opt === current}
+          title={
+            disabled && opt !== current
+              ? "Cannot switch while a turn is running"
+              : opt === current
+                ? `Active: ${opt}`
+                : `Switch to ${opt} on next turn`
+          }
+          className={cn(
+            "px-1.5 py-0.5 font-mono uppercase transition-colors",
+            opt === current
+              ? "bg-foreground/90 text-background"
+              : "bg-background text-muted-foreground hover:text-foreground",
+            disabled && opt !== current && "opacity-40 cursor-not-allowed",
+          )}
+        >
+          {opt === "claude-code" ? "cc" : "cx"}
+        </button>
+      ))}
+    </div>
   );
 }
 

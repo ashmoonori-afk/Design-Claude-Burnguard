@@ -9,3 +9,4 @@ export * from "./file-patch";
 export * from "./harness";
 export * from "./home";
 export * from "./project";
+export * from "./settings";

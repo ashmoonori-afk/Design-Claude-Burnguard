@@ -9,6 +9,7 @@ import { homeRoutes } from "./routes/home";
 import { projectRoutes } from "./routes/project";
 import { runtimeRoutes } from "./routes/runtime";
 import { sessionRoutes } from "./routes/session";
+import { settingsRoutes } from "./routes/settings";
 import { systemRoutes } from "./routes/system";
 import { resolveRepoRoot } from "./lib/paths";
 
@@ -21,6 +22,7 @@ app.route("/", homeRoutes);
 app.route("/", projectRoutes);
 app.route("/", runtimeRoutes);
 app.route("/", sessionRoutes);
+app.route("/", settingsRoutes);
 app.route("/", systemRoutes);
 
 app.get("/assets/*", async (c) => {

@@ -1,4 +1,4 @@
-import type { NormalizedEvent, SessionInfo, UserEvent } from "@bg/shared";
+import type { BackendId, NormalizedEvent, SessionInfo, UserEvent } from "@bg/shared";
 import { apiFetch } from "./client";
 
 export async function getSession(id: string): Promise<SessionInfo> {
@@ -59,6 +59,16 @@ export async function sendUserEvent(
 export async function interruptSession(id: string): Promise<void> {
   await apiFetch<{ accepted: true }>(`/api/sessions/${id}/interrupt`, {
     method: "POST",
+  });
+}
+
+export async function switchSessionBackend(
+  sessionId: string,
+  backendId: BackendId,
+): Promise<SessionInfo> {
+  return apiFetch<SessionInfo>(`/api/sessions/${sessionId}/backend`, {
+    method: "PATCH",
+    body: JSON.stringify({ backend_id: backendId }),
   });
 }
 

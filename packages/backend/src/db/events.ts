@@ -120,6 +120,17 @@ export async function setSessionStatus(
     .where(eq(sessionsTable.id, sessionId));
 }
 
+export async function setSessionBackend(
+  sessionId: string,
+  backendId: "claude-code" | "codex",
+) {
+  const db = getDb();
+  await db
+    .update(sessionsTable)
+    .set({ backendId, updatedAt: Date.now() })
+    .where(eq(sessionsTable.id, sessionId));
+}
+
 export async function bumpSessionUsage(
   sessionId: string,
   usage: { input: number; output: number; cached?: number },
