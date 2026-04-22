@@ -17,6 +17,13 @@ export default defineConfig({
         target: "http://127.0.0.1:14070",
         changeOrigin: false,
       },
+      // Slide deck runtime served by the backend. Without this, an iframe
+      // loaded via Vite (port 5173) would 404 on the <script src="/runtime/
+      // deck-stage.js"> tag injected into deck.html.
+      "/runtime": {
+        target: "http://127.0.0.1:14070",
+        changeOrigin: false,
+      },
     },
   },
   build: {

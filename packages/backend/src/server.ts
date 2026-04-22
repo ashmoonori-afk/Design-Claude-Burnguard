@@ -6,6 +6,7 @@ import { healthRoutes } from "./routes/health";
 import { artifactRoutes } from "./routes/artifacts";
 import { homeRoutes } from "./routes/home";
 import { projectRoutes } from "./routes/project";
+import { runtimeRoutes } from "./routes/runtime";
 import { sessionRoutes } from "./routes/session";
 import { systemRoutes } from "./routes/system";
 import { resolveRepoRoot } from "./lib/paths";
@@ -16,6 +17,7 @@ app.route("/", healthRoutes);
 app.route("/", artifactRoutes);
 app.route("/", homeRoutes);
 app.route("/", projectRoutes);
+app.route("/", runtimeRoutes);
 app.route("/", sessionRoutes);
 app.route("/", systemRoutes);
 

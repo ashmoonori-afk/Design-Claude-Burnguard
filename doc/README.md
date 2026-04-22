@@ -1,52 +1,65 @@
 # Documentation Index
 
-This folder contains the authoritative specification for BurnGuard Design. Read in order on first pass; jump by topic afterward.
+This folder contains the authoritative product and engineering documentation for BurnGuard Design.
 
-## Read in order
+## Current Repo Stage
 
-1. **[00-overview.md](./00-overview.md)** — What the product is, why, scope boundaries, phase summary, glossary
-2. **[01-architecture.md](./01-architecture.md)** — Process topology, tech stack, source tree, SSE sequences, security model
-3. **[02-data-model.md](./02-data-model.md)** — Filesystem layout, SQLite schema (DDL), ERD, migrations, retention
-4. **[03-backend-adapters.md](./03-backend-adapters.md)** — LLM harness interfaces, NormalizedEvent schema, 14 responsibilities, Claude Code + Codex adapters
-5. **[04-ui-spec.md](./04-ui-spec.md)** — Screen-by-screen UI specification, component props, keyboard shortcuts, a11y
-6. **[05-design-system-format.md](./05-design-system-format.md)** — Design system directory format, extraction pipeline, publish workflow, Claude Code interop
-7. **[06-milestones.md](./06-milestones.md)** — Phase 1–3 tasks, DoDs, test strategy, risks, delivery cadence
+As of April 22, 2026, the codebase is in **late Phase 1 / internal alpha**:
+- the end-to-end prompt -> render -> refresh -> HTML zip loop works
+- Claude Code is wired through a real runner/parser path
+- Codex is wired through a raw streamed path
+- slide deck scaffolding has landed earlier than the original Phase 2 plan
+- several Phase 2 and Phase 3 UI surfaces still exist only as placeholders
 
-## Jump by topic
+If you only read one planning document, start with [06-milestones.md](./06-milestones.md).
+
+## Read In Order
+
+1. [00-overview.md](./00-overview.md)
+   Product definition, scope, current implementation snapshot, and roadmap
+2. [01-architecture.md](./01-architecture.md)
+   Actual runtime topology, data flow, source tree, and current technical constraints
+3. [02-data-model.md](./02-data-model.md)
+   Filesystem layout, SQLite schema, and persistence model
+4. [03-backend-adapters.md](./03-backend-adapters.md)
+   Current turn orchestration, Claude Code/Codex adapter behavior, and event normalization
+5. [04-ui-spec.md](./04-ui-spec.md)
+   Screen-by-screen UI specification
+6. [05-design-system-format.md](./05-design-system-format.md)
+   Design system directory format and authoring contract
+7. [06-milestones.md](./06-milestones.md)
+   Current delivery stage, remaining Phase 1 work, and forward roadmap
+8. [07-decisions.md](./07-decisions.md)
+   Architectural decisions log
+
+## Jump By Topic
 
 | Topic | Where |
 |---|---|
-| Product scope & non-goals | [00-overview.md §4](./00-overview.md) |
-| Tech stack decisions | [01-architecture.md §3](./01-architecture.md) |
-| SSE sequence diagrams | [01-architecture.md §5](./01-architecture.md) |
-| SQLite DDL | [02-data-model.md §2](./02-data-model.md) |
-| Normalized event types | [03-backend-adapters.md §3](./03-backend-adapters.md) |
-| 14 harness responsibilities | [03-backend-adapters.md §4](./03-backend-adapters.md) |
-| Claude Code `stream-json` mapping | [03-backend-adapters.md §5.3](./03-backend-adapters.md) |
-| Tweaks panel layout | [04-ui-spec.md §1 S-2](./04-ui-spec.md) |
-| DS directory layout | [05-design-system-format.md §2](./05-design-system-format.md) |
-| Phase 1 DoD | [06-milestones.md](./06-milestones.md) |
-| Key architectural decisions (ADRs) | [07-decisions.md](./07-decisions.md) |
-| Dev setup & conventions | [CONTRIBUTING.md](./CONTRIBUTING.md) |
+| Product scope and non-goals | [00-overview.md](./00-overview.md) |
+| Current runtime topology | [01-architecture.md](./01-architecture.md) |
+| SQLite schema | [02-data-model.md](./02-data-model.md) |
+| Normalized event types and adapter behavior | [03-backend-adapters.md](./03-backend-adapters.md) |
+| UI screen contract | [04-ui-spec.md](./04-ui-spec.md) |
+| Design system sample format | [05-design-system-format.md](./05-design-system-format.md) |
+| Phase status and remaining work | [06-milestones.md](./06-milestones.md) |
+| Engineering decisions | [07-decisions.md](./07-decisions.md) |
+| Dev setup and conventions | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 
-## Document conventions
-
-- All docs are written in English
-- Code blocks use fenced triple-backtick with language hint
-- Diagrams are ASCII (no external renderer dependency)
-- Identifiers (variables, tables, fields) use `backticks`
-- Document versions are implicit — `git log` is the authoritative history
-- Cross-references use relative links: `[link](./01-architecture.md#anchor)`
-
-## Out-of-band references
+## Out-of-Band References
 
 Stored at repo root, outside `doc/`:
 
 | Folder | Purpose |
 |---|---|
-| `ref/` | Six real-Claude-Design UI screenshots (2026-04-22) |
-| `design system sample/` | Full Goldman Sachs design system as the canonical DS format example |
+| `ref/` | Reference screenshots of the real Claude Design UI |
+| `design system sample/` | Canonical Goldman Sachs sample design system |
+| `devplan/` | Execution plans and implementation notes |
 
-## Open work
+## Document Conventions
 
-See [06-milestones.md](./06-milestones.md) for the active phase plan and [07-decisions.md](./07-decisions.md) for the decisions log.
+- Docs are written in English
+- Code blocks use fenced triple-backtick blocks with a language hint when useful
+- Relative links are preferred for cross-references
+- Concrete dates are used when describing status snapshots to avoid ambiguity
+- `git log` remains the source of truth for document history

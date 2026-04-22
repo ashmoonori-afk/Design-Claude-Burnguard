@@ -1,183 +1,115 @@
-# Milestones & Delivery
+# Milestones and Delivery
 
-## Phase 1 — "Prove the harness" (4–5 weeks)
+## 1. Current Stage
 
-### Goal
+As of April 22, 2026, BurnGuard Design is in **late Phase 1 / internal alpha**.
 
-A Windows binary where the user can complete one full cycle: **"select CLI → create project → pick sample DS → chat (with attachments) → render → refresh → zip export"**.
+The repo now supports the main Phase 1 loop:
 
-### Tasks
+1. detect local backend CLIs
+2. create a project
+3. seed and inspect a design system
+4. send a prompt with optional attachments
+5. stream normalized events into the chat view
+6. render the project artifact in the canvas
+7. refresh or auto-refresh the current file
+8. export as HTML zip
 
-| # | Task | Difficulty | Est. (days) |
-|---|---|---|---|
-| 1.1 | Monorepo scaffold (Bun workspaces + tsconfig refs + ESLint) | S | 0.5 |
-| 1.2 | `packages/shared`: event types, interfaces | S | 1 |
-| 1.3 | `packages/backend`: Hono server + health check + static SPA serving | S | 1 |
-| 1.4 | DB: drizzle schema + migrations + seed (sample DS preload) | M | 2 |
-| 1.5 | Harness core: broker, fanout, event persistence | M | 3 |
-| 1.6 | Harness core: context-builder (DS injection) | M | 2 |
-| 1.7 | Harness core: fs-watcher (chokidar → file.changed) | S | 1 |
-| 1.8 | Harness core: checkpoint (tar.zst) | M | 2 |
-| 1.9 | Claude Code adapter: detect + runner + parser | L | 4 |
-| 1.10 | Codex adapter: detect + runner + parser (best-effort) | L | 3 |
-| 1.11 | REST API: /projects, /systems, /sessions, /events, /attachments, /files | M | 3 |
-| 1.12 | SSE: /sessions/:id/stream + resume | M | 2 |
-| 1.13 | Export: HTML zip | S | 1 |
-| 1.14 | Frontend scaffold: Vite + React + Tailwind + Shadcn setup | S | 1 |
-| 1.15 | Frontend: HomeView (list, creation panel) | M | 3 |
-| 1.16 | Frontend: ProjectView layout (3-pane) | M | 2 |
-| 1.17 | Frontend: ChatPane stream renderer (tool badges, thinking, file refs, error cards) | L | 4 |
-| 1.18 | Frontend: Composer + file drop + attachment upload | M | 2 |
-| 1.19 | Frontend: Canvas iframe + Refresh button | M | 2 |
-| 1.20 | Frontend: read-only selector overlay | M | 2 |
-| 1.21 | Frontend: DesignFilesView + file preview | M | 3 |
-| 1.22 | Frontend: DesignSystemView (read-only preview) | S | 1 |
-| 1.23 | Frontend: Settings modal (CLI selection, Playwright install) | S | 1 |
-| 1.24 | Tutorial project + sample DS preload | S | 1 |
-| 1.25 | Bun compile Windows x64 + icon + updater skeleton | M | 2 |
-| 1.26 | Integration tests (e2e smoke x5) | M | 2 |
-| 1.27 | README + install guide | S | 1 |
+That means the phase is no longer "just planned", but it is also not signed off yet.
 
-**Total estimate**: ~49 days ≈ 10 weeks solo, 5 weeks for 2 people, 3–4 weeks for 3.
+## 2. Phase 1 Progress Snapshot
 
-### DoD
-1. `burnguard-design.exe` builds successfully (< 100 MB, code signing optional)
-2. Running the binary opens the default browser automatically
-3. At least one of Claude Code / Codex (if installed) successfully starts a session
-4. Prototype project creation works, using the Goldman Sachs sample DS
-5. Chat with image attachment (e.g. "make a landing hero using this") renders something onto the canvas
-6. Refresh button reflects latest file tree
-7. Clicking a canvas element displays its computed style in the right panel (read-only)
-8. HTML zip export succeeds; extracted `index.html` renders in a browser
-9. Re-launching the binary restores projects/sessions/events
+### 2.1 Done
 
-### Test Strategy
+- monorepo, shared contracts, backend and frontend scaffolding
+- SQLite schema, migrations, seed data, and sample design system bootstrap
+- project/session/event persistence
+- SSE live streaming and replay
+- project creation for `prototype` and `slide_deck`
+- prompt builder with design system and file context
+- real Claude Code runner/parser path
+- best-effort Codex runner path
+- HTML zip export backend plus export status polling UI
+- production frontend serving and Windows build flow
+- per-session turn locking to prevent concurrent writes
 
-- **Unit**: harness parsers, context builder, event normalization (Vitest / bun:test, 80%+ coverage)
-- **Integration**: 
-  - Claude Code CLI stub (fixture output) → full session lifecycle
-  - Codex CLI stub → full session lifecycle
-  - DB migrations up/down
-- **E2E**: Playwright (dev-only, not bundled into the binary)
-  - 5 smoke tests: project creation, chat send, file drop, Refresh, zip export
+### 2.2 Partially done
 
-### Risks
+- file watching exists, but watcher activity only refreshes indexed files; chat `file.changed` is still adapter-driven
+- selector mode exists as a UI surface, but it is still a placeholder overlay
+- interrupt route exists, but it does not yet stop a live subprocess
+- slide deck support exists in templates/runtime, but the broader Phase 2 workflow is not delivered
 
-| Risk | Probability | Impact | Mitigation |
-|---|---|---|---|
-| Claude Code `--print --output-format stream-json` under-documented | M | H | Week 1 spike — lock parser contract against real output |
-| Codex CLI stability (frequent updates) | H | M | Best-effort parser + raw-mode fallback |
-| Bun Windows PTY (`node-pty`) compatibility | M | H | Alternative: direct `conpty` or `execa` piping |
-| PyInstaller → Bun compile transition unverified | L | M | Phase 0 one-day PoC |
-| Unsigned binary → SmartScreen warning | H | M | Ship bypass guide; revisit signing in Phase 3 |
+### 2.3 Not done
 
-## Phase 2 — "Decks & Modes & Exports" (3–4 weeks)
+- automated integration and end-to-end tests
+- structured Codex parser
+- true permission gate flow
+- PDF export
+- PPTX export
+- handoff export
+- real comment/edit/tweaks/draw modes
 
-### Tasks
+## 3. Remaining Work For Phase 1 Sign-Off
 
-| # | Task | Difficulty |
-|---|---|---|
-| 2.1 | Slide deck project type + template | M |
-| 2.2 | `deck-stage.js` runtime (pagination, present-mode hooks) | L |
-| 2.3 | Comment mode (pin + thread) | M |
-| 2.4 | Edit mode (contenteditable + save back to file) | M |
-| 2.5 | PDF export (Playwright: slide-split rendering) | M |
-| 2.6 | PPTX export (pptxgenjs: separate text layers) | L |
-| 2.7 | Settings screen: adapter choice / Playwright reinstall | S |
-| 2.8 | Two more tutorials added (prototype, slide deck) | S |
-| 2.9 | Permission gate UI (confirmation modal) | M |
+The minimum remaining work to call Phase 1 complete is:
 
-### DoD
-- 15-slide investor pitch deck generated, exported to PDF/PPTX, opens in PowerPoint
-- Comments can be placed and resolved
-- Edit mode changes persist to disk
-- Runtime backend switching works
+1. Replace the selector placeholder with real parent/iframe DOM messaging
+2. Implement real interrupt semantics for active CLI subprocesses
+3. Decide whether Codex raw-mode is sufficient for Phase 1 or needs one more normalization pass
+4. Add at least a minimal committed regression test layer for turn orchestration and export
+5. Re-run and document a clean Windows smoke-test pass against the full alpha loop
 
-## Phase 3 — "Power user" (4–5 weeks)
+If those are finished without changing scope again, the repo can reasonably move from "late Phase 1" to "Phase 1 complete".
 
-### Tasks
+## 4. Original Phase Plan Versus Current Reality
 
-| # | Task | Difficulty |
-|---|---|---|
-| 3.1 | **Full Tweaks panel** (two-way CSS inspector) | L |
-| 3.2 | Tweak diff → context injection (preservation hint on next turn) | M |
-| 3.3 | Draw mode (canvas overlay + save as SVG layer) | M |
-| 3.4 | Present mode (fullscreen + keyboard nav) | S |
-| 3.5 | DS extraction: GitHub URL → git clone + parsers | L |
-| 3.6 | DS extraction: Figma URL → REST API | L |
-| 3.7 | DS review UI (draft → review → published state machine) | M |
-| 3.8 | Handoff export (`spec.json + tokens.json + PROMPT.md`) | M |
-| 3.9 | `From template` project type | M |
-| 3.10 | macOS arm64 build + code signing | M |
-| 3.11 | Linux x64 build | S |
+The original Phase 1 plan assumed:
+- only prototype project type
+- no slide deck runtime yet
+- real selector in Phase 1
+- adapter and export work landing before extra template/runtime work
 
-### DoD
-- Given a GitHub DS SCSS repo URL, a complete DS is generated
-- A tweak made in Phase 3 panel is respected on the next Claude turn
-- `burnguard handoff {project}` copies a Claude Code command to clipboard
-- macOS and Linux binaries build successfully
+Current reality differs in two ways:
+- some Phase 2 groundwork landed early, especially `slide_deck`
+- some core Phase 1 sign-off items are still incomplete, especially selector and interrupt
 
-## Phase 4+ (backlog)
+That means the repo is functionally broad, but still missing a few critical "prove the harness" pieces.
 
-- Ollama adapter
-- Auto-update (release manifest + binary download)
-- Windows SmartScreen signing
-- Automated regression snapshot tests (existing project + fake LLM output → visual diff)
-- Team sync (git-backed, opt-in)
+## 5. Updated Roadmap
 
-## Delivery Cadence
+### Phase 1 - Prove the harness
 
-- End of Phase 1: **v0.1 internal alpha** (personal use)
-- End of Phase 2: **v0.2 beta** — binaries uploaded to GitHub Releases
-- End of Phase 3: **v1.0** — GA with a simple landing page + screenshots
+Status: **late implementation**
 
-## Engineering Principles
+Exit criteria:
+- full prompt -> render -> refresh -> HTML zip loop works on Windows
+- selector is real, not placeholder-only
+- turns can be interrupted safely
+- a minimum automated regression suite exists
 
-1. **The harness is the product.** Harness quality is the ceiling on product quality. Invest heavily in tests, retries, and logging.
-2. **One-way doors first.** Irreversible decisions (stack, event schema, DB schema) are locked in Phase 1.
-3. **No premature multi-tenancy.** The local-single-user assumption only breaks when there is a concrete user demand.
-4. **Ship the sample, not the framework.** Getting the GS sample DS right is a higher priority than a general extraction pipeline (Phase 3).
-5. **Dogfood.** Each phase's artifact gets used to make the next phase's docs/tutorials.
+### Phase 2 - Decks, modes, and richer exports
 
-## Definition of Done Standard
+Planned focus:
+- complete the slide deck workflow, not just the starter template/runtime
+- comment and edit modes
+- PDF and PPTX export
+- stronger settings/runtime controls
 
-Every task is "done" only when **all** of the following are true:
-1. Code merged to main
-2. Unit tests passing (new behavior covered)
-3. Integration test passing (if it touches harness, DB, or frontend-backend wire)
-4. Logging added for any new error paths
-5. README or relevant doc updated if the interface changed
-6. Manual smoke test by the author, verified on Windows
+### Phase 3 - Power user features
 
-## Build & Release Flow
+Planned focus:
+- real tweaks panel
+- draw/present modes
+- design system extraction from external sources
+- handoff export and broader packaging features
 
-### Local dev
-```bash
-bun install
-bun run dev            # vite + hono watch mode
-```
+## 6. Delivery Guidance
 
-### Build binary
-```bash
-bun run build:frontend   # vite build → packages/frontend/dist
-bun run build:backend    # bun build --compile --target=bun-windows-x64 --minify
-# → dist/burnguard-design.exe
-```
+For the next stretch, the engineering priority should be:
 
-### Release (Phase 2+)
-```bash
-bun run release -- --version=0.2.0
-# 1. Bumps package.json versions
-# 2. Generates changelog from conventional commits
-# 3. Builds Windows binary
-# 4. Creates GitHub Release with binary attached
-```
+1. finish the missing Phase 1 reliability pieces
+2. avoid pulling more Phase 2 UI placeholders into "implemented" status without behavior behind them
+3. keep docs synchronized with what actually ships in the repo
 
-## Observability During Phase 1
-
-The single most valuable piece of diagnostic data is the **per-session raw trace log**. Whenever something behaves unexpectedly:
-1. Reproduce the issue
-2. Grab `~/.burnguard/logs/session-{id}.log`
-3. Diff against `tests/fixtures/` to see whether the parser misread the CLI output or the harness misbehaved
-
-Fixture parity is the fastest path to debugging parser drift as Claude Code / Codex update their output formats.
+The harness remains the product. Phase movement should be based on runtime correctness, not just screen count.

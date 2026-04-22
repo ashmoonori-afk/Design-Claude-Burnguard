@@ -1,41 +1,44 @@
-# Design Claude - Burnguard system
+# BurnGuard Design
 
 Working title: `BurnGuard Design`
 
-BurnGuard Design is a self-hosted alternative to Claude Design, packaged as a local Windows app. It wraps locally installed LLM CLIs such as Claude Code and Codex, stores all project data under `~/.burnguard/`, and provides a chat-plus-canvas workflow for generating prototypes and slide decks.
+BurnGuard Design is a self-hosted alternative to Claude Design, packaged as a local Windows app. It wraps locally installed LLM CLIs such as Claude Code and Codex, stores project data under the local BurnGuard app data directory, and provides a chat-plus-canvas workflow for generating prototypes and slide decks.
 
 ## Status
 
-Phase 1 is in active implementation.
+As of April 22, 2026, the repository is in **late Phase 1 / internal alpha**.
 
 Implemented now:
-- shared contracts for projects, sessions, events, files, systems, artifacts, and exports
-- Bun + Hono backend with SQLite bootstrap, migrations, seed data, config persistence, backend detection, and SSE routes
-- frontend Home, Project, Design System, Settings, and Export wiring against real APIs
-- project creation, session replay, live event streaming, file listing, refresh, HTML zip export, and production frontend serving
-- Windows executable build via `bun build --compile`
+- Bun + Hono backend with SQLite bootstrap, migrations, seed data, config persistence, backend detection, and production SPA serving
+- shared TypeScript contracts for projects, sessions, events, files, artifacts, exports, and design systems
+- Home, Project, Design System, Settings, and Export frontend flows wired to real APIs
+- project creation for `prototype` and `slide_deck`
+- session replay, SSE live streaming, attachment upload, file indexing, artifact refresh, and HTML zip export
+- real Claude Code turn runner and `stream-json` parser
+- best-effort Codex runner with raw streamed output
+- per-project file watchers, turn checkpoints, slide deck runtime script, and Windows executable build
 
-Still incomplete for full Phase 1 sign-off:
-- real Claude Code adapter runner/parser
-- real Codex adapter runner/parser
-- selector iframe `postMessage` contract and real element selection flow
-- export status polling/download UX polish
-- formal automated integration and E2E coverage
+Still incomplete before full Phase 1 sign-off:
+- selector is still a placeholder overlay rather than real parent/iframe element inspection
+- interrupt route does not yet terminate a live CLI subprocess
+- Codex integration does not provide structured tool/file events
+- PDF, PPTX, and handoff exports are scaffolded in the data model/UI but not implemented
+- no committed automated integration or E2E test suite
 
 ## Requirements
 
 - Windows 10/11 x64
 - Bun installed for local development
 - Node.js available for the Vite toolchain
-- at least one local CLI for runtime use:
+- at least one local CLI available on `PATH` for runtime use:
   - `claude`
   - `codex`
 
-## Local development
+## Local Development
 
 ```powershell
 bun install
-bun run typecheck
+cmd /c npm.cmd run typecheck
 ```
 
 Run backend and frontend separately:
@@ -51,7 +54,7 @@ Or run workspace dev scripts together:
 bun run dev
 ```
 
-Frontend runs on a Vite dev port. The compiled backend serves the frontend bundle from `packages/frontend/dist` in production mode.
+The frontend runs on a Vite dev port. In production mode, the backend serves the compiled frontend bundle from `packages/frontend/dist`.
 
 ## Build
 
@@ -75,27 +78,27 @@ bun run build
 
 The executable is emitted to `dist/burnguard-design.exe`.
 
-## Current validation baseline
+## Validation Baseline
 
 Manually verified on April 22, 2026:
-- root `bun run typecheck`
+- root `cmd /c npm.cmd run typecheck`
 - frontend `bun run build`
 - root `bun run build`
 - backend API smoke for health, project list/create, session replay/send, files, artifacts, refresh, and export
-- backend serves compiled frontend bundle from `packages/frontend/dist`
+- backend serves the compiled frontend bundle from `packages/frontend/dist`
 
-Known gaps from current validation:
-- export job completion is asynchronous, so UI still needs polling/status refresh
-- real adapter execution is still stubbed by an internal turn runner
-- selector overlay is still placeholder-only
+Known validation gaps:
 - no committed automated test suite yet
+- selector flow has not been validated against real iframe DOM messaging
+- interrupt semantics are not end-to-end verified because the subprocess is not yet cancellable
+- Codex behavior is only best-effort and needs more fixture coverage
 
-## Repository layout
+## Repository Layout
 
 ```text
 BurnGuard/
   doc/                     authoritative product and architecture docs
-  devplan/                 phase plans and sprint ownership docs
+  devplan/                 phase plans and implementation notes
   ref/                     reference screenshots
   design system sample/    bundled Goldman Sachs sample design system
   packages/

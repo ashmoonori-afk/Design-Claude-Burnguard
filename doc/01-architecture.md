@@ -1,364 +1,255 @@
 # Architecture
 
-## 1. Process Topology
+## 1. Runtime Topology
 
-Everything lives in a single Bun process. The target artifact is a **single Windows `.exe`** produced by `bun build --compile`.
+As of April 22, 2026, BurnGuard runs as a single Bun backend process plus a React frontend:
 
-```
-┌─ burnguard-design.exe (Bun onefile, Windows x64) ──────────────────┐
-│                                                                    │
-│  Bun runtime (main event loop)                                     │
-│    ├─ Hono HTTP + native SSE  (127.0.0.1:RANDOM_PORT)              │
-│    ├─ bun:sqlite  (embedded)                                       │
-│    ├─ Static file serving  (bundled React SPA)                     │
-│    └─ LLM Harness  ★ heart of the product                          │
-│         ├─ Process manager (node-pty children)                     │
-│         ├─ Adapter registry (Claude Code, Codex)                   │
-│         ├─ Event normalizer                                        │
-│         ├─ Fanout broker (multi-subscriber SSE)                    │
-│         ├─ Context builder (tweak / DS / file-tree injection)      │
-│         └─ Permission gate (tool-call interception)                │
-│                                                                    │
-│  Worker threads                                                    │
-│    ├─ Export worker  (Playwright / pptxgenjs / sharp / jszip)      │
-│    ├─ DS extraction worker  (Phase 3)                              │
-│    └─ File watcher  (chokidar → file.changed events)               │
-│                                                                    │
-│  Child processes (node-pty)                                        │
-│    ├─ `claude`  (Claude Code CLI, per session)                     │
-│    └─ `codex`   (Codex CLI, per session)                           │
-│                                                                    │
-│  External (not bundled)                                            │
-│    └─ Playwright Chromium  (~/.cache/ms-playwright/, first-run DL) │
-│                                                                    │
-└────────────────────────────────────────────────────────────────────┘
-         ↓ bootstrap
-  `start http://127.0.0.1:PORT` → OS default browser
-         ↓
-  React SPA (embedded static files inside the exe)
+```text
+burnguard-design.exe or bun run src/index.ts
+  |
+  +-- Bun runtime
+      +-- Hono HTTP server on 127.0.0.1:14070 by default
+      +-- SQLite via drizzle-orm
+      +-- Static frontend serving from packages/frontend/dist
+      +-- Bootstrap (config, sample design system, migrations, seed data)
+      +-- Session/event services
+      +-- File watchers for project directories
+      +-- Export worker logic
+      +-- CLI child processes launched with Bun.spawn
+            +-- claude
+            +-- codex
 ```
 
-## 2. Process Lifecycle
+Important current constraint:
+- the implementation does **not** use `node-pty`
+- the implementation does **not** keep a long-lived interactive CLI session per project
+- each user turn is executed as a fresh subprocess invocation
 
-1. User runs `.exe`
-2. Port scan (pick first free port in `14070–14170`)
-3. Initialize `~/.burnguard/` (first run only):
-   - Copy embedded `goldman-sachs` sample into `data/systems/goldman-sachs/`
-   - Create empty `data/projects/`
-   - Initialize `data/burnguard.db` (SQLite) and run migrations
-4. Start Hono server, serve the SPA
-5. Detect Playwright Chromium; if absent, show first-export toast to download
-6. Auto-detect CLIs (`which claude`, `which codex`), surface results in UI
-7. Open default browser to local URL
-8. Process stays alive even if all browser tabs close (Phase 2+ tray icon; Phase 1 requires manual shutdown via `Ctrl+C` or task manager)
+## 2. Boot Sequence
 
-## 3. Final Tech Stack
+Current startup flow:
 
-### 3.1 Runtime & server
+1. Create the local BurnGuard app directories
+2. Ensure config exists
+3. Seed the bundled sample design system if missing
+4. Run SQLite migrations
+5. Seed core DB data
+6. Attach file watchers to existing projects
+7. Start the Hono server
+8. In non-dev mode, open the local URL in the default browser
 
-| Component | Choice | Note |
-|---|---|---|
-| Runtime | **Bun 1.1+** | Bundles packager, test runner, native SQLite |
-| HTTP | **Hono** | Lightweight, native SSE support |
-| DB driver | **bun:sqlite** | No external native module |
-| ORM | **drizzle-orm** | Type-safe, SQL-friendly |
+Relevant implementation files:
+- `packages/backend/src/index.ts`
+- `packages/backend/src/bootstrap.ts`
+- `packages/backend/src/server.ts`
+- `packages/backend/src/lib/paths.ts`
 
-### 3.2 LLM harness
+## 3. Tech Stack
 
-| Component | Choice | Reason |
-|---|---|---|
-| PTY | **node-pty** | Interactive CLIs, interrupt signals |
-| Non-PTY fallback | **execa** | One-shot commands, version probes |
-| File watching | **chokidar** | Cross-platform change detection |
-| Compression | **tar-stream** + **zstd-napi** | Checkpoint tarballs |
+### 3.1 Backend
+
+| Area | Current choice |
+|---|---|
+| Runtime | Bun |
+| HTTP server | Hono |
+| Persistence | SQLite + drizzle-orm |
+| Streaming | native SSE via Hono |
+| Child process execution | `Bun.spawn` |
+| Project watching | `node:fs.watch` |
+
+### 3.2 Frontend
+
+| Area | Current choice |
+|---|---|
+| Framework | React 18 |
+| Bundler | Vite 5 |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| Server-state cache | `@tanstack/react-query` |
+| Local UI state | Zustand |
 
 ### 3.3 Export
 
-| Format | Library | Note |
-|---|---|---|
-| HTML zip | **jszip** | Standard ZIP |
-| PDF | **playwright** (Node) | `page.pdf()`. First-run downloads Chromium |
-| PPTX | **pptxgenjs** | Text layers + background screenshots |
-| Images | **sharp** | Thumbnails, color extraction |
-| Font metadata | **fontkit** | Family/weight/style parsing |
+Current export implementation:
 
-### 3.4 Frontend
-
-| Component | Choice | Reason |
-|---|---|---|
-| Framework | **React 18** + **Vite 5** | Artifacts-compatible, token-efficient for LLMs |
-| Language | **TypeScript 5** | Type safety |
-| CSS | **Tailwind 3** + **Shadcn/ui** | Shadcn is copy-paste components, not a dependency |
-| Local state | **Zustand** | Small, clean API |
-| Server state | **@tanstack/react-query** | Cache + mutations |
-| Canvas runtime | **esbuild-wasm** | In-iframe JSX → JS transform |
-| Icons | **lucide-react** | 1.5px stroke, matches GS sample |
-| Stream | Native `EventSource` | No extra dependencies |
-
-### 3.5 Distribution
-
-| Component | Choice |
+| Format | Status |
 |---|---|
-| Compiler | `bun build --compile --target=bun-windows-x64 --minify` |
-| Icon embed | Post-build via `rcedit` |
-| Target size | < 100 MB (excluding Playwright) |
-| Code signing | Phase 3+ (budget-dependent; Phase 1 ships a SmartScreen bypass guide) |
+| `html_zip` | Implemented |
+| `pdf` | Schema/UI placeholder only |
+| `pptx` | Schema/UI placeholder only |
+| `handoff` | Schema/UI placeholder only |
+
+The HTML zip export currently shells out to Windows PowerShell `Compress-Archive`.
 
 ## 4. Source Tree
 
-```
+```text
 BurnGuard/
-├── doc/                          # This documentation (7 files)
-├── ref/                          # Real UI screenshots for reference
-├── design system sample/         # Sample DS (embedded at build time)
-├── packages/
-│   ├── shared/                   # Common types (frontend + backend)
-│   │   └── src/
-│   │       ├── events.ts         # NormalizedEvent, UserEvent
-│   │       ├── harness.ts        # LLMBackend, Session interfaces
-│   │       └── schema.ts         # DB row types re-exported
-│   ├── backend/                  # Bun + Hono + Harness
-│   │   ├── src/
-│   │   │   ├── index.ts          # Entry point (bootstrap)
-│   │   │   ├── server/           # HTTP + SSE
-│   │   │   │   ├── app.ts        # Hono app composition
-│   │   │   │   ├── routes/       # projects, systems, sessions, events, files, exports
-│   │   │   │   ├── sse.ts        # /sessions/:id/stream handler
-│   │   │   │   └── static.ts     # SPA serving + fallback
-│   │   │   ├── db/
-│   │   │   │   ├── client.ts     # drizzle + bun:sqlite
-│   │   │   │   ├── schema.ts     # Table definitions
-│   │   │   │   └── migrations/
-│   │   │   ├── harness/          # ★ core
-│   │   │   │   ├── broker.ts     # Fanout
-│   │   │   │   ├── context-builder.ts
-│   │   │   │   ├── fs-watcher.ts
-│   │   │   │   ├── permission-gate.ts
-│   │   │   │   ├── checkpoint.ts
-│   │   │   │   ├── scheduler.ts
-│   │   │   │   └── registry.ts
-│   │   │   ├── adapters/
-│   │   │   │   ├── claude-code/
-│   │   │   │   │   ├── index.ts  # LLMBackend implementation
-│   │   │   │   │   ├── runner.ts # PTY + stdin/stdout
-│   │   │   │   │   └── parser.ts # stream-json → NormalizedEvent
-│   │   │   │   └── codex/
-│   │   │   │       ├── index.ts
-│   │   │   │       ├── runner.ts
-│   │   │   │       └── parser.ts
-│   │   │   ├── exports/
-│   │   │   │   ├── html-zip.ts
-│   │   │   │   ├── pdf.ts        # Phase 2
-│   │   │   │   ├── pptx.ts       # Phase 2
-│   │   │   │   └── handoff.ts    # Phase 3
-│   │   │   ├── systems/          # DS management
-│   │   │   │   ├── loader.ts     # Sample preload
-│   │   │   │   └── extractor.ts  # Phase 3 (GitHub/Figma)
-│   │   │   └── lib/              # path, id, logger
-│   │   └── package.json
-│   └── frontend/
-│       ├── src/
-│       │   ├── main.tsx
-│       │   ├── App.tsx
-│       │   ├── views/
-│       │   │   ├── HomeView.tsx
-│       │   │   ├── ProjectView.tsx
-│       │   │   └── DesignSystemView.tsx
-│       │   ├── components/
-│       │   │   ├── chat/         # ChatPane, Composer, MessageRenderer
-│       │   │   ├── canvas/       # Canvas, ArtifactTabs, SelectorOverlay, RefreshButton
-│       │   │   ├── files/        # DesignFilesView, FileTree, FilePreview
-│       │   │   ├── modes/        # Tweaks(P3), Comment(P2), Edit(P2), Draw(P3)
-│       │   │   └── common/       # Button, Input, Dialog (Shadcn)
-│       │   ├── state/            # Zustand stores
-│       │   │   ├── projectStore.ts
-│       │   │   ├── sessionStore.ts
-│       │   │   └── uiStore.ts
-│       │   ├── api/              # REST client + SSE
-│       │   │   ├── client.ts
-│       │   │   └── sse.ts
-│       │   └── lib/
-│       ├── index.html
-│       ├── vite.config.ts
-│       └── package.json
-├── scripts/
-│   ├── build-binary.ts           # bun compile wrapper
-│   ├── prepare-samples.ts        # Validate + embed design system sample/
-│   └── release.ts                # Version bump + changelog
-├── tests/
-│   ├── e2e/                      # Playwright (dev-only)
-│   └── fixtures/                 # CLI output captures
-├── package.json                  # workspaces
-├── tsconfig.json
-├── bunfig.toml
-└── README.md
+  packages/
+    shared/
+      src/
+        app.ts
+        artifact.ts
+        events.ts
+        export.ts
+        harness.ts
+        project.ts
+    backend/
+      src/
+        adapters/
+          claude-code/
+          codex/
+        db/
+          migrations/
+          templates/
+        harness/
+          prompt-builder.ts
+        routes/
+          artifacts.ts
+          health.ts
+          home.ts
+          project.ts
+          runtime.ts
+          session.ts
+          system.ts
+        runtime/
+          deck-stage.ts
+        services/
+          attachments.ts
+          backends.ts
+          broker.ts
+          checkpoints.ts
+          context.ts
+          exports.ts
+          files.ts
+          trace.ts
+          turns.ts
+          watchers.ts
+        bootstrap.ts
+        config.ts
+        index.ts
+        server.ts
+    frontend/
+      src/
+        api/
+        components/
+          canvas/
+          chat/
+          export/
+          files/
+          home/
+          modes/
+          project/
+          settings/
+          systems/
+          ui/
+        state/
+        views/
+          HomeView.tsx
+          ProjectView.tsx
+          DesignSystemView.tsx
+          DesignFilesView.tsx
+          SettingsView.tsx
 ```
 
-## 5. SSE Event Sequences
+## 5. Current Data Flow
 
-### 5.1 Project creation + first design request
+### 5.1 Project creation
 
-```
-Browser                    Hono Server                  Harness            claude CLI
-   │                            │                          │                     │
-   │ POST /api/projects         │                          │                     │
-   │───────────────────────────►│                          │                     │
-   │                            │ createProject()          │                     │
-   │                            │ createSession()          │                     │
-   │                            │─────────────────────────►│                     │
-   │                            │                          │ spawn node-pty      │
-   │                            │                          │────────────────────►│
-   │                            │                          │◄───── ready ────────│
-   │◄── 201 {id, sessionId} ────│                          │                     │
-   │                            │                          │                     │
-   │ GET /api/sessions/:id/     │                          │                     │
-   │     stream                 │                          │                     │
-   │───────────────────────────►│                          │                     │
-   │                            │ broker.subscribe()       │                     │
-   │◄══ event: status.running ══│                          │                     │
-   │                            │                          │                     │
-   │ POST /api/sessions/:id/    │                          │                     │
-   │      events                │                          │                     │
-   │ {type:user.message, ...}   │                          │                     │
-   │───────────────────────────►│                          │                     │
-   │                            │ contextBuilder.build()   │                     │
-   │                            │   + DS inject            │                     │
-   │                            │   + file tree            │                     │
-   │                            │ session.send()           │                     │
-   │                            │─────────────────────────►│                     │
-   │                            │                          │ write(prompt)       │
-   │                            │                          │────────────────────►│
-   │                            │                          │◄── stream-json ─────│
-   │                            │                          │ parser → Normalized │
-   │                            │                          │ broker.publish()    │
-   │                            │                          │  + db.insert(event) │
-   │◄══ event: chat.delta ══════│                          │                     │
-   │◄══ event: tool.started ════│                          │                     │
-   │◄══ event: chat.delta ══════│                          │                     │
-   │◄══ event: file.changed ════│                          │                     │
-   │◄══ event: usage.delta ═════│                          │                     │
-   │◄══ event: status.idle ═════│                          │                     │
-```
+1. Frontend posts to `/api/projects`
+2. Backend creates the project row and initial session row
+3. Backend writes starter artifact files from DB template helpers
+4. File watcher is attached to the new project
+5. Frontend navigates to `/projects/:id`
 
-### 5.2 Message with attached files
+### 5.2 User turn
 
-```
-Browser                                      Hono Server                 Harness
-   │                                              │                          │
-   │ POST /api/sessions/:id/events (multipart)    │                          │
-   │   text: "make hero using this image"         │                          │
-   │   files: [image.png]                         │                          │
-   │─────────────────────────────────────────────►│                          │
-   │                                              │ save to .attachments/    │
-   │                                              │ paths = [abs/path.png]   │
-   │                                              │ contextBuilder appends:  │
-   │                                              │   <image>paths[0]</image>│
-   │                                              │ session.send()           │
-   │                                              │─────────────────────────►│
-   │                                              │                          │ (CLI reads image)
-   │◄═══ events stream... ════════════════════════│                          │
-```
+1. Frontend posts `user.message` to `/api/sessions/:id/events`
+2. Backend rejects the request if another turn is already running for that session
+3. `services/turns.ts`:
+   - persists the raw user event
+   - emits `chat.user_message` and `status.running`
+   - builds prompt context
+   - invokes the selected adapter
+   - persists and publishes normalized events
+   - re-indexes project files
+   - writes a turn checkpoint
+4. Frontend consumes the event stream over SSE and renders chat/canvas updates
 
-### 5.3 Refresh canvas (no new chat turn)
+### 5.3 File updates
 
-```
-Browser                                    Hono Server
-   │                                            │
-   │ click [↻ Refresh]                          │
-   │ GET /api/projects/:id/files                │
-   │───────────────────────────────────────────►│
-   │◄── { tree, entrypoint, updatedAt } ────────│
-   │                                            │
-   │ for each *.tsx entry:                      │
-   │   esbuild-wasm.transform(src) → js         │
-   │   blob = Blob([html_with_script], type)    │
-   │   iframe.src = URL.createObjectURL(blob)   │
-   │                                            │
-```
+There are two current paths:
 
-### 5.4 Session resume after browser refresh
+- immediate `file.changed` events from the Claude Code parser when write/edit-style tools succeed
+- background re-indexing through `services/watchers.ts` using `fs.watch`
 
-```
-Browser (refreshed)                        Hono Server
-   │                                            │
-   │ GET /api/sessions/:id/events               │
-   │   ?since={lastSeenTs}                      │
-   │───────────────────────────────────────────►│
-   │◄── { data: [past events...] } ─────────────│
-   │                                            │
-   │ GET /api/sessions/:id/stream               │
-   │───────────────────────────────────────────►│
-   │◄══ event: ... (live tail) ═════════════════│
-   │                                            │
-   │ client-side: dedupe by event.id            │
-```
+The watcher currently refreshes DB file state only. It does not emit chat timeline events.
 
-## 6. Parent ↔ iframe Messaging
+### 5.4 Canvas rendering
 
-The canvas iframe renders project HTML from a `blob:` URL. Messages between parent (SPA) and iframe:
+The center pane renders project files through `/api/projects/:id/fs/*`.
 
-```
-parent → iframe
-  { kind: "select", nodeId: "..." }             // enter select mode
-  { kind: "tweak.apply", nodeId, prop, value }  // Phase 3
-  { kind: "comment.show", nodeId, body }        // Phase 2
+Current behavior:
+- if a specific file tab is active, the canvas loads that file
+- otherwise it falls back to the artifact entrypoint
+- when the active file receives `file.changed`, the iframe is reloaded
+- selector mode is still a placeholder overlay and does not inspect the real iframe DOM
 
-iframe → parent
-  { kind: "element.clicked", nodeId, rect, computed }
-  { kind: "ready", tree: [...] }
-  { kind: "tweak.committed", nodeId, prop, oldValue, newValue }
-```
+## 6. Current Route Surface
 
-Helper script injected into iframe:
-- Auto-assigns `data-bg-node-id` to every DOM element (MutationObserver)
-- Posts click events to parent
-- Applies `element.style` patches received from parent
+Important backend routes today:
 
-## 7. Security Model (local binary)
-
-| Area | Policy |
+| Route | Purpose |
 |---|---|
-| Network bind | **127.0.0.1 only** — never bind public IPs |
-| CORS | Only `http://localhost:PORT` allowed |
-| CSRF | N/A (single user, local) |
-| Filesystem access | **Restricted to `~/.burnguard/`**, path traversal blocked |
-| CLI command execution | Harness intercepts; writes outside the project dir are **always denied** |
-| iframe sandbox | `sandbox="allow-scripts allow-same-origin"` |
-| CSP | Self-host + Tailwind CDN; external fetches blocked |
-| Attachments | MIME check + 50 MB per-file limit |
-| SQLite file | `chmod 600` on POSIX; Windows uses user-profile defaults |
+| `GET /api/health` | health metadata |
+| `GET /api/home` family | home/dashboard data |
+| `POST /api/projects` | create project |
+| `GET /api/projects/:id` | project detail |
+| `GET /api/projects/:id/session` | latest session |
+| `GET /api/projects/:id/files` | indexed file list |
+| `GET /api/projects/:id/artifacts` | artifact summary |
+| `POST /api/projects/:id/refresh` | re-index and rebuild artifact summary |
+| `POST /api/projects/:id/exports` | queue export |
+| `GET /api/projects/:id/exports` | list export jobs |
+| `POST /api/sessions/:id/events` | send user turn |
+| `GET /api/sessions/:id/events` | replay session history |
+| `GET /api/sessions/:id/stream` | live SSE stream |
+| `POST /api/sessions/:id/interrupt` | currently only marks idle/interrupted |
+| `GET /runtime/deck-stage.js` | slide deck runtime script |
 
-## 8. Observability (Phase 1 minimum)
+## 7. Security and Safety Model
 
-- **Logs**: `~/.burnguard/logs/app.log` — structured JSON, 10 MB rotation × 10 files
-- **Log level**: `BG_LOG=debug|info|warn|error` env var
-- **Harness trace**: per-session `~/.burnguard/logs/session-{id}.log` — raw CLI stdout included
-- **Export**: zip trace for bug reports
-- **Phase 2+**: in-app "Report" button → bundles logs + screenshot as ZIP
+Current enforcement:
 
-## 9. Configuration
+- server binds to `127.0.0.1`
+- project file serving normalizes and bounds relative paths
+- file writing is delegated to the underlying CLI working inside the project directory
+- turn execution is serialized per session to avoid concurrent writes from overlapping prompts
+- iframe uses a sandboxed render surface
 
-`~/.burnguard/config.json`:
+Not yet implemented:
+- real tool confirmation gate
+- hard runtime enforcement of write-deny rules outside the project directory
+- cancellable subprocess interruption
 
-```jsonc
-{
-  "defaultBackend": "claude-code",       // "claude-code" | "codex"
-  "theme": "light",                      // "light" | "dark" | "auto"
-  "port": null,                          // null = auto-select
-  "autoOpenBrowser": true,
-  "playwright": {
-    "installed": false,
-    "installPath": null
-  },
-  "harness": {
-    "maxConcurrentSessions": 3,
-    "checkpointEveryTurns": 5,
-    "toolAutoAllow": true                // Phase 1 default; flip to false in Phase 2
-  },
-  "logs": {
-    "level": "info"
-  }
-}
-```
+## 8. Observability
 
-Edited via Settings modal. Changes hot-reload without harness restart.
+Current observability is lightweight:
+
+- normalized events are persisted to SQLite
+- turn traces are appended through `services/trace.ts`
+- stderr lines are captured for adapter runs
+- export failures are stored on export jobs
+
+The docs previously described a larger logging/retry stack than what exists today. That is still future work, not current behavior.
+
+## 9. Long-Term Architecture Items Not Yet Landed
+
+These ideas still appear in planning docs but are **not** current implementation:
+
+- PTY-managed interactive sessions
+- permission request modal and tool approval flow
+- automated retry/backoff framework
+- scheduler for multiple concurrent active sessions
+- plugin adapter loading
+- structured test fixture suite for adapter output drift

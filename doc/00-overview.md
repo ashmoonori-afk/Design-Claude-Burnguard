@@ -1,113 +1,135 @@
-# BurnGuard Design — Overview
+# BurnGuard Design - Overview
 
-> A self-hosted reimplementation of Anthropic's Claude Design as a **single-user local binary**. The full prompt → canvas → export pipeline runs on your own machine.
+> A self-hosted reimplementation of Claude Design as a single-user local Windows app. The prompt, canvas, persistence, and export loop run on the user's machine.
 
 ## 1. Product Definition
 
 ### 1.1 What it is
 
-BurnGuard Design is a **prompt-driven design tool** that wraps a locally-installed `claude` (Claude Code) or `codex` CLI as its LLM backend. It ships as a single Bun executable (`.exe`); all data (projects, design systems, exports) lives on local disk.
+BurnGuard Design is a prompt-driven design tool that wraps a locally installed `claude` (Claude Code) or `codex` CLI as its LLM backend. It ships as a Bun-powered local app and stores project, session, event, and export data on local disk.
 
 ### 1.2 Value proposition
 
-- **No API keys required** — reuses already-authenticated CLIs
-- **Fully local** — the only outbound traffic is whatever the LLM CLI itself makes (an Ollama adapter in Phase 4+ enables full air-gap)
-- **Two-way Claude Code compatibility** — design systems use `SKILL.md` + `colors_and_type.css` format, so they install into Claude Code as skills verbatim
-- **Handoff-first** — export produces a bundle ready to hand to Claude Code
+- No API key plumbing inside BurnGuard itself; it reuses already-installed CLIs
+- Local-first workflow with persistent project/session history
+- Design system packaging that is compatible with Claude Code skill-style assets
+- Fast prototype iteration through chat, canvas refresh, and export
 
 ### 1.3 Target user
 
-- Individual designers / full-stack engineers / design engineers
-- Users who already run Claude Code or Codex CLI
-- People who prefer fast local prototyping over team-shared cloud tools
+- Individual designers, design engineers, and full-stack engineers
+- Users who already run Claude Code or Codex locally
+- People who prefer desktop-local prototyping over cloud-hosted collaboration tools
 
-## 2. Core Loop
+## 2. Current Snapshot
 
-```
-┌─ Home ────┐   ┌─ Project ──────────────────────────┐   ┌─ Export ─────┐
-│ Recent    │   │ ┌─Chat──┐ ┌─Canvas───┐ ┌─Mode────┐ │   │ html zip     │
-│ Your...   │ → │ │stream │ │iframe    │ │ Tweaks  │ │ → │ pdf (P2)     │
-│ Examples  │   │ │attach │ │render    │ │ Comment │ │   │ pptx (P2)    │
-│ Systems   │   │ │       │ │refresh   │ │ Edit    │ │   │ handoff (P3) │
-└───────────┘   │ └───────┘ └──────────┘ └─────────┘ │   └──────────────┘
-                └────────────────────────────────────┘
-```
+As of April 22, 2026, the repository is in **late Phase 1 / internal alpha**.
 
-## 3. Phase Summary
+Implemented now:
+- prototype and slide deck project creation
+- local SQLite persistence for projects, sessions, events, files, and exports
+- Home, Project, Design System, and Settings views against real APIs
+- turn orchestration with prompt building, attachment persistence, event replay, and SSE streaming
+- real Claude Code execution with `stream-json` parsing
+- best-effort Codex execution with raw streamed output
+- per-project file indexing, refresh, slide deck runtime serving, and HTML zip export
 
-| Phase | Theme | Duration | Core deliverables |
-|---|---|---|---|
-| **1** | Prove the harness | 4–5 weeks | Harness + Claude Code/Codex adapters + Prototype type + sample DS + read-only selector + HTML zip export + Windows exe |
-| **2** | Decks & Modes & Exports | 3–4 weeks | Slide deck type + Comment/Edit modes + PDF + PPTX + Permission gate UI |
-| **3** | Power user | 4–5 weeks | **Full Tweaks panel** + Draw/Present + DS extraction (GitHub/Figma) + Handoff bundle + macOS/Linux builds |
-| 4+ | Backlog | — | Ollama adapter, code signing, auto-update, team sync |
+Known gaps:
+- selector remains a placeholder overlay and is not yet backed by parent/iframe DOM messaging
+- interrupt is exposed as an API route but does not terminate a live subprocess
+- Codex does not emit structured tool or file events
+- PDF, PPTX, and handoff exports are not implemented
+- comments, edit mode, tweaks, and draw remain placeholder panels
+- automated test coverage is still missing
 
-## 4. Scope boundaries
+## 3. Core Loop
 
-### In scope (by Phase 3)
-- Four project types: Prototype / Slide deck / From template / Other
-- Split canvas (chat left · artifact center · mode panel right)
-- Design system management in sample format · Claude Code skill-compatible
-- Exports: HTML zip · PDF · PPTX · Claude Code handoff
-- Streaming chat (tool badges, thinking, file refs)
-- SQLite-backed persistence for projects / sessions / events
-- File attachments (images, docs, Figma URL as input)
+The current end-to-end loop that works in the repo is:
+
+1. Detect installed backend CLIs
+2. Create a project (`prototype` or `slide_deck`)
+3. Choose the seeded sample design system
+4. Send a prompt, optionally with attachments
+5. Stream normalized events into the chat timeline
+6. Render the current artifact in the canvas
+7. Refresh or auto-refresh when files change
+8. Export the project as `html_zip`
+
+## 4. Scope Boundaries
+
+### In scope today
+
+- single-user local desktop workflow
+- prompt-driven artifact generation
+- chat, canvas, file list, and design system browsing
+- local persistence and replay
+- HTML zip export
+
+### Planned but not complete yet
+
+- real DOM-backed selector inspection
+- stronger Codex normalization
+- full interruption semantics
+- PDF and PPTX export
+- comments, edit mode, tweaks, and draw mode
 
 ### Out of scope
-- Multi-user / organizations / RBAC
-- Cloud deploy / hosting
-- Two-way Figma real-time editing (URL **input** only)
-- Canva export
-- Template marketplace
-- Real-time collaboration
-- Mobile devices (desktop only)
 
-### Anti-goals
-- Not a pixel-perfect replica of Claude Design — the goal is feature parity
-- Not a Figma replacement — prompt-driven generation is the core; no manual vector editing
+- multi-user collaboration
+- hosted/cloud deployment
+- organization and RBAC features
+- mobile support
+- real-time Figma sync
 
-## 5. Reference Index
+## 5. Roadmap Summary
 
-### Anthropic official
+| Phase | Theme | Status on April 22, 2026 |
+|---|---|---|
+| 1 | Prove the harness | In late implementation / internal alpha |
+| 2 | Decks, modes, and richer exports | Partially scaffolded, not delivered |
+| 3 | Power-user features | Not started beyond placeholder UI and schema prep |
+| 4+ | Backlog | Future |
+
+Notable deviation from the original plan:
+- `slide_deck` scaffolding and runtime landed before full Phase 1 sign-off
+- several Phase 2/3 surfaces exist in schema or UI placeholders even though the behavior is not shipped
+
+## 6. Reference Index
+
+### External references
+
 | Source | URL |
 |---|---|
 | Claude Design launch | https://www.anthropic.com/news/claude-design-anthropic-labs |
-| Get started | https://support.claude.com/en/articles/14604416 |
-| Set up design system | https://support.claude.com/en/articles/14604397 |
-| Admin guide | https://support.claude.com/en/articles/14604406 |
-| Pricing | https://support.claude.com/en/articles/14667344 |
-| Managed Agents overview | https://platform.claude.com/docs/en/managed-agents/overview |
-| Events and streaming | https://platform.claude.com/docs/en/managed-agents/events-and-streaming |
-| Agent setup | https://platform.claude.com/docs/en/managed-agents/agent-setup |
-| Tools | https://platform.claude.com/docs/en/managed-agents/tools |
-| Environments | https://platform.claude.com/docs/en/managed-agents/environments |
+| Claude Design getting started | https://support.claude.com/en/articles/14604416 |
+| Claude Design design system setup | https://support.claude.com/en/articles/14604397 |
 
 ### Local references
-- `ref/스크린샷 2026-04-22 *.png` — six captures of the real Claude Design UI
-- `design system sample/` — the full Goldman Sachs sample design system tree
 
-## 6. Glossary
+- `ref/` contains screenshots of the real Claude Design UI
+- `design system sample/` contains the canonical Goldman Sachs sample design system
+- `devplan/` contains implementation plans and handoff notes
+
+## 7. Glossary
 
 | Term | Definition |
 |---|---|
-| **Harness** | The TypeScript module that manages CLI subprocesses and normalizes their output. The heart of the product. |
-| **Backend / Adapter** | An LLM CLI wrapper that implements the `LLMBackend` interface (Claude Code, Codex, …). |
-| **Session** | A 1:1 LLM conversation context bound to one project. Maps to a single PTY-managed CLI process. |
-| **Artifact** | A single HTML/JSX file rendered by the canvas. |
-| **NormalizedEvent** | The unified event type every adapter's output converges to. The common unit for UI, storage, and SSE fanout. |
-| **Tweak** | A user-authored CSS property override recorded against a node (Phase 3). |
-| **Design System (DS)** | A bundle of `README.md + SKILL.md + colors_and_type.css + fonts/ + assets/` that defines a brand. |
-| **ContextPatch** | Context the harness injects before each turn: tweak diff / file tree / DS link. |
-| **Refresh** | Rerenders the canvas iframe against the current file tree without sending a new chat turn. Phase 1 essential. |
+| Harness | The backend turn orchestration layer that runs CLIs and normalizes their output |
+| Adapter | A backend-specific runner/parser pair for one CLI |
+| Session | A persisted conversation context bound to one project |
+| Artifact | The file currently rendered in the canvas |
+| NormalizedEvent | The shared event type used by storage, SSE, and the frontend |
+| Design System | A packaged bundle of branding guidance and assets |
+| Refresh | Re-index and reload the current artifact without sending a new turn |
 
-## 7. Versioning
+## 8. Versioning
 
-`MAJOR.MINOR.PATCH` semver.
+The intended release track is still:
 
-| Version | Phase | Trigger |
-|---|---|---|
-| v0.1.x | Phase 1 complete | Internal alpha (personal use) |
-| v0.2.x | Phase 2 complete | Public beta (GitHub Releases) |
-| v1.0.0 | Phase 3 complete | GA + landing page |
+| Version | Milestone |
+|---|---|
+| v0.1.x | Phase 1 complete / internal alpha |
+| v0.2.x | Phase 2 complete / beta |
+| v1.0.0 | Phase 3 complete / general availability |
 
-DB schema changes → MINOR bump. Event schema breaking changes → MAJOR bump.
+The current repository has not reached Phase 1 sign-off yet.

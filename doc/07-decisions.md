@@ -2,6 +2,11 @@
 
 Append-only log of significant architectural decisions. Each entry captures **context**, **decision**, and **consequences**. Superseded decisions are marked but never deleted.
 
+Current note as of April 22, 2026:
+- this file mixes decisions that are already reflected in code with decisions that still describe the intended target architecture
+- when an ADR conflicts with the current implementation, treat [01-architecture.md](./01-architecture.md) and [03-backend-adapters.md](./03-backend-adapters.md) as the source of truth for what is actually shipped today
+- most notably, PTY-oriented plans described here have **not** landed yet; the current runtime uses per-turn `Bun.spawn` subprocess execution
+
 Format: one entry per decision, newest at the bottom. Numbering never reused.
 
 ---
