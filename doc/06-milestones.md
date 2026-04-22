@@ -16,20 +16,33 @@
 
 ## 1. Current Stage
 
-As of April 22, 2026, BurnGuard Design is in **late Phase 1 / internal alpha**.
+As of April 22, 2026, BurnGuard Design is **Phase 2 code-complete / awaiting
+Windows smoke-test pass**. Phase 1 sign-off rows 1–4 are closed in code
+(selector, interrupt, Codex decision, regression tests); row 5 (manual
+smoke-test) is the last blocker and its checklist lives at
+`doc/07-manual-smoke-test.md`.
 
-The repo now supports the main Phase 1 loop:
+The repo supports:
 
-1. detect local backend CLIs
-2. create a project
+1. detect local backend CLIs + per-session backend switch
+2. create a project (prototype / slide_deck) — two tutorials auto-seed on
+   first launch
 3. seed and inspect a design system
 4. send a prompt with optional attachments
 5. stream normalized events into the chat view
-6. render the project artifact in the canvas
-7. refresh or auto-refresh the current file
-8. export as HTML zip
+6. render the project artifact in the canvas — iframe DOM selector +
+   computed styles, comment pins scoped to active slide, inline Edit of
+   `[data-bg-node-id]` elements
+7. refresh or auto-refresh the current file; interrupt mid-turn kills the
+   CLI subprocess cleanly
+8. export as HTML zip / PDF / PPTX (deck only); "Install Chromium" button
+   in Settings bootstraps PDF/PPTX on demand
+9. surface a permission-gate modal for `tool.permission_required` (wired
+   end-to-end via a BG_DEV synthesize hook)
 
-That means the phase is no longer "just planned", but it is also not signed off yet.
+That means the phase is no longer "just planned". Phase 1 plus the entire
+Phase 2 slice plan is merged; flipping the phase headings to ✅ just
+requires working through `doc/07-manual-smoke-test.md` at a keyboard.
 
 ## 2. Phase 1 Progress Snapshot
 
@@ -67,7 +80,7 @@ That means the phase is no longer "just planned", but it is also not signed off 
 | 2 | Implement real interrupt semantics for active CLI subprocesses | ✅ `de33be2` — `activeTurns` map + `AbortController`; adapters pass `signal` to `Bun.spawn({signal, killSignal:"SIGKILL"})`; `/api/sessions/:id/interrupt` aborts and emits `status.idle{stopReason:"interrupted"}` |
 | 3 | Decide whether Codex raw-mode is sufficient for Phase 1 | ✅ Decision: **ship raw-mode** for Phase 1. `codex/index.ts` streams stdout as `chat.delta` chunks and emits a terminal `chat.message_end` + `status.idle`. Structured parser (tool calls, file tracking) deferred until Codex's structured output lands — tracked as a Phase 2+ follow-up. |
 | 4 | Minimal committed regression test layer | ✅ `9e22903` — `packages/backend/tests/` with `prompt-builder.test.ts` (5 cases) + `file-patch.test.ts` (6 cases); wired `bun test`; 11/11 green. Broader E2E (Playwright) deferred to Phase 2 P2.10. |
-| 5 | Re-run and document a clean Windows smoke-test pass | 🔲 Pending — **checklist now lives at `doc/07-manual-smoke-test.md`**. §1 covers Phase 1 sign-off; §2 covers Milestone 2.B (P2.4/P2.5/P2.6). Human at the keyboard only. |
+| 5 | Re-run and document a clean Windows smoke-test pass | 🔲 Pending — **checklist now lives at `doc/07-manual-smoke-test.md`**. §1 covers Phase 1 sign-off; §2 covers Milestone 2.B (P2.4/P2.5/P2.6) and §2.4–§2.7 cover Milestone 2.C (PDF, PPTX, Settings chromium install, backend switch, tutorials + export matrix). Human at the keyboard only. |
 
 When #5 passes without re-opening any of 1–4, the repo flips from "late Phase 1" to "Phase 1 complete".
 
@@ -79,23 +92,30 @@ The original Phase 1 plan assumed:
 - real selector in Phase 1
 - adapter and export work landing before extra template/runtime work
 
-Current reality differs in two ways:
-- some Phase 2 groundwork landed early, especially `slide_deck`
-- some core Phase 1 sign-off items are still incomplete, especially selector and interrupt
+Current reality:
+- Phase 2 ran ahead of the original schedule — slide_deck runtime, comment
+  + edit + permission-gate modes, PDF/PPTX export, and settings all landed
+  as part of what was supposed to be "Phase 1 cleanup + Phase 2 intro".
+- The Phase 1 sign-off gaps that motivated §3 (placeholder selector, no real
+  interrupt, no regression tests) are all closed in code.
+- Codex remains on raw-mode for Phase 1 by design; structured parsing
+  waits for Codex's own structured output format to land.
 
-That means the repo is functionally broad, but still missing a few critical "prove the harness" pieces.
+Net: the repo is functionally broad **and** the harness proofs are in
+place. The only blocker is walking the smoke-test checklist on Windows.
 
 ## 5. Updated Roadmap
 
 ### Phase 1 - Prove the harness
 
-Status: **late implementation**
+Status: **code-complete; awaiting smoke-test pass**
 
-Exit criteria:
-- full prompt -> render -> refresh -> HTML zip loop works on Windows
-- selector is real, not placeholder-only
-- turns can be interrupted safely
-- a minimum automated regression suite exists
+Exit criteria (all met in code, awaiting manual verification):
+- ✅ full prompt → render → refresh → HTML zip loop works on Windows
+- ✅ selector is real, not placeholder-only (`ef7dedd`)
+- ✅ turns can be interrupted safely (`de33be2`)
+- ✅ a minimum automated regression suite exists (`9e22903`, `6069dab`;
+  `bun test` → 23/23)
 
 ### Phase 2 - Decks, modes, and richer exports
 
