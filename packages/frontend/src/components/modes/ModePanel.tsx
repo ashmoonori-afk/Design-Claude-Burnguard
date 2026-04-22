@@ -2,9 +2,14 @@ import type { Comment } from "@bg/shared";
 import type { CanvasMode } from "./types";
 import type { SelectedNode } from "@/types/project";
 import type { EditTarget } from "@/components/canvas/EditLayer";
+import type {
+  TweaksStyleKey,
+  TweaksTarget,
+} from "@/components/canvas/TweaksLayer";
 import CommentPanel from "./CommentPanel";
 import EditPanel from "./EditPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
+import TweaksPanel from "./TweaksPanel";
 
 /**
  * Right-side mode pane. Renders nothing when no mode is active so the canvas
@@ -25,6 +30,11 @@ export default function ModePanel({
   editSaving,
   onSaveEdit,
   onClearEdit,
+  tweaksTarget,
+  tweaksSaving,
+  onApplyTweak,
+  onResetTweaks,
+  onClearTweaks,
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
@@ -42,6 +52,11 @@ export default function ModePanel({
     attributes?: Record<string, string | null>;
   }) => void;
   onClearEdit: () => void;
+  tweaksTarget: TweaksTarget | null;
+  tweaksSaving: boolean;
+  onApplyTweak: (patch: Partial<Record<TweaksStyleKey, string | null>>) => void;
+  onResetTweaks: () => void;
+  onClearTweaks: () => void;
 }) {
   if (!mode) return null;
 
@@ -49,9 +64,12 @@ export default function ModePanel({
     <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0">
       {mode === "select" && <SelectorReadOnlyPanel selection={selection} />}
       {mode === "tweaks" && (
-        <EmptyPanel
-          title="Tweaks"
-          body="Direct CSS inspector ships in Phase 3. The Phase 1 read-only selector is the foundation."
+        <TweaksPanel
+          target={tweaksTarget}
+          saving={tweaksSaving}
+          onApply={onApplyTweak}
+          onResetAll={onResetTweaks}
+          onClear={onClearTweaks}
         />
       )}
       {mode === "comment" && (

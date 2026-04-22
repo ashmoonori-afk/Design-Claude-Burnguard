@@ -19,6 +19,8 @@ export interface PatchHtmlNodeInput {
   node_bg_id: string;
   text?: string;
   attributes?: Record<string, string | null>;
+  /** Inline-style merge patch; null removes a property. See PatchFileRequest. */
+  styles?: Record<string, string | null>;
 }
 
 export interface PatchHtmlNodeResult {
@@ -99,7 +101,54 @@ export function applyHtmlNodePatch(
     }
   }
 
+  if (input.styles) {
+    const current = parseInlineStyle(target.getAttribute("style") ?? "");
+    for (const [prop, value] of Object.entries(input.styles)) {
+      const key = prop.trim();
+      if (!key) continue;
+      if (value === null) {
+        delete current[key];
+      } else {
+        current[key] = value;
+      }
+    }
+    const serialized = serializeInlineStyle(current);
+    if (serialized.length === 0) {
+      target.removeAttribute("style");
+    } else {
+      target.setAttribute("style", serialized);
+    }
+  }
+
   return root.toString();
+}
+
+/**
+ * Parse a `style="..."` attribute string into an ordered map. Naive — assumes
+ * property values don't contain bare `:` or `;`. Tweaks mode emits
+ * well-behaved values (px / rem / rgba / hex / keywords), so this is good
+ * enough. If a future slice needs complex values (url(...), var(...), etc.)
+ * this can be upgraded or replaced with a proper CSS parser.
+ */
+export function parseInlineStyle(raw: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const decl of raw.split(";")) {
+    const trimmed = decl.trim();
+    if (!trimmed) continue;
+    const colon = trimmed.indexOf(":");
+    if (colon <= 0) continue;
+    const key = trimmed.slice(0, colon).trim();
+    const value = trimmed.slice(colon + 1).trim();
+    if (!key || !value) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+export function serializeInlineStyle(map: Record<string, string>): string {
+  return Object.entries(map)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("; ");
 }
 
 function escapeHtmlText(text: string): string {

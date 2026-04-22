@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { applyHtmlNodePatch, FilePatchError } from "../src/services/file-patch";
+import {
+  applyHtmlNodePatch,
+  FilePatchError,
+  parseInlineStyle,
+  serializeInlineStyle,
+} from "../src/services/file-patch";
 
 const FIXTURE = `<!doctype html>
 <html>
@@ -67,5 +72,78 @@ describe("applyHtmlNodePatch", () => {
     expect(out).toContain(
       '<h1 data-bg-node-id="hero-title" class="hero">Original title</h1>',
     );
+  });
+
+  test("styles: adds inline style to a bare element", () => {
+    const out = applyHtmlNodePatch(FIXTURE, {
+      node_bg_id: "hero-sub",
+      styles: { "font-size": "24px", color: "red" },
+    });
+    expect(out).toContain('style="font-size: 24px; color: red"');
+  });
+
+  test("styles: merges into existing style without losing siblings", () => {
+    const withStyle = FIXTURE.replace(
+      '<p data-bg-node-id="hero-sub">Sub</p>',
+      '<p data-bg-node-id="hero-sub" style="color: blue; line-height: 1.4">Sub</p>',
+    );
+    const out = applyHtmlNodePatch(withStyle, {
+      node_bg_id: "hero-sub",
+      styles: { "font-size": "24px", color: "red" },
+    });
+    // color updated, line-height preserved, font-size appended.
+    expect(out).toMatch(/color:\s*red/);
+    expect(out).toMatch(/line-height:\s*1\.4/);
+    expect(out).toMatch(/font-size:\s*24px/);
+    expect(out).not.toMatch(/color:\s*blue/);
+  });
+
+  test("styles: null removes a property; removing all drops the attribute", () => {
+    const withStyle = FIXTURE.replace(
+      '<p data-bg-node-id="hero-sub">Sub</p>',
+      '<p data-bg-node-id="hero-sub" style="color: blue">Sub</p>',
+    );
+    const out = applyHtmlNodePatch(withStyle, {
+      node_bg_id: "hero-sub",
+      styles: { color: null },
+    });
+    expect(out).toContain('<p data-bg-node-id="hero-sub">Sub</p>');
+    expect(out).not.toContain("style=");
+  });
+
+  test("styles: coexist with attributes patch in the same call", () => {
+    const out = applyHtmlNodePatch(FIXTURE, {
+      node_bg_id: "hero-title",
+      attributes: { class: "hero hero--xl" },
+      styles: { "font-size": "96px" },
+    });
+    expect(out).toContain('class="hero hero--xl"');
+    expect(out).toMatch(/font-size:\s*96px/);
+  });
+});
+
+describe("parseInlineStyle / serializeInlineStyle", () => {
+  test("round-trips key/value pairs", () => {
+    const map = parseInlineStyle("font-size: 24px; color: red; line-height: 1.4");
+    expect(map).toEqual({
+      "font-size": "24px",
+      color: "red",
+      "line-height": "1.4",
+    });
+    expect(serializeInlineStyle(map)).toBe(
+      "font-size: 24px; color: red; line-height: 1.4",
+    );
+  });
+
+  test("parse tolerates trailing semicolons and whitespace", () => {
+    expect(parseInlineStyle("; color: red ;  ")).toEqual({ color: "red" });
+  });
+
+  test("parse ignores declarations without a colon", () => {
+    expect(parseInlineStyle("garbage; color: red")).toEqual({ color: "red" });
+  });
+
+  test("serialize empty map yields empty string", () => {
+    expect(serializeInlineStyle({})).toBe("");
   });
 });

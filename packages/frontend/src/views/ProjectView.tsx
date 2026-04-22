@@ -43,6 +43,10 @@ import PermissionDialog, {
 } from "@/components/chat/PermissionDialog";
 import Canvas from "@/components/canvas/Canvas";
 import type { EditTarget } from "@/components/canvas/EditLayer";
+import type {
+  TweaksStyleKey,
+  TweaksTarget,
+} from "@/components/canvas/TweaksLayer";
 import ModePanel from "@/components/modes/ModePanel";
 import type { CanvasMode } from "@/components/modes/types";
 import ArtifactTabs from "@/components/project/ArtifactTabs";
@@ -66,6 +70,9 @@ export default function ProjectView() {
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [activeSlideIdx, setActiveSlideIdx] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [tweaksTarget, setTweaksTarget] = useState<TweaksTarget | null>(null);
+  const tweaksUndoRef = useRef<TweaksUndoFrame[]>([]);
+  const tweaksRedoRef = useRef<TweaksUndoFrame[]>([]);
   const [decidedToolCallIds, setDecidedToolCallIds] = useState<Set<string>>(
     () => new Set<string>(),
   );
@@ -199,6 +206,41 @@ export default function ProjectView() {
     },
   });
 
+  const tweaksMutation = useMutation({
+    mutationFn: ({
+      relPath,
+      patch,
+    }: {
+      relPath: string;
+      patch: PatchFileRequest;
+    }) =>
+      apiFetch<PatchFileResponse>(
+        `/api/projects/${id}/fs/${encodeRelPath(relPath)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+      ),
+    onSuccess: (_data, variables) => {
+      const bgId = variables.patch.node_bg_id;
+      setTweaksTarget((current) =>
+        current && current.bg_id === bgId && variables.patch.styles
+          ? mergeTweaksTargetInline(current, variables.patch.styles)
+          : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["project", id, "files"] });
+      void queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] });
+      setRefreshTick((value) => value + 1);
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not apply tweak",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
+
   const patchFileMutation = useMutation({
     mutationFn: ({
       relPath,
@@ -261,13 +303,59 @@ export default function ProjectView() {
     setFocusedCommentId(null);
     setActiveSlideIdx(null);
     setEditTarget(null);
+    setTweaksTarget(null);
+    tweaksUndoRef.current = [];
+    tweaksRedoRef.current = [];
     setDecidedToolCallIds(new Set());
     setRefreshTick(0);
   }, [id]);
 
   useEffect(() => {
     setEditTarget(null);
+    setTweaksTarget(null);
   }, [activeTabId]);
+
+  // Global Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z for Tweaks. Only fires when the
+  // user isn't typing into an input / textarea / contentEditable so the
+  // inspector's own value fields still undo natively.
+  useEffect(() => {
+    if (mode !== "tweaks") return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          t.isContentEditable
+        ) {
+          return;
+        }
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        const frame = tweaksRedoRef.current.pop();
+        if (!frame) return;
+        tweaksUndoRef.current.push(frame);
+        tweaksMutation.mutate({
+          relPath: frame.relPath,
+          patch: { node_bg_id: frame.bg_id, styles: frame.forward },
+        });
+      } else {
+        const frame = tweaksUndoRef.current.pop();
+        if (!frame) return;
+        tweaksRedoRef.current.push(frame);
+        tweaksMutation.mutate({
+          relPath: frame.relPath,
+          patch: { node_bg_id: frame.bg_id, styles: frame.inverse },
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, tweaksMutation]);
 
   useEffect(() => {
     if (!sessionQuery.data) return;
@@ -514,6 +602,8 @@ export default function ProjectView() {
               onActiveSlideChange={setActiveSlideIdx}
               editSelectedBgId={editTarget?.bg_id ?? null}
               onSelectEditTarget={setEditTarget}
+              tweaksSelectedBgId={tweaksTarget?.bg_id ?? null}
+              onSelectTweaksTarget={setTweaksTarget}
             />
             <ModePanel
               mode={mode}
@@ -548,6 +638,47 @@ export default function ProjectView() {
                 });
               }}
               onClearEdit={() => setEditTarget(null)}
+              tweaksTarget={tweaksTarget}
+              tweaksSaving={tweaksMutation.isPending}
+              onApplyTweak={(patch) => {
+                if (!activeRelPath || !tweaksTarget) return;
+                const frame = buildTweaksUndoFrame(
+                  tweaksTarget,
+                  activeRelPath,
+                  patch,
+                );
+                tweaksUndoRef.current.push(frame);
+                tweaksRedoRef.current = [];
+                tweaksMutation.mutate({
+                  relPath: activeRelPath,
+                  patch: {
+                    node_bg_id: tweaksTarget.bg_id,
+                    styles: patch,
+                  },
+                });
+              }}
+              onResetTweaks={() => {
+                if (!activeRelPath || !tweaksTarget) return;
+                const keys = Object.keys(tweaksTarget.inline);
+                if (keys.length === 0) return;
+                const patch: Record<string, null> = {};
+                for (const k of keys) patch[k] = null;
+                const frame = buildTweaksUndoFrame(
+                  tweaksTarget,
+                  activeRelPath,
+                  patch as Partial<Record<TweaksStyleKey, string | null>>,
+                );
+                tweaksUndoRef.current.push(frame);
+                tweaksRedoRef.current = [];
+                tweaksMutation.mutate({
+                  relPath: activeRelPath,
+                  patch: {
+                    node_bg_id: tweaksTarget.bg_id,
+                    styles: patch,
+                  },
+                });
+              }}
+              onClearTweaks={() => setTweaksTarget(null)}
             />
           </>
         )}
@@ -696,6 +827,52 @@ function encodeRelPath(relPath: string) {
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+/**
+ * Undo frame for Tweaks mode. Capture the style values that WERE there so
+ * Cmd/Ctrl+Z can re-emit the inverse PATCH. `forward` is the original
+ * change so Cmd/Ctrl+Shift+Z can replay it after an undo.
+ */
+interface TweaksUndoFrame {
+  bg_id: string;
+  relPath: string;
+  forward: Partial<Record<TweaksStyleKey, string | null>>;
+  inverse: Partial<Record<TweaksStyleKey, string | null>>;
+}
+
+function buildTweaksUndoFrame(
+  target: TweaksTarget,
+  relPath: string,
+  patch: Partial<Record<TweaksStyleKey, string | null>>,
+): TweaksUndoFrame {
+  const inverse: Partial<Record<TweaksStyleKey, string | null>> = {};
+  for (const key of Object.keys(patch) as TweaksStyleKey[]) {
+    const prev = target.inline[key];
+    inverse[key] = prev === undefined ? null : prev;
+  }
+  return {
+    bg_id: target.bg_id,
+    relPath,
+    forward: patch,
+    inverse,
+  };
+}
+
+function mergeTweaksTargetInline(
+  target: TweaksTarget,
+  patch: Record<string, string | null>,
+): TweaksTarget {
+  const nextInline = { ...target.inline };
+  for (const [key, value] of Object.entries(patch)) {
+    const k = key as TweaksStyleKey;
+    if (value === null) {
+      delete nextInline[k];
+    } else {
+      nextInline[k] = value;
+    }
+  }
+  return { ...target, inline: nextInline };
 }
 
 function applyEditPatch(

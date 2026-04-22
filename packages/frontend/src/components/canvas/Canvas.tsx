@@ -4,6 +4,7 @@ import CanvasTopBar from "./CanvasTopBar";
 import CommentLayer from "./CommentLayer";
 import EditLayer, { type EditTarget } from "./EditLayer";
 import SelectorOverlay from "./SelectorOverlay";
+import TweaksLayer, { type TweaksTarget } from "./TweaksLayer";
 import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
 
@@ -71,6 +72,8 @@ export default function Canvas({
   onFocusComment,
   editSelectedBgId,
   onSelectEditTarget,
+  tweaksSelectedBgId,
+  onSelectTweaksTarget,
   onActiveSlideChange,
 }: {
   mode: CanvasMode | null;
@@ -92,6 +95,8 @@ export default function Canvas({
   onFocusComment: (id: string | null) => void;
   editSelectedBgId: string | null;
   onSelectEditTarget: (target: EditTarget | null) => void;
+  tweaksSelectedBgId: string | null;
+  onSelectTweaksTarget: (target: TweaksTarget | null) => void;
   onActiveSlideChange: (value: number | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -159,6 +164,12 @@ export default function Canvas({
           iframeRef={iframeRef}
           selectedBgId={mode === "edit" ? editSelectedBgId : null}
           onSelect={onSelectEditTarget}
+        />
+        <TweaksLayer
+          active={mode === "tweaks"}
+          iframeRef={iframeRef}
+          selectedBgId={mode === "tweaks" ? tweaksSelectedBgId : null}
+          onSelect={onSelectTweaksTarget}
         />
       </div>
     </div>

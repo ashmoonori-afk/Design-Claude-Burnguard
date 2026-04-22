@@ -132,7 +132,7 @@ artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
   if (!body || typeof body !== "object") {
     return c.json(fail("invalid_body", "Expected a JSON object"), 400);
   }
-  const { node_bg_id, text, attributes } = body as Record<string, unknown>;
+  const { node_bg_id, text, attributes, styles } = body as Record<string, unknown>;
   if (typeof node_bg_id !== "string" || !node_bg_id.trim()) {
     return c.json(
       fail("invalid_node_bg_id", "node_bg_id is required", { node_bg_id }),
@@ -159,12 +159,30 @@ artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
     }
     validatedAttributes = Object.fromEntries(entries);
   }
+  let validatedStyles: Record<string, string | null> | undefined;
+  if (styles !== undefined) {
+    if (!styles || typeof styles !== "object" || Array.isArray(styles)) {
+      return c.json(fail("invalid_styles", "styles must be an object"), 400);
+    }
+    const entries: Array<[string, string | null]> = [];
+    for (const [name, value] of Object.entries(styles)) {
+      if (value !== null && typeof value !== "string") {
+        return c.json(
+          fail("invalid_style_value", `styles.${name} must be string or null`),
+          400,
+        );
+      }
+      entries.push([name, value]);
+    }
+    validatedStyles = Object.fromEntries(entries);
+  }
 
   try {
     const result = await patchHtmlNode(projectId, relPath, {
       node_bg_id,
       text,
       attributes: validatedAttributes,
+      styles: validatedStyles,
     });
     await indexProjectFiles(projectId);
     return c.json(

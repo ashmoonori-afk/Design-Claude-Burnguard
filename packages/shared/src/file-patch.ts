@@ -11,6 +11,13 @@ export interface PatchFileRequest {
   node_bg_id: string;
   text?: string;
   attributes?: Record<string, string | null>;
+  /**
+   * Inline-style merge patch. Keys are CSS property names (`font-size`,
+   * `background`), values are the new value string. A null value removes
+   * that property. Unlisted properties are preserved. When every property
+   * is removed, the `style` attribute itself is removed.
+   */
+  styles?: Record<string, string | null>;
 }
 
 export interface PatchFileResponse {
