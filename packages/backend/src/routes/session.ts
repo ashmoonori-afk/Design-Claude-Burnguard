@@ -2,7 +2,7 @@ import { ulid } from "ulid";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ApiErrorBody, ApiSuccess, NormalizedEvent, UserEvent } from "@bg/shared";
-import { insertNormalizedEvent, listSessionEvents, setSessionStatus } from "../db/events";
+import { insertNormalizedEvent, insertUserEvent, listSessionEvents, setSessionStatus } from "../db/events";
 import { getSessionInfo } from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
 import { broker } from "../services/broker";
@@ -150,6 +150,102 @@ sessionRoutes.post("/api/sessions/:id/interrupt", async (c) => {
 
   return c.json(ok({ accepted: true, interrupted }));
 });
+
+/**
+ * Records a user's allow/deny decision for a pending
+ * `tool.permission_required` event. Phase 2 wiring: the Claude Code
+ * adapter does not yet surface permission prompts, so this endpoint is
+ * exercised end-to-end via the dev-only `/dev/synthesize-permission`
+ * route below. Deny aborts the active turn so the CLI exits cleanly.
+ */
+sessionRoutes.post("/api/sessions/:id/tool-decision", async (c) => {
+  const id = c.req.param("id");
+  const session = await getSessionInfo(id);
+  if (!session) {
+    return c.json(fail("session_not_found", "Session not found", { id }), 404);
+  }
+
+  const body = await c.req.json<unknown>().catch(() => null);
+  if (!isRecord(body)) {
+    return c.json(fail("invalid_body", "Expected a JSON object"), 400);
+  }
+  const { toolCallId, decision, reason } = body;
+  if (typeof toolCallId !== "string" || !toolCallId.trim()) {
+    return c.json(
+      fail("invalid_tool_call_id", "toolCallId is required"),
+      400,
+    );
+  }
+  if (decision !== "allow" && decision !== "deny") {
+    return c.json(
+      fail("invalid_decision", "decision must be 'allow' or 'deny'"),
+      400,
+    );
+  }
+
+  const payload: UserEvent = {
+    type: "user.tool_decision",
+    toolCallId,
+    decision,
+    reason: typeof reason === "string" ? reason : undefined,
+  };
+  await insertUserEvent(id, payload);
+
+  if (decision === "deny") {
+    const aborted = interruptUserTurn(id);
+    if (!aborted && session.status === "running") {
+      const idleEvent: NormalizedEvent = {
+        id: ulid(),
+        ts: Date.now(),
+        type: "status.idle",
+        stopReason: "interrupted",
+      };
+      await insertNormalizedEvent(id, idleEvent);
+      await setSessionStatus(id, "idle");
+      broker.publish(id, idleEvent);
+    }
+  }
+
+  return c.json(ok({ accepted: true, decision }));
+});
+
+/**
+ * Dev-only hook for exercising the permission gate UI without the
+ * upstream CLI emitting a real `tool.permission_required`. Gated by
+ * BG_DEV so a production build never exposes it.
+ */
+if (process.env.BG_DEV === "1") {
+  sessionRoutes.post(
+    "/api/sessions/:id/dev/synthesize-permission",
+    async (c) => {
+      const id = c.req.param("id");
+      const session = await getSessionInfo(id);
+      if (!session) {
+        return c.json(
+          fail("session_not_found", "Session not found", { id }),
+          404,
+        );
+      }
+
+      const body = await c.req.json<unknown>().catch(() => ({}));
+      const rec = isRecord(body) ? body : {};
+      const tool = typeof rec.tool === "string" ? rec.tool : "Bash";
+      const input = rec.input ?? { command: "echo 'synthetic permission demo'" };
+      const event: NormalizedEvent = {
+        id: ulid(),
+        ts: Date.now(),
+        type: "tool.permission_required",
+        turnId: typeof rec.turnId === "string" ? rec.turnId : "dev-synthesis",
+        toolCallId: ulid(),
+        tool,
+        input,
+      };
+      await insertNormalizedEvent(id, event);
+      broker.publish(id, event);
+      return c.json(ok({ accepted: true, toolCallId: event.toolCallId }));
+    },
+  );
+}
 
 sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
   const id = c.req.param("id");

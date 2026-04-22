@@ -34,9 +34,13 @@ import {
 import {
   listSessionEvents,
   sendUserEvent,
+  submitToolDecision,
   subscribeSessionStream,
 } from "@/api/session";
 import ChatPane from "@/components/chat/ChatPane";
+import PermissionDialog, {
+  type PermissionRequest,
+} from "@/components/chat/PermissionDialog";
 import Canvas from "@/components/canvas/Canvas";
 import type { EditTarget } from "@/components/canvas/EditLayer";
 import ModePanel from "@/components/modes/ModePanel";
@@ -62,6 +66,9 @@ export default function ProjectView() {
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [activeSlideIdx, setActiveSlideIdx] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [decidedToolCallIds, setDecidedToolCallIds] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
   const [refreshTick, setRefreshTick] = useState(0);
   const [sendPending, setSendPending] = useState(false);
   const seenEventIdsRef = useRef(new Set<string>());
@@ -170,6 +177,28 @@ export default function ProjectView() {
     },
   });
 
+  const toolDecisionMutation = useMutation({
+    mutationFn: (input: {
+      toolCallId: string;
+      decision: "allow" | "deny";
+    }) => submitToolDecision(id!, input),
+    onSuccess: (_data, variables) => {
+      setDecidedToolCallIds((prev) => {
+        if (prev.has(variables.toolCallId)) return prev;
+        const next = new Set(prev);
+        next.add(variables.toolCallId);
+        return next;
+      });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not submit decision",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
+
   const patchFileMutation = useMutation({
     mutationFn: ({
       relPath,
@@ -232,6 +261,7 @@ export default function ProjectView() {
     setFocusedCommentId(null);
     setActiveSlideIdx(null);
     setEditTarget(null);
+    setDecidedToolCallIds(new Set());
     setRefreshTick(0);
   }, [id]);
 
@@ -319,6 +349,23 @@ export default function ProjectView() {
     () => buildTabs(project, openFileTabs),
     [openFileTabs, project],
   );
+  const pendingPermissions = useMemo<PermissionRequest[]>(() => {
+    const seen = new Set<string>();
+    const out: PermissionRequest[] = [];
+    for (const event of events) {
+      if (event.type !== "tool.permission_required") continue;
+      if (decidedToolCallIds.has(event.toolCallId)) continue;
+      if (seen.has(event.toolCallId)) continue;
+      seen.add(event.toolCallId);
+      out.push({
+        toolCallId: event.toolCallId,
+        tool: event.tool,
+        input: event.input,
+      });
+    }
+    return out;
+  }, [events, decidedToolCallIds]);
+
   const canvasSrc = useMemo(() => {
     const activeFile = tabs.find(
       (tab) => tab.id === activeTabId && tab.kind === "file" && tab.relPath,
@@ -505,6 +552,18 @@ export default function ProjectView() {
           </>
         )}
       </div>
+      <PermissionDialog
+        request={pendingPermissions[0] ?? null}
+        pending={toolDecisionMutation.isPending}
+        onDecide={(decision) => {
+          const head = pendingPermissions[0];
+          if (!head) return;
+          toolDecisionMutation.mutate({
+            toolCallId: head.toolCallId,
+            decision,
+          });
+        }}
+      />
     </div>
   );
 }

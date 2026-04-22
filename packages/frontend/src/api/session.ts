@@ -62,6 +62,19 @@ export async function interruptSession(id: string): Promise<void> {
   });
 }
 
+export async function submitToolDecision(
+  sessionId: string,
+  input: { toolCallId: string; decision: "allow" | "deny"; reason?: string },
+): Promise<void> {
+  await apiFetch<{ accepted: true; decision: "allow" | "deny" }>(
+    `/api/sessions/${sessionId}/tool-decision`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export function subscribeSessionStream(
   id: string,
   onEvent: (event: NormalizedEvent) => void,
