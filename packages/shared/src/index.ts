@@ -5,6 +5,7 @@ export * from "./comment";
 export * from "./design-system";
 export * from "./events";
 export * from "./export";
+export * from "./file-patch";
 export * from "./harness";
 export * from "./home";
 export * from "./project";

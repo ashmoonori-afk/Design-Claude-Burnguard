@@ -11,6 +11,7 @@
     "@bg/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
+    "node-html-parser": "^7.1.0",
     "ulid": "^3.0.2"
   },
   "devDependencies": {
