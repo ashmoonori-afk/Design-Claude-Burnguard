@@ -18,9 +18,19 @@ import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
 import { runAdapterTurn } from "../adapters/registry";
 
+type ToolDecision = Extract<UserEvent, { type: "user.tool_decision" }>;
+
 interface ActiveTurn {
   abortController: AbortController;
   interrupted: boolean;
+  /**
+   * Tool decisions that arrived before the adapter registered a
+   * handler. Drained when `onDecision` is called. When flush is done
+   * the queue is kept for safety — any late registration still sees
+   * the backlog exactly once.
+   */
+  decisionQueue: ToolDecision[];
+  decisionHandler: ((decision: ToolDecision) => void) | null;
 }
 
 const activeTurns = new Map<string, ActiveTurn>();
@@ -69,6 +79,41 @@ export function interruptUserTurn(sessionId: string) {
   return true;
 }
 
+/**
+ * Delivers a tool decision to the running turn's adapter. Called from
+ * `routes/session.ts` after a `POST /tool-decision`. Returns:
+ *
+ *   - `"delivered"`  — an adapter handler consumed the decision
+ *   - `"queued"`     — no handler yet; it will be drained on register
+ *   - `"no_active_turn"` — no active turn for this session
+ *
+ * Denies currently continue to interrupt the turn at the route layer
+ * regardless of return value because today's Claude Code `-p` mode
+ * can't actually skip a tool call. That fallback is the right
+ * behaviour until an adapter upgrades to a mode where a real round-
+ * trip through stdin is possible.
+ */
+export function submitToolDecisionToTurn(
+  sessionId: string,
+  decision: ToolDecision,
+): "delivered" | "queued" | "no_active_turn" {
+  const active = activeTurns.get(sessionId);
+  if (!active) return "no_active_turn";
+  if (active.decisionHandler) {
+    try {
+      active.decisionHandler(decision);
+    } catch {
+      // Handlers shouldn't throw. If one does, queue so a replacement
+      // handler can retry.
+      active.decisionQueue.push(decision);
+      return "queued";
+    }
+    return "delivered";
+  }
+  active.decisionQueue.push(decision);
+  return "queued";
+}
+
 export function startUserTurn(
   sessionId: string,
   payload: Extract<UserEvent, { type: "user.message" }>,
@@ -80,6 +125,8 @@ export function startUserTurn(
   const activeTurn: ActiveTurn = {
     abortController: new AbortController(),
     interrupted: false,
+    decisionQueue: [],
+    decisionHandler: null,
   };
   activeTurns.set(sessionId, activeTurn);
   return runUserTurnInternal(sessionId, payload, activeTurn).finally(() => {
@@ -207,6 +254,27 @@ async function runUserTurnInternal(
           turnId,
           line,
         });
+      },
+      onDecision: (handler) => {
+        activeTurn.decisionHandler = handler;
+        // Drain decisions that arrived before the adapter was ready.
+        if (activeTurn.decisionQueue.length > 0) {
+          const queued = activeTurn.decisionQueue.splice(0);
+          for (const decision of queued) {
+            try {
+              handler(decision);
+            } catch {
+              // Handler error — put the decision back so a future
+              // re-register can retry.
+              activeTurn.decisionQueue.push(decision);
+            }
+          }
+        }
+        return () => {
+          if (activeTurn.decisionHandler === handler) {
+            activeTurn.decisionHandler = null;
+          }
+        };
       },
     });
   } catch (err) {

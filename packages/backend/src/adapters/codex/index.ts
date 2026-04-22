@@ -22,6 +22,16 @@ export async function runCodexTurn(
 
   let sawIdle = false;
 
+  // Same story as claude-code: register the sink for future mode
+  // upgrades where decisions can be piped into the running CLI.
+  const unsubscribeDecision = input.onDecision?.((decision) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[codex] tool decision received for ${decision.toolCallId}: ${decision.decision}` +
+        (decision.reason ? ` (${decision.reason})` : ""),
+    );
+  });
+
   const proc = Bun.spawn({
     cmd: [input.binaryPath, "-p", input.prompt],
     cwd: input.projectDir,
@@ -70,6 +80,7 @@ export async function runCodexTurn(
     });
   }
 
+  unsubscribeDecision?.();
   return { exitCode };
 }
 

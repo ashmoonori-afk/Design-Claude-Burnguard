@@ -12,7 +12,12 @@ import {
 import { getSessionInfo } from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
 import { broker } from "../services/broker";
-import { interruptUserTurn, isUserTurnRunning, startUserTurn } from "../services/turns";
+import {
+  interruptUserTurn,
+  isUserTurnRunning,
+  startUserTurn,
+  submitToolDecisionToTurn,
+} from "../services/turns";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -225,7 +230,7 @@ sessionRoutes.post("/api/sessions/:id/tool-decision", async (c) => {
     );
   }
 
-  const payload: UserEvent = {
+  const payload: Extract<UserEvent, { type: "user.tool_decision" }> = {
     type: "user.tool_decision",
     toolCallId,
     decision,
@@ -233,7 +238,18 @@ sessionRoutes.post("/api/sessions/:id/tool-decision", async (c) => {
   };
   await insertUserEvent(id, payload);
 
+  // Hand the decision to the adapter that owns this session's turn
+  // so it can forward it into the CLI's own channel (stdin pipe
+  // today, structured mode later). This is the P3.6 round-trip
+  // path — independent of the fallback below.
+  const delivery = submitToolDecisionToTurn(id, payload);
+
   if (decision === "deny") {
+    // Today's Claude Code `-p` invocation cannot actually skip a
+    // pending tool — keep the hard-abort fallback so Deny always
+    // stops the CLI. When an adapter upgrades to a mode where it
+    // can resume after a deny, it can clear the abort itself via
+    // the channel.
     const aborted = interruptUserTurn(id);
     if (!aborted && session.status === "running") {
       const idleEvent: NormalizedEvent = {
@@ -248,7 +264,7 @@ sessionRoutes.post("/api/sessions/:id/tool-decision", async (c) => {
     }
   }
 
-  return c.json(ok({ accepted: true, decision }));
+  return c.json(ok({ accepted: true, decision, delivery }));
 });
 
 /**

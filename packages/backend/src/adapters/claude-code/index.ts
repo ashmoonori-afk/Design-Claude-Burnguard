@@ -15,6 +15,19 @@ export async function runClaudeCodeTurn(
 
   let sawIdle = false;
 
+  // Register the decision sink so user.tool_decision payloads flow
+  // in while the CLI runs. `-p` mode is one-shot and doesn't read
+  // additional stdin today, so decisions are only logged — a later
+  // slice that moves to `--input-format stream-json` can write them
+  // through the process stdin for a real round-trip.
+  const unsubscribeDecision = input.onDecision?.((decision) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[claude-code] tool decision received for ${decision.toolCallId}: ${decision.decision}` +
+        (decision.reason ? ` (${decision.reason})` : ""),
+    );
+  });
+
   const result = await runClaudeCode({
     binaryPath: input.binaryPath,
     projectDir: input.projectDir,
@@ -50,5 +63,6 @@ export async function runClaudeCodeTurn(
     });
   }
 
+  unsubscribeDecision?.();
   return result;
 }
