@@ -2,17 +2,13 @@
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-22):** Phase 2 code-complete.
-> Phase 1 sign-off items 1–4 closed in code; item 5 (Windows smoke
-> test) blocks phase flip — checklist at
-> `doc/07-manual-smoke-test.md`. **Milestones A + B + C all shipped
-> (P2.1 – P2.10).** Latest commits: `6069dab` (P2.10 tutorials +
-> smoke harness), `90f80be` (P2.9 settings panel / chromium install /
-> per-session backend switch), `e8bd337` (P2.8 PPTX via pptxgenjs),
-> `83f71f1` (P2.7 PDF via Playwright). `bun test`: 23/23 pass;
-> chromium-dependent cells opt-in via `BG_EXPORT_SMOKE=1`. **Resume
-> at Phase 1 / M2.B / M2.C smoke-test pass**; once green, flip the
-> phase headings to ✅ and plan Phase 3.
+> **Next-session pickup (2026-04-23):** Phase 3 **Milestone A
+> (Productivity modes) code-complete**. Phase 1 / M2.B / M2.C still
+> waiting on the manual smoke-test pass at
+> `doc/07-manual-smoke-test.md`. P3 latest commits: `b609101` (P3.3
+> Present), `905d0ec` (P3.2 Draw), `a1cf1f9` (P3.1 Tweaks).
+> `bun test`: 31/31 pass. **Resume at P3.4 (Handoff export)** for
+> Milestone 3.B.
 
 ## 1. Current Stage
 
@@ -131,14 +127,17 @@ High-level focus (see §7 for the concrete commit-sized sprint plan):
 
 ### Phase 3 - Power user features
 
+Status: **Milestone A shipped; M3.B and M3.C not started**
+
 Planned focus (see §8 for the commit-sized sprint plan):
-- real tweaks panel (two-way CSS inspector)
-- draw / present modes
-- handoff export + structured Codex parser + tool-decision round-trip
-- turn rollback UI
-- light UI polish pass (spacing / empty states / a11y / keyboard shortcuts)
-- macOS + Linux builds
-- watcher-driven `file.changed`
+- ✅ real tweaks panel (P3.1 `a1cf1f9`)
+- ✅ draw mode (P3.2 `905d0ec`)
+- ✅ present mode (P3.3 `b609101`)
+- 🔲 handoff export + structured Codex parser + tool-decision round-trip
+- 🔲 turn rollback UI
+- 🔲 light UI polish pass (spacing / empty states / a11y / keyboard shortcuts)
+- 🔲 macOS + Linux builds
+- 🔲 watcher-driven `file.changed`
 
 ### Phase 4 - Design system ingestion and platform polish
 
@@ -210,13 +209,13 @@ reconstructing context.
 Broken into 11 commit-sized slices across four milestones. Same rules as
 §7: one slice per commit, each ends green, each carries its own DoD.
 
-### Milestone 3.A — Productivity modes 🔲
+### Milestone 3.A — Productivity modes ✅
 
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
-| **P3.1** | 🔲 | **Tweaks mode (two-way CSS inspector)** — Select mode already reads computed styles; Tweaks adds editable inputs for the displayed properties. Editing a value posts an inline-style PATCH to the element's `data-bg-node-id`, mirroring the Edit PATCH contract. Local undo/redo stack (Cmd/Ctrl+Z). | `frontend/src/components/canvas/TweaksLayer.tsx` (new), `frontend/src/components/modes/TweaksPanel.tsx` (new), `backend/src/services/file-patch.ts` (+ inline-style path), `frontend/src/views/ProjectView.tsx` | Drag a font-size input → iframe rerenders → reload preserves the change |
-| **P3.2** | 🔲 | **Draw mode (SVG overlay sketching)** — Freehand + rectangle + arrow tools draw on a transparent SVG layer over the iframe. Saves per-file to `<project>/.meta/draws/<rel_path>.svg`. Not included in html_zip (annotation layer). | `frontend/src/components/canvas/DrawLayer.tsx` (new), `backend/src/routes/artifacts.ts` (+ `GET/PUT /draws/*`), `backend/src/services/files.ts` | Sketch over a slide → navigate away and back → sketch still there |
-| **P3.3** | 🔲 | **Present mode** — Fullscreen deck playback. Leverages existing `data-presenter` + `[data-slide]` runtime; adds a Present launcher in `ProjectTopBar` (the placeholder Play button today), timer, F11 / ESC, space / arrows already work. | `frontend/src/components/present/PresentOverlay.tsx` (new), `frontend/src/components/project/ProjectTopBar.tsx` (wire Play), `backend/src/runtime/deck-stage.ts` (+ present mode CSS hooks if needed) | Click Present → deck fullscreens without nav → arrows advance → Esc returns |
+| **P3.1** | ✅ | **Tweaks mode (two-way CSS inspector)** — `a1cf1f9`. TweaksLayer reuses the Edit mode overlay pattern (hover + click + 200ms poll for selection-box tracking) but keyed on `[data-bg-node-id]` elements and emerald-themed. TweaksPanel exposes 9 CSS properties across Typography + Box; each field shows the computed value as placeholder and the current inline override as the editable value. Commit on blur / Enter / empty-to-reset. PATCHes land on `/fs/*` with a new `styles` field that merges into the element's inline style (null removes a property; dropping every property removes the style attribute). `applyInlineStylePatch` / `parseInlineStyle` / `serializeInlineStyle` are exported pure helpers — 8 new unit tests (`file-patch.test.ts`) cover add / merge / remove / coexist-with-attributes / parse-tolerance / round-trip. Global Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z hooks up an undo/redo stack in ProjectView, idle when the focus is inside an input. | `frontend/src/components/canvas/TweaksLayer.tsx` (new), `frontend/src/components/modes/TweaksPanel.tsx` (new), `backend/src/services/file-patch.ts`, `shared/src/file-patch.ts`, `backend/src/routes/artifacts.ts`, `backend/tests/file-patch.test.ts`, `frontend/src/views/ProjectView.tsx` | Drag a font-size input → iframe rerenders → reload preserves the change. Ctrl+Z reverts. |
+| **P3.2** | ✅ | **Draw mode (SVG overlay sketching)** — `905d0ec`. DrawLayer is a forwardRef'd SVG layer exposing `undo / redo / clear`. Pen / rect / arrow tools; tiny drags (< 4px / < 2 points) are discarded. Shapes serialize as real SVG children wrapped in `<g data-shape data-payload>` so the round-trip survives without a bespoke parser and the .svg renders standalone too. DrawPanel: tool selector, 5-color swatch, 3 stroke widths, undo / redo / clear buttons. Persistence via new `GET/PUT /api/projects/:id/draws/*` backed by `resolveDrawFile()` → `<project>/.meta/draws/<rel>.svg`. `.meta/` is already in IGNORED_DIRS, so exports + the file watcher skip annotations. On tab change: GET + deserialize + seed layer via `resetKey`. On every commit: serialize current shapes → PUT. Cmd/Ctrl+Z / Shift+Z routed through the layer ref while `mode === "draw"`. | `frontend/src/components/canvas/DrawLayer.tsx` (new), `frontend/src/components/modes/DrawPanel.tsx` (new), `frontend/src/api/draws.ts` (new), `backend/src/routes/artifacts.ts`, `backend/src/services/files.ts`, `frontend/src/views/ProjectView.tsx` | Sketch over a slide → navigate away and back → sketch still there |
+| **P3.3** | ✅ | **Present mode** — `b609101`. PresentOverlay mounts a `position: fixed` z-9999 wrapper with its own iframe pointing at the deck's `/fs/` URL plus `?present=1`. deck-stage already handles that param by setting `body[data-presenter]`, which the slide-deck template CSS uses to reveal `.deck-notes`. Browser fullscreen is requested on mount; a `fullscreenchange` listener dismisses the overlay when the user exits via Esc / F11 so they never end up stuck in a dim non-fullscreen duplicate. Top-right Exit button, top-left elapsed-time chip (mm:ss, 500ms tick). ProjectTopBar's Play button gains `onPresent` + `canPresent`; enabled only when `project.type === "slide_deck"` AND the active tab resolves to a canvasSrc. Arrow / space / Home / End / F / Esc all continue to flow into deck-stage inside the overlay iframe. | `frontend/src/components/present/PresentOverlay.tsx` (new), `frontend/src/components/project/ProjectTopBar.tsx`, `frontend/src/views/ProjectView.tsx` | Click Present → deck fullscreens without nav → arrows advance → Esc returns |
 
 ### Milestone 3.B — Distribution & CLI fidelity 🔲
 
