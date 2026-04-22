@@ -3,6 +3,7 @@ import path from "node:path";
 import { ensureConfig } from "./config";
 import { runMigrations } from "./db/migrate";
 import { seedCoreData } from "./db/seed";
+import { seedTutorialsOnce } from "./db/seed-tutorials";
 import { ensureAllProjectWatchers } from "./services/watchers";
 import {
   appRootDir,
@@ -47,5 +48,6 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await seedSampleDesignSystem();
   await runMigrations();
   await seedCoreData();
+  await seedTutorialsOnce();
   await ensureAllProjectWatchers();
 }
