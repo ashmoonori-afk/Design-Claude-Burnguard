@@ -1,6 +1,7 @@
 export * from "./api";
 export * from "./app";
 export * from "./artifact";
+export * from "./comment";
 export * from "./design-system";
 export * from "./events";
 export * from "./export";

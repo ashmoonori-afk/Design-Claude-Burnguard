@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { APP_NAME } from "@bg/shared";
 import { healthRoutes } from "./routes/health";
 import { artifactRoutes } from "./routes/artifacts";
+import { commentRoutes } from "./routes/comments";
 import { homeRoutes } from "./routes/home";
 import { projectRoutes } from "./routes/project";
 import { runtimeRoutes } from "./routes/runtime";
@@ -15,6 +16,7 @@ export const app = new Hono();
 
 app.route("/", healthRoutes);
 app.route("/", artifactRoutes);
+app.route("/", commentRoutes);
 app.route("/", homeRoutes);
 app.route("/", projectRoutes);
 app.route("/", runtimeRoutes);

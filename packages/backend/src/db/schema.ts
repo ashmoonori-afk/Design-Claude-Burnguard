@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -168,13 +169,15 @@ export const commentsTable = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projectsTable.id, { onDelete: "cascade" }),
-    anchorFile: text("anchor_file").notNull(),
-    anchorNodeId: text("anchor_node_id").notNull(),
-    anchorRectJson: text("anchor_rect_json"),
-    body: text("body").notNull(),
+    relPath: text("rel_path").notNull(),
+    nodeSelector: text("node_selector").notNull().default(""),
+    xPct: real("x_pct").notNull(),
+    yPct: real("y_pct").notNull(),
+    body: text("body").notNull().default(""),
     authorId: text("author_id").notNull().default("local"),
     resolvedAt: integer("resolved_at"),
     createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
   },
   (table) => ({
     projectIdx: index("idx_comments_project").on(table.projectId, table.resolvedAt),
