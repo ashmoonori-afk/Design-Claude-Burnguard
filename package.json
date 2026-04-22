@@ -1,0 +1,20 @@
+{
+  "name": "burnguard-design",
+  "version": "0.0.1-phase0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:backend": "bun run --cwd packages/backend dev",
+    "dev:frontend": "bun run --cwd packages/frontend dev",
+    "build:frontend": "bun run --cwd packages/frontend build",
+    "build:backend": "bun run scripts/build-binary.ts",
+    "build": "bun run build:frontend && bun run build:backend",
+    "typecheck": "tsc --build",
+    "clean": "rm -rf packages/*/dist dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/bun": "latest"
+  }
+}

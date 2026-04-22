@@ -1,0 +1,74 @@
+/* ============================================================
+   FONTS · Brand-supplied
+   ============================================================
+   Display: ZEN-SERIF — high-contrast brand serif, used for
+            display headlines and the wordmark feel.
+   Serif:   KoPub Batang — text serif (light/medium/bold)
+            paired with KR support for editorial body copy.
+   Sans:    KoPub Dotum — neutral grotesque for UI / labels.
+   Mono:    IBM Plex Mono (CDN) for tabular numerals.
+   ============================================================ */
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('./PretendardVariable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Zen Serif';
+  src: url('./ZEN-SERIF-Regular.otf') format('opentype'),
+       url('./ZEN-SERIF-TTF-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KoPub Batang';
+  src: url('./KoPub_Batang_Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KoPub Batang';
+  src: url('./KoPub_Batang_Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KoPub Batang';
+  src: url('./KoPub_Batang_Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KoPub Dotum';
+  src: url('./KoPub_Dotum_Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KoPub Dotum';
+  src: url('./KoPub_Dotum_Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KoPub Dotum';
+  src: url('./KoPub_Dotum_Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Mono — kept on Google Fonts CDN (no brand mono uploaded) */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');

@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Radii · Shadows</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 22px; background:#fff; font-family: var(--font-sans); }
+  .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--fg-3); margin-bottom: 14px; }
+  .grid { display:grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .demo { aspect-ratio: 1.6/1; background: #fff; border: 1px solid var(--border); display:flex; align-items:flex-end; justify-content:flex-start; padding: 10px; }
+  .meta { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+  .group { margin-bottom: 18px; }
+  .h { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-2); margin-bottom: 8px; }
+  .shadow { aspect-ratio: 1.8/1; background:#fff; border-radius: 8px; display:flex; align-items:flex-end; padding: 10px; }
+</style></head>
+<body>
+  <div class="group">
+    <div class="h">Radius</div>
+    <div class="grid">
+      <div><div class="demo" style="border-radius:0"></div><div class="meta">r-0 · 0px</div></div>
+      <div><div class="demo" style="border-radius:2px"></div><div class="meta">r-2 · 2px</div></div>
+      <div><div class="demo" style="border-radius:4px"></div><div class="meta">r-4 · 4px</div></div>
+      <div><div class="demo" style="border-radius:8px"></div><div class="meta">r-8 · 8px</div></div>
+    </div>
+  </div>
+  <div class="group">
+    <div class="h">Elevation</div>
+    <div class="grid">
+      <div><div class="shadow" style="box-shadow: var(--shadow-1)"></div><div class="meta">shadow-1</div></div>
+      <div><div class="shadow" style="box-shadow: var(--shadow-2)"></div><div class="meta">shadow-2</div></div>
+      <div><div class="shadow" style="box-shadow: var(--shadow-3)"></div><div class="meta">shadow-3</div></div>
+      <div><div class="shadow" style="box-shadow: var(--shadow-4)"></div><div class="meta">shadow-4</div></div>
+    </div>
+  </div>
+</body></html>

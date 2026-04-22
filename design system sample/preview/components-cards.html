@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Cards</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 22px; background: var(--gray-10); font-family: var(--font-sans); }
+  .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--fg-3); margin-bottom: 14px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px; box-shadow: var(--shadow-1); transition: box-shadow 200ms; }
+  .card:hover { box-shadow: var(--shadow-3); }
+  .eyebrow { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--blue-60); margin-bottom: 10px; }
+  .title { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--fg-1); line-height: 1.2; margin-bottom: 8px; letter-spacing: -0.01em; }
+  .desc { font-size: 13px; color: var(--fg-2); line-height: 1.5; }
+  .stat { font-family: var(--font-mono); font-size: 32px; font-weight: 600; color: var(--fg-1); letter-spacing: -0.01em; }
+  .delta { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--green-60); margin-left: 8px; }
+  .delta.dn { color: var(--red-60); }
+  .meta { font-size: 11px; color: var(--fg-3); margin-top: 6px; }
+</style></head>
+<body>
+  <div class="label">Cards</div>
+  <div class="grid">
+    <div class="card">
+      <div class="eyebrow">Insights</div>
+      <div class="title">Markets enter Q2 on firmer footing</div>
+      <div class="desc">Our research desk weighs in on rate paths, equity rotation, and the dollar.</div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Portfolio · USD</div>
+      <div class="stat">$1.24M<span class="delta">+2.34%</span></div>
+      <div class="meta">vs. prior close · 12:42 ET</div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">10Y Treasury</div>
+      <div class="stat">4.21<span class="delta dn">−0.06</span></div>
+      <div class="meta">Yield · daily change in bps</div>
+    </div>
+  </div>
+</body></html>

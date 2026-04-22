@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Colors · Semantic</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin: 0; padding: 20px; background:#fff; font-family: var(--font-sans); }
+  .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.12em; color: var(--fg-3); margin-bottom: 10px; }
+  .grid { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 14px; display:flex; flex-direction:column; gap: 8px; }
+  .dot { width: 32px; height: 32px; border-radius: 50%; }
+  .name { font-size: 12px; font-weight: 700; color: var(--fg-1); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+  .badge { display:inline-flex; align-items:center; gap:6px; padding: 4px 8px; border-radius: 2px; font-size: 11px; font-weight:600; }
+</style></head>
+<body>
+  <div class="label">Functional colors</div>
+  <div class="grid">
+    <div class="card"><div class="dot" style="background:#077D55"></div><div class="name">Success</div><div class="hex">#077D55</div><div class="badge" style="background:#EBF7ED;color:#077D55">+2.4%</div></div>
+    <div class="card"><div class="dot" style="background:#F5C518"></div><div class="name">Warning</div><div class="hex">#F5C518</div><div class="badge" style="background:#FAF6CF;color:#70491C">Pending</div></div>
+    <div class="card"><div class="dot" style="background:#E86427"></div><div class="name">Caution</div><div class="hex">#E86427</div><div class="badge" style="background:#FCF2EB;color:#8F3415">Review</div></div>
+    <div class="card"><div class="dot" style="background:#D91F11"></div><div class="name">Error</div><div class="hex">#D91F11</div><div class="badge" style="background:#FCF3F2;color:#D91F11">−4.1%</div></div>
+  </div>
+</body></html>
