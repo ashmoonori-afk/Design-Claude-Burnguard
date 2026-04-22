@@ -55,6 +55,7 @@ import type {
   TweaksTarget,
 } from "@/components/canvas/TweaksLayer";
 import { getProjectDraws, putProjectDraws } from "@/api/draws";
+import PresentOverlay from "@/components/present/PresentOverlay";
 import ModePanel from "@/components/modes/ModePanel";
 import type { CanvasMode } from "@/components/modes/types";
 import ArtifactTabs from "@/components/project/ArtifactTabs";
@@ -81,6 +82,7 @@ export default function ProjectView() {
   const [tweaksTarget, setTweaksTarget] = useState<TweaksTarget | null>(null);
   const tweaksUndoRef = useRef<TweaksUndoFrame[]>([]);
   const tweaksRedoRef = useRef<TweaksUndoFrame[]>([]);
+  const [presentOpen, setPresentOpen] = useState(false);
   const [drawTool, setDrawTool] = useState<DrawTool>("pen");
   const [drawColor, setDrawColor] = useState("#EF4444");
   const [drawStrokeWidth, setDrawStrokeWidth] = useState(4);
@@ -322,6 +324,7 @@ export default function ProjectView() {
     tweaksRedoRef.current = [];
     setDrawShapes([]);
     setDrawResetKey("");
+    setPresentOpen(false);
     setDecidedToolCallIds(new Set());
     setRefreshTick(0);
   }, [id]);
@@ -590,6 +593,12 @@ export default function ProjectView() {
     <div className="flex min-h-0 flex-1 flex-col">
       <ProjectTopBar
         project={project}
+        canPresent={
+          project.type === "slide_deck" &&
+          activeTab?.kind === "file" &&
+          Boolean(canvasSrc)
+        }
+        onPresent={() => setPresentOpen(true)}
         tabsSlot={
           <ArtifactTabs
             tabs={tabs}
@@ -809,6 +818,12 @@ export default function ProjectView() {
           });
         }}
       />
+      {presentOpen && canvasSrc && (
+        <PresentOverlay
+          src={canvasSrc}
+          onClose={() => setPresentOpen(false)}
+        />
+      )}
     </div>
   );
 }

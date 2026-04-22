@@ -8,9 +8,13 @@ import ExportMenu from "@/components/export/ExportMenu";
 export default function ProjectTopBar({
   project,
   tabsSlot,
+  onPresent,
+  canPresent,
 }: {
   project: ProjectDetail;
   tabsSlot?: ReactNode;
+  onPresent?: () => void;
+  canPresent: boolean;
 }) {
   return (
     <header className="h-12 border-b border-border bg-background flex items-stretch shrink-0">
@@ -32,7 +36,18 @@ export default function ProjectTopBar({
       </div>
       <div className="flex-1 min-w-0 overflow-x-auto">{tabsSlot}</div>
       <div className="px-3 flex items-center gap-2 shrink-0">
-        <Button variant="ghost" size="sm" className="gap-1.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5"
+          onClick={onPresent}
+          disabled={!canPresent || !onPresent}
+          title={
+            canPresent
+              ? "Start presentation"
+              : "Open a deck file in the canvas to present"
+          }
+        >
           <Play className="h-3.5 w-3.5" /> Present
         </Button>
         <ExportMenu projectId={project.id} projectType={project.type} />
