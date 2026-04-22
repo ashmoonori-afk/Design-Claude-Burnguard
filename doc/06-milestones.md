@@ -2,14 +2,17 @@
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-22):** Phase 1 sign-off items 1–4
-> closed in code; item 5 (Windows smoke test) blocks phase flip —
-> checklist at `doc/07-manual-smoke-test.md`. Phase 2 **Milestones A +
-> P2.4 + P2.5 + P2.6** shipped. Latest commits: `4115812` (smoke-test
-> doc + P2.6 mark), `ec6ac66` (P2.6 permission gate UI + dev synth
-> hook), `192a3c8` (P2.5 edit mode), `ef7dedd` (real selector), `9e22903`
-> (backend tests, 11/11 green). **Resume at P2.7 (PDF export via
-> Playwright)** to finish Milestone 2.C.
+> **Next-session pickup (2026-04-22):** Phase 2 code-complete.
+> Phase 1 sign-off items 1–4 closed in code; item 5 (Windows smoke
+> test) blocks phase flip — checklist at
+> `doc/07-manual-smoke-test.md`. **Milestones A + B + C all shipped
+> (P2.1 – P2.10).** Latest commits: `6069dab` (P2.10 tutorials +
+> smoke harness), `90f80be` (P2.9 settings panel / chromium install /
+> per-session backend switch), `e8bd337` (P2.8 PPTX via pptxgenjs),
+> `83f71f1` (P2.7 PDF via Playwright). `bun test`: 23/23 pass;
+> chromium-dependent cells opt-in via `BG_EXPORT_SMOKE=1`. **Resume
+> at Phase 1 / M2.B / M2.C smoke-test pass**; once green, flip the
+> phase headings to ✅ and plan Phase 3.
 
 ## 1. Current Stage
 
@@ -47,16 +50,13 @@ That means the phase is no longer "just planned", but it is also not signed off 
 ### 2.2 Partially done
 
 - file watching exists, but watcher activity only refreshes indexed files; chat `file.changed` is still adapter-driven
-- slide deck support exists in templates/runtime, and P2.4 (comment) + P2.5 (edit) modes have shipped, but the rest of the Phase 2 workflow (permission gate, PDF/PPTX export, settings, tutorials) is not delivered
+- Phase 2 entire Milestone B/C stack has shipped — awaiting the manual smoke-test pass at `doc/07-manual-smoke-test.md` to close
 
 ### 2.3 Not done
 
-- end-to-end (Playwright) tests — backend unit tests exist as of `9e22903`
+- full end-to-end (Playwright UI) tests — backend unit + opt-in export smoke exist (`9e22903`, `6069dab`)
 - structured Codex parser (decision: ship raw-mode for Phase 1; upgrade deferred — see §6)
-- true permission gate flow
-- PDF export
-- PPTX export
-- handoff export
+- handoff export (Phase 3)
 - real tweaks/draw modes (Phase 3)
 
 ## 3. Remaining Work For Phase 1 Sign-Off
@@ -99,15 +99,15 @@ Exit criteria:
 
 ### Phase 2 - Decks, modes, and richer exports
 
-Status: **Milestone A complete, Milestone B/C not started**
+Status: **Milestones A + B + C code-complete; awaiting smoke-test pass**
 
 High-level focus (see §7 for the concrete commit-sized sprint plan):
 - ✅ slide deck workflow foundation (template, runtime, prompt skill)
-- 🔲 comment and edit modes
-- 🔲 PDF and PPTX export
-- 🔲 permission gate UI
-- 🔲 stronger settings/runtime controls
-- 🔲 tutorial seeds
+- ✅ comment and edit modes (P2.4, P2.5)
+- ✅ permission gate UI (P2.6)
+- ✅ PDF and PPTX export (P2.7, P2.8)
+- ✅ settings panel with chromium install + per-session backend switch (P2.9)
+- ✅ tutorial seeds + export smoke harness (P2.10)
 
 ### Phase 3 - Power user features
 
@@ -156,14 +156,14 @@ reconstructing context.
 | **P2.5** | ✅ | **Edit mode (hover + property inspector → PATCH)** — `192a3c8`. Hover in Edit mode highlights any `[data-bg-node-id]` via iframe `elementFromPoint`; click locks a persistent orange selection box (200ms poll). Right-side `EditPanel` shows the tag + node id, a `<textarea>` for text, and attribute rows; Save diffs against the target and posts only changed fields to `PATCH /api/projects/:id/fs/*`. `applyHtmlNodePatch` (pure) rewrites only the targeted node; `data-bg-node-id` is immutable so pins don't orphan. Reindex + iframe `refreshTick` after save. | `backend/src/routes/artifacts.ts` (+PATCH), `backend/src/services/file-patch.ts` (new), `frontend/src/components/canvas/EditLayer.tsx` (new), `frontend/src/components/modes/EditPanel.tsx` (new), `frontend/src/api/files.ts` (new), `shared/src/file-patch.ts` (new) | Inline-edit a title → save to disk → iframe reload shows the new value; unit-tested via `bun test` (6 cases). |
 | **P2.6** | ✅ | **Permission gate UI for tool calls** — `ec6ac66`. `tool.permission_required` events are derived from the SSE stream; `PermissionDialog` (Radix) surfaces the top-of-queue request with tool + input + callId. Allow/Deny route to `POST /api/sessions/:id/tool-decision`, persisted as `user.tool_decision`; Deny calls `interruptUserTurn` so the CLI exits cleanly. Derivation covers replay + live so a reload mid-prompt reopens the dialog. `POST /api/sessions/:id/dev/synthesize-permission` (BG_DEV-gated) publishes a synthetic event for end-to-end exercise since the Claude Code adapter doesn't surface real prompts yet. | `frontend/src/components/chat/PermissionDialog.tsx` (new), `frontend/src/api/session.ts` (+submitToolDecision), `frontend/src/views/ProjectView.tsx` (pending queue + dialog), `backend/src/routes/session.ts` (+tool-decision, +dev synth) | Synthesized permission event triggers a modal; Deny aborts the turn cleanly. Manual exercise steps in `doc/07-manual-smoke-test.md` §2.3. |
 
-### Milestone 2.C — Exports & Settings 🔲
+### Milestone 2.C — Exports & Settings ✅
 
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
-| **P2.7** | 🔲 | **PDF export via Playwright** — `runExport` gains a `pdf` branch. Headless launches Chromium, opens the deck file with `?print=1` (runtime hides nav bar), calls `page.pdf({ format: 'A4 landscape', printBackground: true })`. | `backend/src/services/exports.ts`, `backend/src/services/export-pdf.ts` (new), add Playwright dep | 15-slide deck exports to a 15-page PDF; zero nav-bar artifacts |
-| **P2.8** | 🔲 | **PPTX export via `pptxgenjs`** — Parse the rendered DOM, split text/image into separate pptx layers so the output is editable in PowerPoint. | `backend/src/services/export-pptx.ts` (new), `pptxgenjs` dep | Deck → .pptx opens in PowerPoint with editable text boxes per slide |
-| **P2.9** | 🔲 | **Settings panel** — Claude Code/Codex runtime switch, "Install Playwright" button spawning `npx playwright install chromium`. | `frontend/src/components/settings/SettingsModal.tsx`, `backend/src/routes/settings.ts` (new or extend) | Switch backend at runtime (next turn uses new CLI); Playwright install button actually runs the command |
-| **P2.10** | 🔲 | **Tutorial projects + export smoke tests** — Seed two tutorials (`prototype-demo`, `deck-demo`). Integration test: each tutorial × each export format (html_zip, pdf, pptx) → non-empty output. | `backend/src/db/seed-tutorials.ts` (new), `backend/tests/exports.test.ts` (new) | First launch creates tutorials; `bun test` green |
+| **P2.7** | ✅ | **PDF export via Playwright** — `83f71f1`. `runExport` gains a `pdf` branch that stages the deck and hands it to `renderDeckToPdf`, which uses playwright-core to open `file:///deck.html?print=1`, waits for `data-deck-ready`, injects `PDF_PRINT_CSS` (overrides the active-slide gate, page-break-after:always per slide, nav hidden), and calls `page.pdf({ format: "A4", landscape: true, printBackground: true, preferCSSPageSize: true })`. Browser launch chain: bundled → `channel:chrome` → `channel:msedge` → `PdfExportError("chromium_not_installed")`. | `backend/src/services/exports.ts`, `backend/src/services/export-pdf.ts` (new), `backend/tests/export-pdf.test.ts` (new), `playwright-core` dep, `frontend/src/components/export/ExportMenu.tsx` (un-gate + deck-only), `ProjectTopBar.tsx` (pass projectType) | 15-slide deck exports to a 15-page PDF; zero nav-bar artifacts. Manual step in smoke-test §2.4. |
+| **P2.8** | ✅ | **PPTX export via `pptxgenjs`** — `e8bd337`. `renderDeckToPptx` runs Playwright, extracts per-slide text anchors via `page.evaluate(EXTRACT_SLIDES_FN)` — walks [data-slide] subtrees collecting elements with direct text nodes, reads computed font-size / family / weight (≥600 → bold) / style / color / text-align, records slide-local bounding rects. `writePptx` (pure) maps viewport px → pptx inches on a 10×5.625 16:9 layout, px → pt×0.75 for font sizes, emits one addText per extract so PowerPoint opens it with editable text boxes (not screenshots). | `backend/src/services/export-pptx.ts` (new), `backend/tests/export-pptx.test.ts` (new), `pptxgenjs` dep | Deck → .pptx opens in PowerPoint with editable text boxes per slide. Manual step in smoke-test §2.5. |
+| **P2.9** | ✅ | **Settings panel** — `90f80be`. `SettingsModal` gets a "Chromium for exports" section with a live state dot, Install/Reinstall button, and a 12-line tail auto-polled every 1.5s while state=installing. Backend `startPlaywrightInstall()` spawns `npx -y playwright install chromium` (cmd.exe on Windows) as a singleton; `GET /api/settings/playwright` returns status. Separately: `ChatPane` carries a compact `cc | cx` toggle that PATCHes `/api/sessions/:id/backend` when the session is idle so the next turn uses the new CLI. | `backend/src/routes/settings.ts` (new), `backend/src/services/playwright-install.ts` (new), `backend/src/routes/session.ts` (+PATCH /backend), `backend/src/db/events.ts` (+setSessionBackend), `frontend/src/components/settings/SettingsModal.tsx`, `frontend/src/components/chat/ChatPane.tsx`, `shared/src/settings.ts` (new) | Switch backend at runtime (next turn uses new CLI); Playwright install button actually runs the command. Manual step in smoke-test §2.6. |
+| **P2.10** | ✅ | **Tutorial projects + export smoke tests** — `6069dab`. `seedTutorialsOnce()` wired into `bootstrap.ts` creates `[burnguard:tutorial] Prototype demo` and `[burnguard:tutorial] Slide deck demo` on first launch. HTML is self-contained (no remote assets) with `data-bg-node-id` anchors. `tests/exports.test.ts` sanity-checks the tutorial HTML structure and (opt-in via `BG_EXPORT_SMOKE=1`) runs the real `renderDeckToPdf`/`renderDeckToPptx` against a staged deck. Default `bun test` stays green without Chromium: 23 pass. | `backend/src/db/seed-tutorials.ts` (new), `backend/src/bootstrap.ts` (+seedTutorialsOnce), `backend/tests/exports.test.ts` (new) | First launch creates tutorials; `bun test` green. Manual step in smoke-test §2.7. |
 
 ### Ground rules for the new session
 
