@@ -35,23 +35,30 @@ Phase 1 backend is complete when it can support the frontend through a stable en
 
 - `BE-S1-01` Create backend workspace, package manifest, TypeScript config, and entrypoint.
 - `BE-S1-02` Define `NormalizedEvent`, `UserEvent`, and session-related shared contracts.
-- `BE-S1-03` Define DTOs for project, session, system, file tree, and export status.
-- `BE-S1-04` Document route names and payload envelopes for all Phase 1 endpoints.
+- `BE-S1-03` Define HomeView DTOs in `packages/shared/src/*`:
+  - `ProjectSummary`
+  - `DesignSystemSummary`
+  - `CreateProjectRequest`
+  - `CreateProjectResponse`
+  - `BackendDetectionResult`
+  - `SettingsSummary`
+- `BE-S1-04` Document route names and freeze the response envelope convention for all Phase 1 endpoints:
+  - success: `{ data: T, meta?: { total?: number; limit?: number; offset?: number } }`
+  - error: `{ error: { code: string; message: string; details?: unknown } }`
 - `BE-S1-05` Add backend health route and minimal server startup.
 - `BE-S1-06` Commit mock fixtures for:
-  - project list
-  - project create response
-  - session metadata
-  - event replay
-  - SSE event examples
-  - file tree
-  - settings
+  - `projects-list.json`
+  - `design-systems-list.json`
+  - `create-project-response.json`
+  - `backends-detect.json`
+  - `settings.json`
 
 ### Frontend unblockers produced in Sprint 1
 
 - shared event and DTO typings
 - committed fixture payloads
 - route inventory with request and response examples
+- fixed HomeView envelope convention
 
 ### Done criteria
 
@@ -67,16 +74,19 @@ Phase 1 backend is complete when it can support the frontend through a stable en
 - `BE-S2-03` Implement drizzle schema for users, systems, projects, sessions, events, attachments, files, exports, and schema metadata.
 - `BE-S2-04` Implement migration runner and local seed flow.
 - `BE-S2-05` Seed bundled design system metadata and local user.
-- `BE-S2-06` Implement project list, create, and get routes.
-- `BE-S2-07` Implement design system list and get routes.
+- `BE-S2-06` Implement HomeView project routes:
+  - `GET /api/projects?tab=recent|mine|examples&limit&offset`
+  - `POST /api/projects`
+- `BE-S2-07` Implement HomeView design system route:
+  - `GET /api/design-systems?status=published`
 - `BE-S2-08` Implement session metadata create/get flow tied to project creation.
-- `BE-S2-09` Implement backend detection for Claude Code and Codex.
-- `BE-S2-10` Implement settings load/save routes.
+- `BE-S2-09` Implement `GET /api/backends/detect` with server-side caching acceptable for 30 seconds.
+- `BE-S2-10` Implement `GET /api/settings` and `PATCH /api/settings`.
 
 ### Frontend unblockers produced in Sprint 2
 
-- real Home API for projects and systems
-- real project bootstrap payload
+- real Home APIs for projects, design systems, backend detection, and settings
+- real project creation bootstrap payload
 - real settings and backend detection payloads
 
 ### Done criteria
@@ -84,6 +94,28 @@ Phase 1 backend is complete when it can support the frontend through a stable en
 - creating a project returns the identifiers and metadata the frontend needs
 - seeded design system appears in the project create flow
 - settings can be loaded and saved through the API
+- HomeView no longer depends on invented mock DTOs
+
+## HomeView Scope Boundary
+
+Included in Gate A and Sprint 2 backend handoff:
+
+- `ProjectSummary`
+- `DesignSystemSummary`
+- `CreateProjectRequest`
+- `CreateProjectResponse`
+- `BackendDetectionResult`
+- `SettingsSummary`
+- fixtures for those shapes
+- the 6 HomeView routes
+
+Explicitly deferred:
+
+- session event payloads and SSE details
+- file tree and preview routes
+- export lifecycle
+- attachment upload
+- chat, tool, and file-change event fixtures
 
 ## Sprint 3: Live Session Loop
 

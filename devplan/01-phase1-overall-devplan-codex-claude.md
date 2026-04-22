@@ -44,12 +44,28 @@ Artifacts:
 - `NormalizedEvent`
 - `UserEvent`
 - `LLMBackend` and `Session` interfaces
-- core entity DTOs for project, session, file tree, design system, export status
+- HomeView DTOs in `packages/shared/src/*`:
+  - `ProjectSummary`
+  - `DesignSystemSummary`
+  - `CreateProjectRequest`
+  - `CreateProjectResponse`
+  - `BackendDetectionResult`
+  - `SettingsSummary`
+- response envelope convention for all Phase 1 APIs:
+  - success: `{ data: T, meta?: { total?: number; limit?: number; offset?: number } }`
+  - error: `{ error: { code: string; message: string; details?: unknown } }`
+- Sprint 1 HomeView fixtures:
+  - `projects-list.json`
+  - `design-systems-list.json`
+  - `create-project-response.json`
+  - `backends-detect.json`
+  - `settings.json`
 
 Frontend impact:
+- unblocks typed HomeView rendering
 - unblocks API client typing
-- unblocks chat renderer mock data
 - unblocks state store design
+- allows static layout work to switch to typed fixtures immediately when Gate A lands
 
 ### Gate B: API route freeze for creation and session loop
 
@@ -57,12 +73,20 @@ Owner:
 - `codex`
 
 Artifacts:
+- HomeView route set:
+  - `GET /api/projects?tab=recent|mine|examples&limit&offset`
+  - `GET /api/design-systems?status=published`
+  - `POST /api/projects`
+  - `GET /api/backends/detect`
+  - `GET /api/settings`
+  - `PATCH /api/settings`
 - project create/list/get routes
 - session get/send/replay routes
 - SSE stream contract
 - attachment upload contract
 
 Frontend impact:
+- unblocks Home list rendering
 - unblocks Home create flow
 - unblocks Project boot flow
 - unblocks chat send and live stream wiring
@@ -112,10 +136,10 @@ Create the repo skeleton, lock core contracts, and allow both developers to work
 - scaffold monorepo structure and root tooling
 - create `packages/shared`, `packages/backend`, and package references
 - define shared event and harness contracts
-- define initial domain DTOs for projects, sessions, files, systems, exports
+- define initial HomeView DTOs for projects, design systems, create flow, backend detection, and settings
 - bootstrap backend server with health route
 - define API route map and response envelope conventions
-- create fixture payloads for chat events, file tree, session replay, and settings
+- create HomeView fixture payloads for projects, design systems, create response, backend detection, and settings
 
 ### `claude` tasks
 
@@ -126,14 +150,14 @@ Create the repo skeleton, lock core contracts, and allow both developers to work
 
 ### Sprint 1 wiring requirements
 
-- `codex` must hand off contract files and mock payload examples before `claude` starts chat renderer details
+- `codex` must hand off HomeView contract files and fixture payloads before `claude` switches from static layout to typed Home mocks
 - `claude` can proceed with page layout and local state before live API wiring
 
 ### Sprint 1 exit criteria
 
 - repo builds by package
 - shared contracts compile across frontend and backend
-- frontend can render mock Home and Project shells from committed fixtures
+- frontend can render mock Home and Project shells from committed typed fixtures
 - backend health route is reachable
 
 ## Sprint 2: Persistence, Session Core, and UI Shell
@@ -163,7 +187,9 @@ Make project creation and session boot real on the backend while the frontend co
 
 ### Sprint 2 wiring requirements
 
-- `codex` must deliver stable create/list/get payloads before `claude` wires the Home screen
+- `codex` must deliver `GET /api/projects`, `GET /api/design-systems`, and `GET /api/backends/detect` before `claude` wires Home data
+- `codex` must deliver `POST /api/projects` before `claude` wires create flow and redirect
+- `codex` must deliver `GET /api/settings` and `PATCH /api/settings` before `claude` wires the settings modal
 - `claude` should not invent derived fields not present in backend DTOs
 
 ### Sprint 2 exit criteria
@@ -289,14 +315,47 @@ Close the loop with export, packaging, logging, and release verification.
 `codex` must provide these artifacts as soon as they are ready:
 
 1. shared type files for events, sessions, projects, files, systems, exports
-2. fixture JSON for chat replay, live stream events, file tree, and settings
-3. route list with request and response examples
-4. SSE event ordering and dedupe rules
-5. attachment upload request shape and max-size behavior
-6. file preview response behavior and supported content classes
-7. selector message payloads between parent and iframe
-8. export lifecycle payloads
-9. error payload shape and retry semantics
+2. HomeView DTOs:
+   - `ProjectSummary`
+   - `DesignSystemSummary`
+   - `CreateProjectRequest`
+   - `CreateProjectResponse`
+   - `BackendDetectionResult`
+   - `SettingsSummary`
+3. fixture JSON for:
+   - `projects-list.json`
+   - `design-systems-list.json`
+   - `create-project-response.json`
+   - `backends-detect.json`
+   - `settings.json`
+4. route list with request and response examples for HomeView and Sprint 2 wiring
+5. response envelope convention for success and error payloads
+6. SSE event ordering and dedupe rules
+7. attachment upload request shape and max-size behavior
+8. file preview response behavior and supported content classes
+9. selector message payloads between parent and iframe
+10. export lifecycle payloads
+11. error payload shape and retry semantics
+
+## HomeView Scope Notes
+
+HomeView-specific Gate A and Sprint 2 scope includes only:
+
+- `ProjectSummary`
+- `DesignSystemSummary`
+- `CreateProjectRequest`
+- `CreateProjectResponse`
+- `BackendDetectionResult`
+- `SettingsSummary`
+- the HomeView API route set
+
+Explicitly deferred beyond HomeView Sprint 1 and Sprint 2:
+
+- session events and SSE payload details
+- file tree and preview payloads
+- export lifecycle payloads
+- attachment upload
+- chat, tool, and file-change event rendering
 
 ## Known Cross-Team Risk Areas
 

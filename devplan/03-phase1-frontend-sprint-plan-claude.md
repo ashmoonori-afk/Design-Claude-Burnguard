@@ -29,6 +29,7 @@
 - `FE-S1-01` Create frontend workspace, Vite app, and routing shell.
 - `FE-S1-02` Set up shared API client structure and state stores.
 - `FE-S1-03` Build Home shell using backend fixtures.
+- `FE-S1-03` note: frontend may render static layout before Gate A; switches to typed fixtures the moment Gate A lands.
 - `FE-S1-04` Build Project shell using backend fixtures.
 - `FE-S1-05` Create fixture-backed placeholders for:
   - chat stream
