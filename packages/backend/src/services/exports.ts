@@ -7,6 +7,7 @@ import { getProjectDetail } from "../db/seed";
 import { exportsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
 import { renderDeckToPdf } from "./export-pdf";
+import { renderDeckToPptx } from "./export-pptx";
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat) {
   const job = await createExportJob(projectId, format);
@@ -34,7 +35,11 @@ async function runExport(jobId: string) {
     return;
   }
 
-  if (job.format !== "html_zip" && job.format !== "pdf") {
+  if (
+    job.format !== "html_zip" &&
+    job.format !== "pdf" &&
+    job.format !== "pptx"
+  ) {
     await updateExportJob(jobId, {
       status: "failed",
       errorMessage: `Unsupported export format: ${job.format}`,
@@ -46,7 +51,8 @@ async function runExport(jobId: string) {
   try {
     await updateExportJob(jobId, { status: "running" });
     await mkdir(exportsDir, { recursive: true });
-    const ext = job.format === "pdf" ? "pdf" : "zip";
+    const ext =
+      job.format === "pdf" ? "pdf" : job.format === "pptx" ? "pptx" : "zip";
     const outputPath = path.join(exportsDir, `${project.id}-${job.id}.${ext}`);
     await rm(outputPath, { force: true });
     const stagingDir = await mkdtemp(path.join(os.tmpdir(), "burnguard-export-"));
@@ -66,6 +72,17 @@ async function runExport(jobId: string) {
           );
         }
         await renderDeckToPdf({
+          stagedDir: projectStageDir,
+          entrypoint: project.entrypoint,
+          outputPath,
+        });
+      } else if (job.format === "pptx") {
+        if (project.type !== "slide_deck") {
+          throw new Error(
+            "PPTX export is only supported for slide_deck projects",
+          );
+        }
+        await renderDeckToPptx({
           stagedDir: projectStageDir,
           entrypoint: project.entrypoint,
           outputPath,

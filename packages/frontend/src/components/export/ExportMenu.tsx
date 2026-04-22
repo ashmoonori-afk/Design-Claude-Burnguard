@@ -42,7 +42,12 @@ const OPTIONS: Option[] = [
     icon: FileType2,
     onlyForTypes: ["slide_deck"],
   },
-  { id: "pptx", label: "PowerPoint (.pptx)", icon: Presentation, phase: 2 },
+  {
+    id: "pptx",
+    label: "PowerPoint (.pptx) — deck only",
+    icon: Presentation,
+    onlyForTypes: ["slide_deck"],
+  },
   { id: "handoff", label: "Claude Code handoff", icon: PackagePlus, phase: 3 },
 ];
 
