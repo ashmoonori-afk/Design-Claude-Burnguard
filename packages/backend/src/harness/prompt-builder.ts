@@ -12,7 +12,7 @@ const MAX_README_LINES = 120;
 
 /**
  * Builds the prompt text piped into the LLM CLI's stdin.
- * Mirrors doc/03-backend-adapters.md §5.4 at a Phase 1 minimum: project state,
+ * Mirrors doc/03-backend-adapters.md section 5.4 at a Phase 1 minimum: project state,
  * design system (SKILL.md + tokens CSS + README), attachments, user request.
  */
 export async function buildPrompt(
@@ -22,7 +22,7 @@ export async function buildPrompt(
   const lines: string[] = [];
   const project = context.project;
 
-  lines.push("# BurnGuard Design — project session");
+  lines.push("# BurnGuard Design project session");
   lines.push("");
   lines.push(
     "You are working inside a local project directory. Every file you Write or Edit will be rendered live in a canvas iframe in the BurnGuard Design app. Use the pre-installed toolset (Read/Write/Edit/Glob/Grep/Bash) to create the artifact.",
@@ -58,7 +58,7 @@ export async function buildPrompt(
     lines.push("");
   }
 
-  // Design system — SKILL.md + tokens CSS inlined so the first turn doesn't
+  // Design system: SKILL.md + tokens CSS inlined so the first turn doesn't
   // need a Read round-trip before it can produce branded output.
   if (context.designSystem) {
     const ds = context.designSystem;
@@ -121,8 +121,12 @@ export async function buildPrompt(
       const body = comment.body.trim() || "(no note)";
       const selector = comment.node_selector || "body";
       const position = `x=${comment.x_pct.toFixed(1)}% y=${comment.y_pct.toFixed(1)}%`;
+      const slideScope =
+        comment.slide_index == null
+          ? "file-wide"
+          : `slide=${comment.slide_index + 1} (slide_index=${comment.slide_index})`;
       lines.push(
-        `- [${comment.id}] ${comment.rel_path} @ ${selector} (${position}) — ${body}`,
+        `- [${comment.id}] ${comment.rel_path} ${slideScope} @ ${selector} (${position}) -> ${body}`,
       );
     }
     lines.push("");
