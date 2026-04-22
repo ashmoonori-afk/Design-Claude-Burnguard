@@ -2,13 +2,14 @@
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-22):** Phase 1 sign-off items are all
-> closed in code; awaiting Windows smoke-test pass to flip the phase to
-> "complete". Phase 2 **Milestones A + P2.4 + P2.5** shipped. Latest
-> commits: `ef7dedd` (real selector overlay), `9e22903` (backend
-> regression tests: prompt-builder + file-patch, 11/11 green via `bun
-> test`), `192a3c8` (P2.5 edit mode foundation). **Resume at P2.6
-> (Permission gate UI)** under §7 Phase 2 Sprint Plan below.
+> **Next-session pickup (2026-04-22):** Phase 1 sign-off items 1–4
+> closed in code; item 5 (Windows smoke test) blocks phase flip —
+> checklist at `doc/07-manual-smoke-test.md`. Phase 2 **Milestones A +
+> P2.4 + P2.5 + P2.6** shipped. Latest commits: `4115812` (smoke-test
+> doc + P2.6 mark), `ec6ac66` (P2.6 permission gate UI + dev synth
+> hook), `192a3c8` (P2.5 edit mode), `ef7dedd` (real selector), `9e22903`
+> (backend tests, 11/11 green). **Resume at P2.7 (PDF export via
+> Playwright)** to finish Milestone 2.C.
 
 ## 1. Current Stage
 
