@@ -56,6 +56,20 @@ export async function patchHtmlNode(
   }
 
   const html = await readFile(resolved.absolutePath, "utf8");
+  const output = applyHtmlNodePatch(html, input);
+  await writeFile(resolved.absolutePath, output, "utf8");
+  return { absolutePath: resolved.absolutePath, updatedAt: Date.now() };
+}
+
+/**
+ * Pure HTML rewrite: serialize a patched DOM tree, preserving everything
+ * except the target node's text/attributes. Exposed separately so it can
+ * be exercised by unit tests without touching the filesystem or the DB.
+ */
+export function applyHtmlNodePatch(
+  html: string,
+  input: PatchHtmlNodeInput,
+): string {
   const root = parse(html);
   const selector = `[data-bg-node-id="${escapeAttrSelector(input.node_bg_id)}"]`;
   const target = root.querySelector(selector);
@@ -85,9 +99,7 @@ export async function patchHtmlNode(
     }
   }
 
-  const output = root.toString();
-  await writeFile(resolved.absolutePath, output, "utf8");
-  return { absolutePath: resolved.absolutePath, updatedAt: Date.now() };
+  return root.toString();
 }
 
 function escapeHtmlText(text: string): string {

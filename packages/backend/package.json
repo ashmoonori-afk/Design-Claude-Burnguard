@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "BG_DEV=1 bun run --watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@bg/shared": "workspace:*",
