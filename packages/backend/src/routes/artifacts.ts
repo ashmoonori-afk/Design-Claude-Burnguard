@@ -296,7 +296,12 @@ artifactRoutes.post("/api/projects/:id/exports", async (c) => {
   if (!isExportFormat(format)) {
     return c.json(fail("invalid_export_format", "Unsupported export format", { format }), 400);
   }
-  if (format !== "html_zip" && format !== "pdf" && format !== "pptx") {
+  if (
+    format !== "html_zip" &&
+    format !== "pdf" &&
+    format !== "pptx" &&
+    format !== "handoff"
+  ) {
     return c.json(
       fail("export_not_implemented", `Export format is not implemented yet: ${format}`, {
         format,

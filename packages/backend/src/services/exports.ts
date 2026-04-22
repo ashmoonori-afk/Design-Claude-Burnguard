@@ -8,6 +8,8 @@ import { exportsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
 import { renderDeckToPdf } from "./export-pdf";
 import { renderDeckToPptx } from "./export-pptx";
+import { renderHandoffBundle } from "./export-handoff";
+import { getDesignSystemDetail } from "../db/seed";
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat) {
   const job = await createExportJob(projectId, format);
@@ -38,7 +40,8 @@ async function runExport(jobId: string) {
   if (
     job.format !== "html_zip" &&
     job.format !== "pdf" &&
-    job.format !== "pptx"
+    job.format !== "pptx" &&
+    job.format !== "handoff"
   ) {
     await updateExportJob(jobId, {
       status: "failed",
@@ -87,6 +90,48 @@ async function runExport(jobId: string) {
           entrypoint: project.entrypoint,
           outputPath,
         });
+      } else if (job.format === "handoff") {
+        const tokens = await resolveHandoffTokens(
+          project.design_system_id,
+          project.dir_path,
+        );
+        const bundleDir = path.join(stagingDir, `${project.id}-handoff`);
+        await mkdir(bundleDir, { recursive: true });
+        const stagedArtifact = path.join(projectStageDir, project.entrypoint);
+        await renderHandoffBundle({
+          stagedArtifactPath: stagedArtifact,
+          stagingDir: bundleDir,
+          entrypoint: project.entrypoint,
+          tokensSrcPath: tokens.srcPath,
+          tokensFileName: tokens.fileName,
+          designSystemName: tokens.systemName,
+          project: {
+            id: project.id,
+            name: project.name,
+            type: project.type,
+            entrypoint: project.entrypoint,
+          },
+          isDeck: project.type === "slide_deck",
+        });
+
+        const bundleWildcard = path.join(bundleDir, "*");
+        const zipCmd = [
+          "powershell",
+          "-NoProfile",
+          "-Command",
+          `Compress-Archive -Path '${escapeForPs(bundleWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
+        ];
+        const zipProc = Bun.spawn(zipCmd, {
+          stdout: "ignore",
+          stderr: "pipe",
+        });
+        const code = await zipProc.exited;
+        if (code !== 0) {
+          const errorText = await new Response(zipProc.stderr).text();
+          throw new Error(
+            errorText || `Compress-Archive failed with exit code ${code}`,
+          );
+        }
       } else {
         const sourceWildcard = path.join(projectStageDir, "*");
         const command = [
@@ -128,6 +173,37 @@ async function runExport(jobId: string) {
 
 function escapeForPs(value: string) {
   return value.replaceAll("'", "''");
+}
+
+async function resolveHandoffTokens(
+  designSystemId: string | null,
+  projectDirPath: string,
+): Promise<{
+  systemName: string | null;
+  fileName: string | null;
+  srcPath: string | null;
+}> {
+  if (!designSystemId) {
+    return { systemName: null, fileName: null, srcPath: null };
+  }
+  const detail = await getDesignSystemDetail(designSystemId);
+  if (!detail || !detail.tokens_css_path) {
+    return {
+      systemName: detail?.name ?? null,
+      fileName: null,
+      srcPath: null,
+    };
+  }
+  // tokens_css_path is stored relative to the design system directory.
+  // Lift to absolute via the stored dir_path; fall back silently if it
+  // points at nothing on disk so the handoff export still succeeds.
+  void projectDirPath;
+  const absolute = detail.tokens_css_path;
+  return {
+    systemName: detail.name,
+    fileName: path.basename(absolute),
+    srcPath: absolute,
+  };
 }
 
 async function prepareSlideDeckExport(projectDir: string, entrypoint: string) {

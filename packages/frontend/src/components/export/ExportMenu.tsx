@@ -48,7 +48,7 @@ const OPTIONS: Option[] = [
     icon: Presentation,
     onlyForTypes: ["slide_deck"],
   },
-  { id: "handoff", label: "Claude Code handoff", icon: PackagePlus, phase: 3 },
+  { id: "handoff", label: "Developer handoff (.zip)", icon: PackagePlus },
 ];
 
 export default function ExportMenu({
