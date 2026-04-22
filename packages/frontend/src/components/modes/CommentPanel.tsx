@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 export default function CommentPanel({
   comments,
   activeRelPath,
+  activeSlideIdx,
   focusedId,
   onFocus,
   onUpdateBody,
@@ -12,13 +13,22 @@ export default function CommentPanel({
 }: {
   comments: Comment[];
   activeRelPath: string | null;
+  activeSlideIdx: number | null;
   focusedId: string | null;
   onFocus: (id: string | null) => void;
   onUpdateBody: (id: string, body: string) => void;
   onToggleResolved: (id: string, resolved: boolean) => void;
 }) {
   const visible = activeRelPath
-    ? comments.filter((c) => c.rel_path === activeRelPath)
+    ? comments.filter((c) => {
+        if (c.rel_path !== activeRelPath) return false;
+        if (c.resolved_at !== null) return false;
+        if (activeSlideIdx != null) {
+          const pinSlide = c.slide_index ?? 0;
+          if (pinSlide !== activeSlideIdx) return false;
+        }
+        return true;
+      })
     : [];
 
   return (
@@ -37,7 +47,9 @@ export default function CommentPanel({
         {visible.length === 0 && (
           <p className="px-1 pt-2 text-xs text-muted-foreground">
             {activeRelPath
-              ? "No comments on this file yet."
+              ? activeSlideIdx != null
+                ? "No open comments on this slide yet."
+                : "No open comments on this file yet."
               : "Open a file in the canvas to comment."}
           </p>
         )}

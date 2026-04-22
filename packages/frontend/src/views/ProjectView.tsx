@@ -12,6 +12,8 @@ import type {
   Comment,
   FileInfo,
   NormalizedEvent,
+  PatchFileRequest,
+  PatchFileResponse,
   ProjectDetail,
   SessionInfo,
 } from "@bg/shared";
@@ -23,7 +25,7 @@ import {
   listProjectFiles,
   refreshArtifacts,
 } from "@/api/project";
-import { ApiError } from "@/api/client";
+import { apiFetch, ApiError } from "@/api/client";
 import {
   createProjectComment,
   listProjectComments,
@@ -36,6 +38,7 @@ import {
 } from "@/api/session";
 import ChatPane from "@/components/chat/ChatPane";
 import Canvas from "@/components/canvas/Canvas";
+import type { EditTarget } from "@/components/canvas/EditLayer";
 import ModePanel from "@/components/modes/ModePanel";
 import type { CanvasMode } from "@/components/modes/types";
 import ArtifactTabs from "@/components/project/ArtifactTabs";
@@ -57,6 +60,8 @@ export default function ProjectView() {
   const [mode, setMode] = useState<CanvasMode | null>(null);
   const [selection, setSelection] = useState<SelectedNode | null>(null);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
+  const [activeSlideIdx, setActiveSlideIdx] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [sendPending, setSendPending] = useState(false);
   const seenEventIdsRef = useRef(new Set<string>());
@@ -165,6 +170,42 @@ export default function ProjectView() {
     },
   });
 
+  const patchFileMutation = useMutation({
+    mutationFn: ({
+      relPath,
+      patch,
+    }: {
+      relPath: string;
+      patch: PatchFileRequest;
+    }) =>
+      apiFetch<PatchFileResponse>(
+        `/api/projects/${id}/fs/${encodeRelPath(relPath)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        },
+      ),
+    onSuccess: async (_updated, variables) => {
+      setEditTarget((current) =>
+        current && current.bg_id === variables.patch.node_bg_id
+          ? applyEditPatch(current, variables.patch)
+          : current,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+      ]);
+      setRefreshTick((value) => value + 1);
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not save edit",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
+
   useEffect(() => {
     const error = projectQuery.error;
     if (!(error instanceof ApiError) || error.status !== 404) {
@@ -189,8 +230,14 @@ export default function ProjectView() {
     setMode(null);
     setSelection(null);
     setFocusedCommentId(null);
+    setActiveSlideIdx(null);
+    setEditTarget(null);
     setRefreshTick(0);
   }, [id]);
+
+  useEffect(() => {
+    setEditTarget(null);
+  }, [activeTabId]);
 
   useEffect(() => {
     if (!sessionQuery.data) return;
@@ -407,6 +454,7 @@ export default function ProjectView() {
               }}
               comments={comments}
               activeRelPath={activeRelPath}
+              activeSlideIdx={activeSlideIdx}
               focusedCommentId={focusedCommentId}
               onCreateComment={(input) => {
                 if (!activeRelPath) return;
@@ -416,12 +464,16 @@ export default function ProjectView() {
                 });
               }}
               onFocusComment={setFocusedCommentId}
+              onActiveSlideChange={setActiveSlideIdx}
+              editSelectedBgId={editTarget?.bg_id ?? null}
+              onSelectEditTarget={setEditTarget}
             />
             <ModePanel
               mode={mode}
               selection={selection}
               comments={comments}
               activeRelPath={activeRelPath}
+              activeSlideIdx={activeSlideIdx}
               focusedCommentId={focusedCommentId}
               onFocusComment={setFocusedCommentId}
               onUpdateCommentBody={(commentId, body) =>
@@ -436,6 +488,19 @@ export default function ProjectView() {
                   patch: { resolved },
                 })
               }
+              editTarget={editTarget}
+              editSaving={patchFileMutation.isPending}
+              onSaveEdit={(patch) => {
+                if (!activeRelPath || !editTarget) return;
+                patchFileMutation.mutate({
+                  relPath: activeRelPath,
+                  patch: {
+                    node_bg_id: editTarget.bg_id,
+                    ...patch,
+                  },
+                });
+              }}
+              onClearEdit={() => setEditTarget(null)}
             />
           </>
         )}
@@ -572,6 +637,26 @@ function encodeRelPath(relPath: string) {
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+function applyEditPatch(
+  target: EditTarget,
+  patch: PatchFileRequest,
+): EditTarget {
+  const nextAttributes = { ...target.attributes };
+  for (const [key, value] of Object.entries(patch.attributes ?? {})) {
+    if (value === null) {
+      delete nextAttributes[key];
+    } else {
+      nextAttributes[key] = value;
+    }
+  }
+
+  return {
+    ...target,
+    text: patch.text ?? target.text,
+    attributes: nextAttributes,
+  };
 }
 
 function clearSendPending(

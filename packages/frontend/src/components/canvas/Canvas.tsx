@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { Comment } from "@bg/shared";
 import CanvasTopBar from "./CanvasTopBar";
 import CommentLayer from "./CommentLayer";
+import EditLayer, { type EditTarget } from "./EditLayer";
 import SelectorOverlay from "./SelectorOverlay";
 import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
@@ -64,9 +65,13 @@ export default function Canvas({
   onRefresh,
   comments,
   activeRelPath,
+  activeSlideIdx,
   focusedCommentId,
   onCreateComment,
   onFocusComment,
+  editSelectedBgId,
+  onSelectEditTarget,
+  onActiveSlideChange,
 }: {
   mode: CanvasMode | null;
   src?: string | null;
@@ -76,6 +81,7 @@ export default function Canvas({
   onRefresh: () => void;
   comments: Comment[];
   activeRelPath: string | null;
+  activeSlideIdx: number | null;
   focusedCommentId: string | null;
   onCreateComment: (input: {
     x_pct: number;
@@ -84,9 +90,27 @@ export default function Canvas({
     slide_index: number | null;
   }) => void;
   onFocusComment: (id: string | null) => void;
+  editSelectedBgId: string | null;
+  onSelectEditTarget: (target: EditTarget | null) => void;
+  onActiveSlideChange: (value: number | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (!alive) return;
+      onActiveSlideChange(readActiveSlideIdx(iframeRef.current));
+    };
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+      onActiveSlideChange(null);
+    };
+  }, [frameKey, onActiveSlideChange, src]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-muted/40">
@@ -119,12 +143,36 @@ export default function Canvas({
           active={mode === "comment"}
           comments={comments}
           activeRelPath={activeRelPath}
+          activeSlideIdx={activeSlideIdx}
           iframeRef={iframeRef}
           focusedId={focusedCommentId}
           onCreate={onCreateComment}
           onFocus={onFocusComment}
         />
+        <EditLayer
+          active={mode === "edit"}
+          iframeRef={iframeRef}
+          selectedBgId={mode === "edit" ? editSelectedBgId : null}
+          onSelect={onSelectEditTarget}
+        />
       </div>
     </div>
   );
+}
+
+function readActiveSlideIdx(iframe: HTMLIFrameElement | null): number | null {
+  if (!iframe) return null;
+  let doc: Document | null = null;
+  try {
+    doc = iframe.contentDocument;
+  } catch {
+    return null;
+  }
+  if (!doc) return null;
+  const slides = doc.querySelectorAll("[data-slide]");
+  if (slides.length === 0) return null;
+  const active = doc.querySelector("[data-slide][data-active]");
+  if (!active) return 0;
+  const idx = Array.prototype.indexOf.call(slides, active);
+  return idx >= 0 ? idx : 0;
 }

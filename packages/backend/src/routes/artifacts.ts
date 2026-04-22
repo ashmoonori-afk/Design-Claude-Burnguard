@@ -8,9 +8,11 @@ import type {
   ExportFormat,
   ExportJob,
   FileInfo,
+  PatchFileResponse,
 } from "@bg/shared";
 import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles, resolveProjectFile } from "../services/files";
 import { enqueueProjectExport } from "../services/exports";
+import { FilePatchError, patchHtmlNode } from "../services/file-patch";
 import { getExportJob, listProjectExports } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
 
@@ -108,6 +110,78 @@ artifactRoutes.get("/api/projects/:id/fs/*", async (c) => {
   return new Response(Bun.file(resolved.absolutePath), {
     headers: c.res.headers,
   });
+});
+
+artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
+  }
+
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path;
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+
+  const body = await c.req.json<unknown>().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json(fail("invalid_body", "Expected a JSON object"), 400);
+  }
+  const { node_bg_id, text, attributes } = body as Record<string, unknown>;
+  if (typeof node_bg_id !== "string" || !node_bg_id.trim()) {
+    return c.json(
+      fail("invalid_node_bg_id", "node_bg_id is required", { node_bg_id }),
+      400,
+    );
+  }
+  if (text !== undefined && typeof text !== "string") {
+    return c.json(fail("invalid_text", "text must be a string"), 400);
+  }
+  let validatedAttributes: Record<string, string | null> | undefined;
+  if (attributes !== undefined) {
+    if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) {
+      return c.json(fail("invalid_attributes", "attributes must be an object"), 400);
+    }
+    const entries: Array<[string, string | null]> = [];
+    for (const [name, value] of Object.entries(attributes)) {
+      if (value !== null && typeof value !== "string") {
+        return c.json(
+          fail("invalid_attr_value", `attributes.${name} must be string or null`),
+          400,
+        );
+      }
+      entries.push([name, value]);
+    }
+    validatedAttributes = Object.fromEntries(entries);
+  }
+
+  try {
+    const result = await patchHtmlNode(projectId, relPath, {
+      node_bg_id,
+      text,
+      attributes: validatedAttributes,
+    });
+    await indexProjectFiles(projectId);
+    return c.json(
+      ok({
+        rel_path: relPath,
+        node_bg_id,
+        updated_at: result.updatedAt,
+      } satisfies PatchFileResponse),
+    );
+  } catch (err) {
+    if (err instanceof FilePatchError) {
+      const status =
+        err.code === "file_not_found" || err.code === "node_not_found" ? 404 : 400;
+      return c.json(fail(err.code, err.message), status);
+    }
+    throw err;
+  }
 });
 
 artifactRoutes.get("/api/projects/:id/exports", async (c) => {

@@ -1,7 +1,9 @@
 import type { Comment } from "@bg/shared";
 import type { CanvasMode } from "./types";
 import type { SelectedNode } from "@/types/project";
+import type { EditTarget } from "@/components/canvas/EditLayer";
 import CommentPanel from "./CommentPanel";
+import EditPanel from "./EditPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 
 /**
@@ -14,19 +16,32 @@ export default function ModePanel({
   selection,
   comments,
   activeRelPath,
+  activeSlideIdx,
   focusedCommentId,
   onFocusComment,
   onUpdateCommentBody,
   onToggleCommentResolved,
+  editTarget,
+  editSaving,
+  onSaveEdit,
+  onClearEdit,
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
   comments: Comment[];
   activeRelPath: string | null;
+  activeSlideIdx: number | null;
   focusedCommentId: string | null;
   onFocusComment: (id: string | null) => void;
   onUpdateCommentBody: (id: string, body: string) => void;
   onToggleCommentResolved: (id: string, resolved: boolean) => void;
+  editTarget: EditTarget | null;
+  editSaving: boolean;
+  onSaveEdit: (patch: {
+    text?: string;
+    attributes?: Record<string, string | null>;
+  }) => void;
+  onClearEdit: () => void;
 }) {
   if (!mode) return null;
 
@@ -43,6 +58,7 @@ export default function ModePanel({
         <CommentPanel
           comments={comments}
           activeRelPath={activeRelPath}
+          activeSlideIdx={activeSlideIdx}
           focusedId={focusedCommentId}
           onFocus={onFocusComment}
           onUpdateBody={onUpdateCommentBody}
@@ -50,9 +66,11 @@ export default function ModePanel({
         />
       )}
       {mode === "edit" && (
-        <EmptyPanel
-          title="Edit"
-          body="Inline content editing ships in Phase 2."
+        <EditPanel
+          target={editTarget}
+          saving={editSaving}
+          onSave={onSaveEdit}
+          onClear={onClearEdit}
         />
       )}
       {mode === "draw" && (

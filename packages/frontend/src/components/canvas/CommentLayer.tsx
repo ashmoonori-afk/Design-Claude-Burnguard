@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
+import { useRef, type MouseEvent, type RefObject } from "react";
 import type { Comment } from "@bg/shared";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ export default function CommentLayer({
   active,
   comments,
   activeRelPath,
+  activeSlideIdx,
   iframeRef,
   focusedId,
   onCreate,
@@ -21,32 +22,13 @@ export default function CommentLayer({
   active: boolean;
   comments: Comment[];
   activeRelPath: string | null;
+  activeSlideIdx: number | null;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   focusedId: string | null;
   onCreate: (input: PinInput) => void;
   onFocus: (id: string | null) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [activeSlideIdx, setActiveSlideIdx] = useState<number | null>(null);
-
-  // Poll the iframe for its active slide. deck-stage toggles [data-active]
-  // on `[data-slide]` elements on hashchange / keyboard nav, so we mirror
-  // that here so pins can be filtered per-slide. Non-deck documents return
-  // `null` and pins with `slide_index === null` render unconditionally.
-  useEffect(() => {
-    let alive = true;
-    const tick = () => {
-      if (!alive) return;
-      const idx = readActiveSlideIdx(iframeRef.current);
-      setActiveSlideIdx((prev) => (prev === idx ? prev : idx));
-    };
-    tick();
-    const id = window.setInterval(tick, 200);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [iframeRef]);
 
   const visible = activeRelPath
     ? comments.filter((c) => {
@@ -122,23 +104,6 @@ export default function CommentLayer({
       ))}
     </div>
   );
-}
-
-function readActiveSlideIdx(iframe: HTMLIFrameElement | null): number | null {
-  if (!iframe) return null;
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return null;
-  }
-  if (!doc) return null;
-  const slides = doc.querySelectorAll("[data-slide]");
-  if (slides.length === 0) return null;
-  const active = doc.querySelector("[data-slide][data-active]");
-  if (!active) return 0;
-  const idx = Array.prototype.indexOf.call(slides, active);
-  return idx >= 0 ? idx : 0;
 }
 
 function CommentPin({
