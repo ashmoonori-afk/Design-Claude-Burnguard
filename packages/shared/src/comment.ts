@@ -5,6 +5,7 @@ export interface Comment {
   node_selector: string;
   x_pct: number;
   y_pct: number;
+  slide_index: number | null;
   body: string;
   author_id: string;
   resolved_at: number | null;
@@ -17,6 +18,7 @@ export interface CreateCommentRequest {
   node_selector?: string;
   x_pct: number;
   y_pct: number;
+  slide_index?: number | null;
   body?: string;
 }
 

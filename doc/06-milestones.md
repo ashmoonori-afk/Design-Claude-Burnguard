@@ -115,8 +115,14 @@ High-level focus (see §7 for the concrete commit-sized sprint plan):
 Planned focus:
 - real tweaks panel
 - draw/present modes
-- design system extraction from external sources
 - handoff export and broader packaging features
+
+### Phase 4 - Design system ingestion and platform polish
+
+Planned focus:
+- upload a designed file and automatically extract a reusable design system
+- broader design system extraction/import flows from external sources
+- auto-update and SmartScreen signing
 
 ## 6. Delivery Guidance
 
@@ -171,7 +177,6 @@ reconstructing context.
 
 - Full tweaks two-way inspector (Phase 3 P3.1)
 - Draw mode / Present mode (Phase 3 P3.3 / P3.4)
-- DS extraction from GitHub/Figma (Phase 3 P3.5 / P3.6)
+- DS extraction from uploaded design files / GitHub / Figma (Phase 4)
 - macOS / Linux builds (Phase 3 P3.10 / P3.11)
 - Auto-update, SmartScreen signing (Phase 4)
-

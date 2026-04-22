@@ -173,6 +173,7 @@ export const commentsTable = sqliteTable(
     nodeSelector: text("node_selector").notNull().default(""),
     xPct: real("x_pct").notNull(),
     yPct: real("y_pct").notNull(),
+    slideIndex: integer("slide_index"),
     body: text("body").notNull().default(""),
     authorId: text("author_id").notNull().default("local"),
     resolvedAt: integer("resolved_at"),

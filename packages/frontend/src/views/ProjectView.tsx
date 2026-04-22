@@ -121,6 +121,7 @@ export default function ProjectView() {
       x_pct: number;
       y_pct: number;
       node_selector: string;
+      slide_index: number | null;
     }) => createProjectComment(id!, input),
     onSuccess: (created) => {
       queryClient.setQueryData<Comment[]>(

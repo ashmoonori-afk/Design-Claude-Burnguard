@@ -81,6 +81,7 @@ export default function Canvas({
     x_pct: number;
     y_pct: number;
     node_selector: string;
+    slide_index: number | null;
   }) => void;
   onFocusComment: (id: string | null) => void;
 }) {

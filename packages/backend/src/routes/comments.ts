@@ -55,7 +55,14 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
     );
   }
 
-  const { rel_path, node_selector, x_pct, y_pct, body: commentBody } = body;
+  const {
+    rel_path,
+    node_selector,
+    x_pct,
+    y_pct,
+    slide_index,
+    body: commentBody,
+  } = body;
   if (typeof rel_path !== "string" || rel_path.trim().length === 0) {
     return c.json(
       fail("invalid_rel_path", "rel_path is required", { rel_path }),
@@ -68,12 +75,28 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
   if (typeof y_pct !== "number" || !Number.isFinite(y_pct)) {
     return c.json(fail("invalid_y_pct", "y_pct must be a number"), 400);
   }
+  let slideIndex: number | null | undefined;
+  if (slide_index === undefined || slide_index === null) {
+    slideIndex = slide_index;
+  } else if (
+    typeof slide_index === "number" &&
+    Number.isInteger(slide_index) &&
+    slide_index >= 0
+  ) {
+    slideIndex = slide_index;
+  } else {
+    return c.json(
+      fail("invalid_slide_index", "slide_index must be a non-negative integer or null"),
+      400,
+    );
+  }
 
   const created = await createProjectComment(id, {
     rel_path,
     node_selector: typeof node_selector === "string" ? node_selector : undefined,
     x_pct,
     y_pct,
+    slide_index: slideIndex,
     body: typeof commentBody === "string" ? commentBody : undefined,
   });
 
