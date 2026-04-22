@@ -12,10 +12,14 @@ export default function MessageStream({
   events,
   session,
   onOpenFile,
+  onRevertTurn,
+  revertingTurnId,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
   onOpenFile?: (relPath: string) => void;
+  onRevertTurn?: (turnId: string) => void;
+  revertingTurnId?: string | null;
 }) {
   const groups = useMemo(() => buildGroups(events), [events]);
 
@@ -29,6 +33,9 @@ export default function MessageStream({
                 key={g.ev.id}
                 text={g.ev.text}
                 attachmentCount={g.ev.attachmentCount}
+                turnId={g.ev.turnId}
+                onRevert={onRevertTurn}
+                reverting={revertingTurnId === g.ev.turnId}
               />
             );
           case "message":

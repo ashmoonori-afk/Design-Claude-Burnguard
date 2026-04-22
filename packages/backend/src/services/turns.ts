@@ -11,7 +11,7 @@ import {
 import { getSessionInfo } from "../db/seed";
 import { broker } from "./broker";
 import { buildSessionContext } from "./context";
-import { writeTurnCheckpoint } from "./checkpoints";
+import { writePreTurnSnapshot, writeTurnCheckpoint } from "./checkpoints";
 import { indexProjectFiles } from "./files";
 import { appendSessionTrace } from "./trace";
 import { detectBackends } from "./backends";
@@ -205,6 +205,30 @@ async function runUserTurnInternal(
     });
     await setSessionStatus(sessionId, "idle");
     return;
+  }
+
+  // Snapshot the project tree before the adapter touches anything so
+  // the rollback UI (P3.7) can restore to the exact pre-turn state.
+  // Non-fatal: if the copy blows up the turn still proceeds, just
+  // without an available checkpoint for this turn.
+  try {
+    const snapshot = await writePreTurnSnapshot(
+      sessionContext.project.project_id,
+      turnId,
+    );
+    if (snapshot) {
+      await appendSessionTrace(sessionId, {
+        level: "pre_turn_snapshot",
+        turnId,
+        path: snapshot.path,
+      });
+    }
+  } catch (err) {
+    await appendSessionTrace(sessionId, {
+      level: "pre_turn_snapshot_failed",
+      turnId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const prompt = await buildPrompt(sessionContext, payload);

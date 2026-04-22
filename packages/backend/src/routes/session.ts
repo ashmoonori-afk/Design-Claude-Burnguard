@@ -9,9 +9,19 @@ import {
   setSessionBackend,
   setSessionStatus,
 } from "../db/events";
-import { getSessionInfo } from "../db/seed";
+import {
+  getLatestProjectSession,
+  getProjectDetail,
+  getSessionInfo,
+} from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
 import { broker } from "../services/broker";
+import {
+  hasSnapshot,
+  restoreFromSnapshot,
+} from "../services/checkpoints";
+import { appendSessionTrace } from "../services/trace";
+import { indexProjectFiles } from "../services/files";
 import {
   interruptUserTurn,
   isUserTurnRunning,
@@ -304,6 +314,69 @@ if (process.env.BG_DEV === "1") {
     },
   );
 }
+
+/**
+ * Rolls a project's file tree back to the pre-turn snapshot captured
+ * before `turnId`. Refuses while a turn is running — a concurrent
+ * restore would race with the adapter writing fresh files.
+ */
+sessionRoutes.post(
+  "/api/projects/:projectId/checkpoints/:turnId/restore",
+  async (c) => {
+    const projectId = c.req.param("projectId");
+    const turnId = c.req.param("turnId");
+    const project = await getProjectDetail(projectId);
+    if (!project) {
+      return c.json(
+        fail("project_not_found", "Project not found", { projectId }),
+        404,
+      );
+    }
+
+    if (!(await hasSnapshot(projectId, turnId))) {
+      return c.json(
+        fail("snapshot_not_found", "No pre-turn snapshot for this turn", {
+          projectId,
+          turnId,
+        }),
+        404,
+      );
+    }
+
+    const session = await getLatestProjectSession(projectId);
+    if (session && isUserTurnRunning(session.id)) {
+      return c.json(
+        fail("session_busy", "Cannot restore while a turn is running", {
+          sessionId: session.id,
+        }),
+        409,
+      );
+    }
+
+    const result = await restoreFromSnapshot(projectId, turnId);
+    if (!result) {
+      return c.json(
+        fail("restore_failed", "Snapshot disappeared during restore", {
+          projectId,
+          turnId,
+        }),
+        500,
+      );
+    }
+
+    await indexProjectFiles(projectId);
+    if (session) {
+      await appendSessionTrace(session.id, {
+        level: "turn_restored",
+        turnId,
+        restoredAt: result.restoredAt,
+        removed: result.removedEntries,
+        copied: result.copiedEntries,
+      });
+    }
+    return c.json(ok(result));
+  },
+);
 
 sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
   const id = c.req.param("id");

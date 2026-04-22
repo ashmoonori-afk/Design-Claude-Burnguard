@@ -16,12 +16,16 @@ export default function ChatPane({
   composerDisabled,
   onSend,
   onOpenFile,
+  onRevertTurn,
+  revertingTurnId,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
   composerDisabled?: boolean;
   onSend: (text: string, files: File[]) => void;
   onOpenFile?: (relPath: string) => void;
+  onRevertTurn?: (turnId: string) => void;
+  revertingTurnId?: string | null;
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const queryClient = useQueryClient();
@@ -81,6 +85,8 @@ export default function ChatPane({
             events={events}
             session={session}
             onOpenFile={onOpenFile}
+            onRevertTurn={onRevertTurn}
+            revertingTurnId={revertingTurnId}
           />
           <Composer onSend={onSend} disabled={composerDisabled} />
         </>

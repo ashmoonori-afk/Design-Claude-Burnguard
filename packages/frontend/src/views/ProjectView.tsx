@@ -26,6 +26,7 @@ import {
   refreshArtifacts,
 } from "@/api/project";
 import { apiFetch, ApiError } from "@/api/client";
+import { restoreCheckpoint } from "@/api/checkpoints";
 import {
   createProjectComment,
   listProjectComments,
@@ -333,6 +334,25 @@ export default function ProjectView() {
     setEditTarget(null);
     setTweaksTarget(null);
   }, [activeTabId]);
+
+  const restoreMutation = useMutation({
+    mutationFn: (turnId: string) => restoreCheckpoint(id!, turnId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+      ]);
+      setRefreshTick((value) => value + 1);
+      pushToast({ title: "Turn reverted", tone: "info" });
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not revert turn",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
 
   const putDrawsMutation = useMutation({
     mutationFn: ({
@@ -651,6 +671,12 @@ export default function ProjectView() {
           }}
           onOpenFile={(relPath) =>
             openFileAsTab(relPath, setOpenFileTabs, setActiveTabId)
+          }
+          onRevertTurn={(turnId) => restoreMutation.mutate(turnId)}
+          revertingTurnId={
+            restoreMutation.isPending
+              ? (restoreMutation.variables as string | undefined) ?? null
+              : null
           }
         />
 
