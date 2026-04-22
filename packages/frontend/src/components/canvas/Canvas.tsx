@@ -12,21 +12,14 @@ const PLACEHOLDER_SRC = `<!doctype html>
     :root { color-scheme: dark; }
     body {
       margin: 0;
-      background: #0F1114;
-      color: #fff;
+      background: #101318;
+      color: white;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      overflow: hidden;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
     }
-    .slide {
-      width: 100vw;
-      height: 100vh;
-      padding: 80px;
-      box-sizing: border-box;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      position: relative;
-    }
+    .wrap { text-align: center; padding: 48px; }
     .eyebrow {
       color: #E06B4C;
       font-size: 12px;
@@ -52,7 +45,7 @@ const PLACEHOLDER_SRC = `<!doctype html>
   </style>
 </head>
 <body>
-  <section class="slide">
+  <section class="wrap">
     <div class="eyebrow">BurnGuard Canvas</div>
     <h1 class="title">Artifact preview</h1>
     <p class="subtitle">Your live project artifact appears here once the backend entrypoint is available.</p>
@@ -68,10 +61,10 @@ export default function Canvas({
   onSelect,
   onRefresh,
 }: {
-  mode: CanvasMode;
+  mode: CanvasMode | null;
   src?: string | null;
   frameKey?: string;
-  onModeChange: (m: CanvasMode) => void;
+  onModeChange: (m: CanvasMode | null) => void;
   onSelect: (s: SelectedNode) => void;
   onRefresh: () => void;
 }) {

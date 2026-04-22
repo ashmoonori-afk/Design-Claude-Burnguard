@@ -1,3 +1,5 @@
+import PreviewIframe from "./PreviewIframe";
+
 interface PreviewSection {
   group: string;
   items: Array<{ id: string; title: string; desc?: string }>;
@@ -47,7 +49,7 @@ const SECTIONS: PreviewSection[] = [
   },
 ];
 
-export default function SystemPreviewGrid() {
+export default function SystemPreviewGrid({ systemId }: { systemId: string }) {
   return (
     <div className="px-8 py-6 space-y-8">
       {SECTIONS.map((grp) => (
@@ -58,7 +60,7 @@ export default function SystemPreviewGrid() {
           <div
             className="grid gap-4"
             style={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
             }}
           >
             {grp.items.map((it) => (
@@ -66,8 +68,12 @@ export default function SystemPreviewGrid() {
                 key={it.id}
                 className="rounded-xl border border-border bg-card p-4 hover:shadow-app-2 transition-shadow"
               >
-                <div className="aspect-video rounded-md bg-muted mb-3 grid place-items-center text-[11px] font-mono text-muted-foreground">
-                  preview/{it.id}.html
+                <div className="mb-3">
+                  <PreviewIframe
+                    systemId={systemId}
+                    path={`preview/${it.id}.html`}
+                    title={it.title}
+                  />
                 </div>
                 <div className="text-sm font-medium">{it.title}</div>
                 {it.desc && (
@@ -81,7 +87,8 @@ export default function SystemPreviewGrid() {
         </section>
       ))}
       <p className="text-[11px] text-muted-foreground">
-        Preview HTMLs render from the file content route in Sprint 4. Phase 1 shows the structure only.
+        Preview content streams from <code className="font-mono">GET /api/design-systems/:id/files/preview/:name</code>.
+        If cards show &ldquo;preview route pending&rdquo;, the backend has not yet implemented the file-serving route.
       </p>
     </div>
   );

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { detectBackends, listDesignSystems, listProjects } from "@/api/home";
+import {
+  deleteProject,
+  detectBackends,
+  listDesignSystems,
+  listProjects,
+} from "@/api/home";
 import CardGrid from "@/components/home/CardGrid";
 import {
   projectToCard,
@@ -9,6 +14,7 @@ import {
   type CardViewModel,
 } from "@/components/home/mappers";
 import ProjectCard from "@/components/home/ProjectCard";
+import DeleteProjectDialog from "@/components/home/DeleteProjectDialog";
 import CliMissingModal from "@/components/errors/CliMissingModal";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,10 +28,16 @@ import { useUIStore } from "@/state/uiStore";
 type HomeTab = "recent" | "mine" | "examples" | "systems";
 
 export default function HomeView() {
+  const queryClient = useQueryClient();
+  const pushToast = useUIStore((s) => s.pushToast);
   const [activeTab, setActiveTab] = useState<HomeTab>("recent");
   const cliMissingShown = useUIStore((s) => s.cliMissingShown);
   const setCliMissingShown = useUIStore((s) => s.setCliMissingShown);
   const [cliMissingOpen, setCliMissingOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const recentQuery = useQuery({
     queryKey: ["projects", "recent"],
@@ -52,6 +64,22 @@ export default function HomeView() {
     queryFn: detectBackends,
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteProject(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({ title: "Project deleted", tone: "success" });
+      setDeleteTarget(null);
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Delete failed",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
   useEffect(() => {
     const detection = detectionQuery.data;
     if (!detection || cliMissingShown) {
@@ -70,6 +98,9 @@ export default function HomeView() {
   const systemCards = (systemsQuery.data ?? []).map((system, index) =>
     systemToCard(system, index),
   );
+
+  const onProjectDelete = (card: CardViewModel) =>
+    setDeleteTarget({ id: card.id, name: card.name });
 
   return (
     <>
@@ -98,6 +129,7 @@ export default function HomeView() {
               <CardSection
                 cards={recentCards}
                 emptyText="No recent projects yet."
+                onDelete={onProjectDelete}
               />
             </TabsContent>
 
@@ -105,6 +137,7 @@ export default function HomeView() {
               <CardSection
                 cards={mineCards}
                 emptyText="No personal projects yet."
+                onDelete={onProjectDelete}
               />
             </TabsContent>
 
@@ -112,6 +145,7 @@ export default function HomeView() {
               <CardSection
                 cards={exampleCards}
                 emptyText="No template-based examples yet."
+                onDelete={onProjectDelete}
               />
             </TabsContent>
 
@@ -132,6 +166,18 @@ export default function HomeView() {
           detection={detectionQuery.data}
         />
       ) : null}
+
+      <DeleteProjectDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setDeleteTarget(null);
+        }}
+        projectName={deleteTarget?.name ?? ""}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+        isPending={deleteMutation.isPending}
+      />
     </>
   );
 }
@@ -139,9 +185,11 @@ export default function HomeView() {
 function CardSection({
   cards,
   emptyText,
+  onDelete,
 }: {
   cards: CardViewModel[];
   emptyText: string;
+  onDelete?: (card: CardViewModel) => void;
 }) {
   if (cards.length === 0) {
     return (
@@ -154,7 +202,11 @@ function CardSection({
   return (
     <CardGrid>
       {cards.map((card) => (
-        <ProjectCard key={card.id} {...card} />
+        <ProjectCard
+          key={card.id}
+          {...card}
+          onDelete={onDelete ? () => onDelete(card) : undefined}
+        />
       ))}
     </CardGrid>
   );

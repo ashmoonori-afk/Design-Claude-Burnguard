@@ -22,14 +22,27 @@ const host = "127.0.0.1";
 const server = Bun.serve({
   port,
   hostname: host,
+  // Bun's default is 10 seconds, which kills SSE streams (long-lived) and
+  // any POST that awaits a multi-minute LLM CLI subprocess. 255 is the max
+  // a single uint8 allows; SSE routes also write periodic heartbeats.
+  idleTimeout: 255,
   fetch: app.fetch,
 });
 
 const url = `http://${host}:${server.port}`;
 console.log(`[burnguard] listening on ${url}`);
 
-if (config.autoOpenBrowser) {
+// In dev (package.json sets BG_DEV=1), the React SPA is served by Vite on a
+// separate port (5173-ish) and this backend only serves /api/*. Auto-opening
+// 14070 would show the Phase 0 hello page instead of the app — skip it.
+const isDev = process.env.BG_DEV === "1";
+if (config.autoOpenBrowser && !isDev) {
   openBrowser(url);
+}
+if (isDev) {
+  console.log(
+    "[burnguard] dev mode — open the Vite frontend at http://127.0.0.1:5173/",
+  );
 }
 
 // Keep the process alive and exit cleanly on Ctrl+C

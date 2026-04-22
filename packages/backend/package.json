@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
+    "dev": "BG_DEV=1 bun run --watch src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,0 +1,98 @@
+/**
+ * Runs `claude -p --output-format stream-json --verbose` against a project dir,
+ * piping the built prompt to stdin and parsing newline-delimited JSON on stdout.
+ *
+ * Claude Code 1.x stream-json schema (observed):
+ *   {"type":"system","subtype":"init",...}
+ *   {"type":"assistant","message":{"content":[{type:"text"|"thinking"|"tool_use",...}]}}
+ *   {"type":"user","message":{"content":[{type:"tool_result",tool_use_id,content,is_error}]}}
+ *   {"type":"result","subtype":"success","usage":{...}}
+ */
+
+export interface RunnerOptions {
+  binaryPath: string;
+  projectDir: string;
+  prompt: string;
+  onStdoutLine: (line: string) => Promise<void> | void;
+  onStderrLine?: (line: string) => Promise<void> | void;
+  sessionId?: string;
+}
+
+export interface RunnerResult {
+  exitCode: number;
+}
+
+export async function runClaudeCode(options: RunnerOptions): Promise<RunnerResult> {
+  // Direct invocation — Bun.spawn's `cwd` option propagates to the child,
+  // and on Windows the `claude.cmd` wrapper inherits that cwd so the node
+  // process inside sees `process.cwd()` equal to projectDir. This path was
+  // previously verified with real Claude output; wrapping in `cmd.exe /c`
+  // broke stdin piping on Windows and caused the CLI to hang.
+  const cmd = [
+    options.binaryPath,
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+  ];
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[claude-code] spawn cwd=${options.projectDir} binary=${options.binaryPath}`,
+  );
+
+  const proc = Bun.spawn({
+    cmd,
+    cwd: options.projectDir,
+    stdin: new Blob([options.prompt]),
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env },
+  });
+
+  await Promise.all([
+    readLines(proc.stdout, options.onStdoutLine),
+    options.onStderrLine
+      ? readLines(proc.stderr, options.onStderrLine)
+      : readLines(proc.stderr, () => {}),
+  ]);
+
+  const exitCode = await proc.exited;
+  // eslint-disable-next-line no-console
+  console.log(`[claude-code] exit=${exitCode}`);
+  return { exitCode };
+}
+
+async function readLines(
+  stream: ReadableStream<Uint8Array>,
+  onLine: (line: string) => Promise<void> | void,
+): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx = buffer.indexOf("\n");
+      while (idx >= 0) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.length > 0) {
+          await onLine(line);
+        }
+        idx = buffer.indexOf("\n");
+      }
+    }
+    if (buffer.length > 0) {
+      await onLine(buffer);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
+  }
+}

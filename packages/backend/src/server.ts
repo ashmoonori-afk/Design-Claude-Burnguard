@@ -21,8 +21,14 @@ app.route("/", systemRoutes);
 
 app.get("/assets/*", async (c) => {
   const distDir = findFrontendDistDir();
-  const assetPath = c.req.param("*") ?? "";
-  if (!distDir || !assetPath) {
+  // Hono 4.x does not expose the wildcard match via c.req.param("*") for a
+  // bare `/*` pattern — extract manually from the path.
+  const prefix = "/assets/";
+  const rawPath = new URL(c.req.url).pathname;
+  const assetPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!distDir || !assetPath || assetPath.includes("..")) {
     return c.notFound();
   }
 

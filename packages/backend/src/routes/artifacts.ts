@@ -70,20 +70,37 @@ artifactRoutes.post("/api/projects/:id/refresh", async (c) => {
 
 artifactRoutes.get("/api/projects/:id/fs/*", async (c) => {
   const projectId = c.req.param("id");
-  const relPath = c.req.param("*") ?? "";
+  // Hono 4.x does not expose the wildcard match via c.req.param("*") for a
+  // bare `/*` pattern — that always returns empty. Parse the tail manually
+  // from the request path so `/api/projects/:id/fs/foo/bar.html` yields
+  // relPath=`foo/bar.html`.
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path;
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
   const resolved = await resolveProjectFile(projectId, relPath);
   if (!resolved) {
+    // eslint-disable-next-line no-console
+    console.log(`[fs] 404 resolve failed: projectId=${projectId} relPath=${JSON.stringify(relPath)}`);
     return c.json(fail("file_not_found", "Project file not found", { projectId, relPath }), 404);
   }
 
   try {
     const info = await stat(resolved.absolutePath);
     if (!info.isFile()) {
+      // eslint-disable-next-line no-console
+      console.log(`[fs] 400 not-a-file: ${resolved.absolutePath}`);
       return c.json(fail("not_a_file", "Requested path is not a file", { relPath }), 400);
     }
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.log(`[fs] 404 stat failed: ${resolved.absolutePath} err=${err instanceof Error ? err.message : String(err)}`);
     return c.json(fail("file_not_found", "Project file not found", { projectId, relPath }), 404);
   }
+
+  // eslint-disable-next-line no-console
+  console.log(`[fs] 200 serving: ${resolved.absolutePath}`);
 
   const contentType = detectContentType(resolved.absolutePath);
   c.header("Cache-Control", "no-cache");

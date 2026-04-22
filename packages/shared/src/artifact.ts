@@ -3,7 +3,10 @@ import type { FileInfo } from "./harness";
 export interface ArtifactSummary {
   project_id: string;
   entrypoint: string;
-  entrypoint_url: string;
+  // Nullable: a freshly-created project with no HTML files yet has no renderable
+  // entrypoint. The canvas should fall back to a placeholder rather than trying
+  // to fetch a bare `/fs/` URL (which 404s with `relPath: ""`).
+  entrypoint_url: string | null;
   design_system_id: string | null;
   design_system_url: string | null;
   file_count: number;

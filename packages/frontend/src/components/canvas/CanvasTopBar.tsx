@@ -16,8 +16,8 @@ export default function CanvasTopBar({
   onModeChange,
   onRefresh,
 }: {
-  mode: CanvasMode;
-  onModeChange: (m: CanvasMode) => void;
+  mode: CanvasMode | null;
+  onModeChange: (m: CanvasMode | null) => void;
   onRefresh: () => void;
 }) {
   return (
@@ -29,9 +29,17 @@ export default function CanvasTopBar({
           return (
             <button
               key={m.id}
-              onClick={() => !disabled && onModeChange(m.id)}
+              onClick={() =>
+                !disabled && onModeChange(active ? null : m.id)
+              }
               disabled={disabled}
-              title={disabled ? `Phase ${m.phase}` : undefined}
+              title={
+                disabled
+                  ? `Phase ${m.phase}`
+                  : active
+                    ? "Click again to deactivate"
+                    : undefined
+              }
               className={cn(
                 "px-2.5 h-7 rounded text-xs transition-colors",
                 active

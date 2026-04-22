@@ -1,3 +1,4 @@
+import { ulid } from "ulid";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { ApiErrorBody, ApiSuccess, NormalizedEvent, UserEvent } from "@bg/shared";
@@ -87,7 +88,30 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
     );
   }
 
-  await runUserTurn(id, payload);
+  // Fire-and-forget — the CLI can take minutes. Let the broker stream
+  // events to SSE subscribers. The outer catch is a safety net in case
+  // runUserTurn throws before its own try/catch is set up.
+  void runUserTurn(id, payload).catch(async (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    const errEvent: NormalizedEvent = {
+      id: ulid(),
+      ts: Date.now(),
+      type: "status.error",
+      message,
+      recoverable: true,
+    };
+    await insertNormalizedEvent(id, errEvent).catch(() => {});
+    broker.publish(id, errEvent);
+    const idle: NormalizedEvent = {
+      id: ulid(),
+      ts: Date.now(),
+      type: "status.idle",
+      stopReason: "error",
+    };
+    await insertNormalizedEvent(id, idle).catch(() => {});
+    broker.publish(id, idle);
+    await setSessionStatus(id, "idle").catch(() => {});
+  });
   return c.json(ok({ accepted: true }));
 });
 
@@ -126,12 +150,14 @@ sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
       });
     });
 
+    // Heartbeat must fire inside Bun.serve's idleTimeout window (255s max)
+    // to keep the SSE connection alive during long Claude Code runs.
     const heartbeat = setInterval(async () => {
       await stream.writeSSE({
         data: JSON.stringify({ type: "heartbeat", ts: Date.now() }),
         event: "heartbeat",
       });
-    }, 15000);
+    }, 8000);
 
     try {
       await new Promise<void>((resolve) => {

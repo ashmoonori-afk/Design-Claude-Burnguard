@@ -1,5 +1,9 @@
+import { rm } from "node:fs/promises";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { ApiErrorBody, ApiSuccess, ProjectDetail, SessionInfo } from "@bg/shared";
+import { getDb } from "../db/client";
+import { projectsTable } from "../db/schema";
 import {
   getLatestProjectSession,
   getProjectDetail,
@@ -45,4 +49,22 @@ projectRoutes.get("/api/sessions/:id", async (c) => {
     return c.json(fail("session_not_found", "Session not found", { id }), 404);
   }
   return c.json(ok(session satisfies SessionInfo));
+});
+
+projectRoutes.delete("/api/projects/:id", async (c) => {
+  const id = c.req.param("id");
+  const project = await getProjectDetail(id);
+  if (!project) {
+    return c.json(fail("project_not_found", "Project not found", { id }), 404);
+  }
+
+  // Remove the filesystem directory (ignore errors so the DB row still
+  // gets cleaned up even if a file handle is held or the dir is gone).
+  await rm(project.dir_path, { recursive: true, force: true }).catch(() => {});
+
+  // ON DELETE CASCADE on sessions/events/attachments/files/comments/tweaks/exports
+  // removes the rest.
+  await getDb().delete(projectsTable).where(eq(projectsTable.id, id));
+
+  return c.body(null, 204);
 });

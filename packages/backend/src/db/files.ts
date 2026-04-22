@@ -6,22 +6,30 @@ import { filesTable } from "./schema";
 
 export async function replaceProjectFiles(projectId: string, files: FileInfo[]) {
   const db = getDb();
-  await db.delete(filesTable).where(eq(filesTable.projectId, projectId));
 
-  if (files.length === 0) {
-    return;
-  }
+  // Wrap delete+insert in a transaction so two concurrent callers
+  // (fs-watcher + post-turn reindex + context-builder) can't interleave and
+  // trigger UNIQUE(project_id, rel_path) violations.
+  db.transaction((tx) => {
+    tx.delete(filesTable).where(eq(filesTable.projectId, projectId)).run();
 
-  await db.insert(filesTable).values(
-    files.map((file) => ({
-      id: ulid(),
-      projectId,
-      relPath: file.rel_path,
-      category: file.category,
-      sizeBytes: file.size_bytes ?? null,
-      updatedAt: file.updated_at ?? Date.now(),
-    })),
-  );
+    if (files.length === 0) {
+      return;
+    }
+
+    tx.insert(filesTable)
+      .values(
+        files.map((file) => ({
+          id: ulid(),
+          projectId,
+          relPath: file.rel_path,
+          category: file.category,
+          sizeBytes: file.size_bytes ?? null,
+          updatedAt: file.updated_at ?? Date.now(),
+        })),
+      )
+      .run();
+  });
 }
 
 export async function listProjectFiles(projectId: string) {

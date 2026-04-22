@@ -4,7 +4,16 @@ import type { ArtifactSummary, FileInfo } from "@bg/shared";
 import { listProjectFiles as listProjectFilesFromDb, replaceProjectFiles } from "../db/files";
 import { getProjectDetail } from "../db/seed";
 
-const IGNORED_DIRS = new Set([".attachments", ".meta", ".git"]);
+const IGNORED_DIRS = new Set([
+  ".attachments",
+  ".meta",
+  ".git",
+  // Artifacts from the user's global Claude Code hooks (oh-my-claudecode).
+  // These appear inside the project dir but are not authored by the agent
+  // and shouldn't clutter the file tree or the canvas.
+  ".omc",
+  ".claude",
+]);
 
 export async function indexProjectFiles(projectId: string) {
   const project = await getProjectDetail(projectId);
@@ -43,10 +52,20 @@ export async function buildArtifactSummary(projectId: string): Promise<ArtifactS
     project.updated_at,
   );
 
+  // Pick the actual file to render in the canvas:
+  //   1. `project.entrypoint` if set AND it exists in the indexed files
+  //   2. otherwise first HTML file we can find
+  //   3. otherwise null (frontend will show the placeholder iframe)
+  // Emitting a URL like `/fs/` with no path causes the `relPath: ""` 404 loop.
+  const entrypoint = pickEntrypoint(project.entrypoint, files);
+  const entrypoint_url = entrypoint
+    ? `/api/projects/${project.id}/fs/${entrypoint}`
+    : null;
+
   return {
     project_id: project.id,
-    entrypoint: project.entrypoint,
-    entrypoint_url: `/api/projects/${project.id}/fs/${project.entrypoint}`,
+    entrypoint: entrypoint ?? project.entrypoint,
+    entrypoint_url,
     design_system_id: project.design_system_id,
     design_system_url: project.design_system_id
       ? `/api/design-systems/${project.design_system_id}`
@@ -54,6 +73,21 @@ export async function buildArtifactSummary(projectId: string): Promise<ArtifactS
     file_count: files.length,
     updated_at: latestUpdated,
   };
+}
+
+function pickEntrypoint(
+  preferred: string | undefined | null,
+  files: FileInfo[],
+): string | null {
+  const preferredTrimmed = typeof preferred === "string" ? preferred.trim() : "";
+  if (preferredTrimmed) {
+    const match = files.find(
+      (f) => f.rel_path === preferredTrimmed && f.category !== "folder",
+    );
+    if (match) return preferredTrimmed;
+  }
+  const html = files.find((f) => f.category === "html");
+  return html?.rel_path ?? null;
 }
 
 export async function resolveProjectFile(projectId: string, relPath: string) {
