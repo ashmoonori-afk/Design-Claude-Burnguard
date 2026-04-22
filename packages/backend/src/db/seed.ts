@@ -21,6 +21,8 @@ import {
 } from "./schema";
 import { homeDesignSystemFixtures, homeProjectFixtures } from "../data/home";
 import { projectsDir, systemsDir } from "../lib/paths";
+import { renderInitialArtifact } from "./templates";
+import type { SlideDeckOptions } from "./templates/slide-deck";
 
 export async function seedCoreData() {
   const db = getDb();
@@ -220,7 +222,11 @@ export async function createProjectRecord(input: {
   await mkdir(path.join(dirPath, ".meta", "checkpoints"), { recursive: true });
   await writeFile(
     path.join(dirPath, input.entrypoint),
-    createInitialArtifact(input.name, input.type),
+    renderInitialArtifact({
+      name: input.name,
+      type: input.type,
+      options: parseSlideDeckOptions(input.optionsJson),
+    }),
     "utf8",
   );
 
@@ -366,44 +372,21 @@ export async function listProjectIds() {
   return rows.map((row) => row.id);
 }
 
-function createInitialArtifact(
-  projectName: string,
-  type: ProjectSummary["type"],
-) {
-  const title = escapeHtml(projectName);
-  const heading =
-    type === "slide_deck" ? "Start a new deck" : "Start a new prototype";
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title}</title>
-  <style>
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f1e8; color: #18232d; }
-    main { min-height: 100vh; display: grid; place-items: center; padding: 48px; }
-    section { max-width: 920px; background: #fffdf9; border: 1px solid #e7dece; border-radius: 24px; padding: 56px; box-shadow: 0 20px 60px rgba(24,35,45,0.08); }
-    .eyebrow { color: #e06b4c; text-transform: uppercase; letter-spacing: 0.16em; font-size: 12px; margin-bottom: 20px; }
-    h1 { margin: 0; font-size: 52px; line-height: 0.96; letter-spacing: -0.04em; }
-    p { margin-top: 20px; font-size: 18px; line-height: 1.7; color: #52616c; }
-  </style>
-</head>
-<body>
-  <main>
-    <section data-bg-node-id="starter-root">
-      <div class="eyebrow">BurnGuard Starter</div>
-      <h1 data-bg-node-id="starter-title">${heading}</h1>
-      <p data-bg-node-id="starter-copy">Project: ${title}. Send your first prompt in chat to generate the first revision.</p>
-    </section>
-  </main>
-</body>
-</html>`;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+function parseSlideDeckOptions(optionsJson: string | null): SlideDeckOptions {
+  if (!optionsJson) return {};
+  try {
+    const parsed = JSON.parse(optionsJson);
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      return {
+        use_speaker_notes:
+          typeof record.use_speaker_notes === "boolean"
+            ? record.use_speaker_notes
+            : undefined,
+      };
+    }
+  } catch {
+    // malformed options JSON — fall through to defaults
+  }
+  return {};
 }

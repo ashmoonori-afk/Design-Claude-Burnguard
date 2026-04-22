@@ -10,11 +10,13 @@ type Tab = "chat" | "comments";
 export default function ChatPane({
   events,
   session,
+  composerDisabled,
   onSend,
   onOpenFile,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
+  composerDisabled?: boolean;
   onSend: (text: string, files: File[]) => void;
   onOpenFile?: (relPath: string) => void;
 }) {
@@ -47,7 +49,7 @@ export default function ChatPane({
             session={session}
             onOpenFile={onOpenFile}
           />
-          <Composer onSend={onSend} />
+          <Composer onSend={onSend} disabled={composerDisabled} />
         </>
       ) : (
         <div className="flex-1 grid place-items-center text-xs text-muted-foreground p-6 text-center">

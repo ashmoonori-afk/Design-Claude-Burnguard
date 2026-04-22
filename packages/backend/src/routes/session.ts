@@ -6,7 +6,7 @@ import { insertNormalizedEvent, listSessionEvents, setSessionStatus } from "../d
 import { getSessionInfo } from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
 import { broker } from "../services/broker";
-import { runUserTurn } from "../services/turns";
+import { isUserTurnRunning, startUserTurn } from "../services/turns";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -32,7 +32,6 @@ sessionRoutes.get("/api/sessions/:id/events", async (c) => {
   if (!session) {
     return c.json(fail("session_not_found", "Session not found", { id }), 404);
   }
-
   const sinceRaw = c.req.query("since");
   const since = sinceRaw ? Number.parseInt(sinceRaw, 10) : undefined;
   const events = await listSessionEvents(id, Number.isFinite(since) ? since : undefined);
@@ -44,6 +43,12 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
   const session = await getSessionInfo(id);
   if (!session) {
     return c.json(fail("session_not_found", "Session not found", { id }), 404);
+  }
+  if (isUserTurnRunning(id)) {
+    return c.json(
+      fail("session_busy", "A turn is already running for this session", { id }),
+      409,
+    );
   }
 
   const contentType = c.req.header("content-type") ?? "";
@@ -88,10 +93,18 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
     );
   }
 
+  const turn = startUserTurn(id, payload);
+  if (!turn) {
+    return c.json(
+      fail("session_busy", "A turn is already running for this session", { id }),
+      409,
+    );
+  }
+
   // Fire-and-forget — the CLI can take minutes. Let the broker stream
   // events to SSE subscribers. The outer catch is a safety net in case
   // runUserTurn throws before its own try/catch is set up.
-  void runUserTurn(id, payload).catch(async (err) => {
+  void turn.catch(async (err) => {
     const message = err instanceof Error ? err.message : String(err);
     const errEvent: NormalizedEvent = {
       id: ulid(),

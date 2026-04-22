@@ -53,6 +53,8 @@ export async function listSessionEvents(sessionId: string, since?: number) {
     .select({
       payload: eventsTable.payloadJson,
       direction: eventsTable.direction,
+      type: eventsTable.type,
+      turnId: eventsTable.turnId,
       processed_at: eventsTable.processedAt,
       id: eventsTable.id,
     })
@@ -64,9 +66,42 @@ export async function listSessionEvents(sessionId: string, since?: number) {
     )
     .orderBy(asc(eventsTable.processedAt), asc(eventsTable.id));
 
-  return rows
-    .filter((row) => row.direction === "down")
-    .map((row) => JSON.parse(row.payload) as NormalizedEvent);
+  const out: NormalizedEvent[] = [];
+  for (const row of rows) {
+    if (row.direction === "down") {
+      out.push(JSON.parse(row.payload) as NormalizedEvent);
+      continue;
+    }
+    // direction === "up" — synthesize a chat.user_message for legacy sessions
+    // that predate the server-side persistence of user messages as normalized
+    // events. Newer turns already emit chat.user_message via the broker, so
+    // we skip duplicates.
+    if (row.type !== "user.message") continue;
+    try {
+      const payload = JSON.parse(row.payload) as UserEvent;
+      if (payload.type !== "user.message") continue;
+      const hasSynth = rows.some(
+        (r) =>
+          r.direction === "down" &&
+          r.type === "chat.user_message" &&
+          Math.abs(r.processed_at - row.processed_at) < 500,
+      );
+      if (hasSynth) continue;
+      out.push({
+        id: row.id,
+        ts: row.processed_at,
+        type: "chat.user_message",
+        turnId: row.turnId ?? row.id,
+        text: payload.text,
+        attachmentCount: Array.isArray(payload.attachments)
+          ? payload.attachments.length
+          : 0,
+      });
+    } catch {
+      // bad row — skip silently
+    }
+  }
+  return out.sort((a, b) => (a.ts === b.ts ? a.id.localeCompare(b.id) : a.ts - b.ts));
 }
 
 export async function setSessionStatus(

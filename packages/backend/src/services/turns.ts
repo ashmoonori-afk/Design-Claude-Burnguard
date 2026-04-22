@@ -17,6 +17,8 @@ import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
 import { runAdapterTurn } from "../adapters/registry";
 
+const activeTurnSessionIds = new Set<string>();
+
 async function listDirSafe(dir: string): Promise<string[] | string> {
   try {
     return await readdir(dir);
@@ -46,7 +48,25 @@ async function persistAndPublish(sessionId: string, event: NormalizedEvent) {
  * real LLM CLI. See doc/03-backend-adapters.md for the event-normalization
  * contract the adapters must satisfy.
  */
-export async function runUserTurn(
+export function isUserTurnRunning(sessionId: string) {
+  return activeTurnSessionIds.has(sessionId);
+}
+
+export function startUserTurn(
+  sessionId: string,
+  payload: Extract<UserEvent, { type: "user.message" }>,
+) {
+  if (activeTurnSessionIds.has(sessionId)) {
+    return null;
+  }
+
+  activeTurnSessionIds.add(sessionId);
+  return runUserTurnInternal(sessionId, payload).finally(() => {
+    activeTurnSessionIds.delete(sessionId);
+  });
+}
+
+async function runUserTurnInternal(
   sessionId: string,
   payload: Extract<UserEvent, { type: "user.message" }>,
 ) {

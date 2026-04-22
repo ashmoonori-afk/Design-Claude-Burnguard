@@ -51,8 +51,11 @@ export default function ProjectView() {
   const [mode, setMode] = useState<CanvasMode | null>(null);
   const [selection, setSelection] = useState<SelectedNode | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [sendPending, setSendPending] = useState(false);
   const seenEventIdsRef = useRef(new Set<string>());
   const latestEventTsRef = useRef<number | undefined>(undefined);
+  const activeTabIdRef = useRef(activeTabId);
+  const sendPendingTimeoutRef = useRef<number | null>(null);
 
   const projectQuery = useQuery({
     queryKey: ["project", id],
@@ -110,12 +113,31 @@ export default function ProjectView() {
   }, [navigate, projectQuery.error, pushToast]);
 
   useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
+
+  useEffect(() => {
+    clearSendPending(sendPendingTimeoutRef, setSendPending);
+    seenEventIdsRef.current.clear();
+    latestEventTsRef.current = undefined;
+    setEvents([]);
+    setSessionState(null);
+    setActiveTabId("design-system");
+    setOpenFileTabs([]);
+    setMode(null);
+    setSelection(null);
+    setRefreshTick(0);
+  }, [id]);
+
+  useEffect(() => {
     if (!sessionQuery.data) return;
     // Initial seed only. Once events start flowing, `applyEventToSession`
     // owns the live session state — overriding it with a stale DB refetch
     // (e.g. the session row before `setSessionStatus("idle")` finishes)
     // would flip the status back to "running" after a turn completes.
-    setSessionState((current) => current ?? sessionQuery.data ?? null);
+    setSessionState((current) =>
+      current?.id === sessionQuery.data.id ? current : sessionQuery.data,
+    );
   }, [sessionQuery.data]);
 
   useEffect(() => {
@@ -138,9 +160,20 @@ export default function ProjectView() {
       cleanup = subscribeSessionStream(sessionId, (event) => {
         appendEvents([event], seenEventIdsRef, latestEventTsRef, setEvents);
         setSessionState((current) => applyEventToSession(current, event));
+        if (
+          event.type === "chat.user_message" ||
+          event.type === "status.running" ||
+          event.type === "status.error" ||
+          event.type === "status.idle"
+        ) {
+          clearSendPending(sendPendingTimeoutRef, setSendPending);
+        }
 
         if (event.type === "file.changed" && id) {
           openFileAsTab(event.path, setOpenFileTabs, setActiveTabId);
+          if (activeTabIdRef.current === event.path) {
+            setRefreshTick((value) => value + 1);
+          }
           void queryClient.invalidateQueries({
             queryKey: ["project", id, "files"],
           });
@@ -171,6 +204,7 @@ export default function ProjectView() {
   const files: FileInfo[] = filesQuery.data ?? [];
   const artifacts = artifactsQuery.data ?? null;
   const session = sessionState;
+  const composerDisabled = sendPending || session?.status === "running";
   const tabs = useMemo(
     () => buildTabs(project, openFileTabs),
     [openFileTabs, project],
@@ -243,22 +277,35 @@ export default function ProjectView() {
         <ChatPane
           events={events}
           session={session}
-          onSend={(text, attachedFiles) => {
+          composerDisabled={composerDisabled}
+          onSend={async (text, attachedFiles) => {
+            if (composerDisabled) {
+              return;
+            }
             // The backend persists+publishes a `chat.user_message` normalized
             // event as the first step of runUserTurn, so it echoes back
             // through SSE within ~10ms on localhost. No optimistic local
             // state needed — and this way history survives a page reload.
-            void sendUserEvent(session.id, {
-              type: "user.message",
-              text,
-              files: attachedFiles,
-            }).catch((error) => {
+            setSendPending(true);
+            armSendPendingFallback(sendPendingTimeoutRef, setSendPending);
+
+            try {
+              await sendUserEvent(session.id, {
+                type: "user.message",
+                text,
+                files: attachedFiles,
+              });
+            } catch (error) {
+              clearSendPending(sendPendingTimeoutRef, setSendPending);
               pushToast({
-                title: "Could not send message",
+                title:
+                  error instanceof ApiError && error.status === 409
+                    ? "Turn already running"
+                    : "Could not send message",
                 body: error instanceof Error ? error.message : String(error),
                 tone: "error",
               });
-            });
+            }
           }}
           onOpenFile={(relPath) =>
             openFileAsTab(relPath, setOpenFileTabs, setActiveTabId)
@@ -429,4 +476,28 @@ function encodeRelPath(relPath: string) {
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+function clearSendPending(
+  timerRef: MutableRefObject<number | null>,
+  setSendPending: Dispatch<SetStateAction<boolean>>,
+) {
+  if (timerRef.current != null) {
+    window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+  setSendPending(false);
+}
+
+function armSendPendingFallback(
+  timerRef: MutableRefObject<number | null>,
+  setSendPending: Dispatch<SetStateAction<boolean>>,
+) {
+  if (timerRef.current != null) {
+    window.clearTimeout(timerRef.current);
+  }
+  timerRef.current = window.setTimeout(() => {
+    timerRef.current = null;
+    setSendPending(false);
+  }, 5000);
 }

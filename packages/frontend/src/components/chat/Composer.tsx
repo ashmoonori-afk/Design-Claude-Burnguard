@@ -5,15 +5,17 @@ import { cn } from "@/lib/utils";
 
 export default function Composer({
   onSend,
+  disabled = false,
 }: {
   onSend: (text: string, files: File[]) => void;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const canSend = text.trim().length > 0;
+  const canSend = text.trim().length > 0 && !disabled;
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -68,6 +70,7 @@ export default function Composer({
         onChange={(e) => setText(e.target.value)}
         placeholder="Describe what you want to create..."
         rows={3}
+        disabled={disabled}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -94,6 +97,7 @@ export default function Composer({
           size="icon"
           className="h-7 w-7 text-muted-foreground"
           title="Settings"
+          disabled={disabled}
         >
           <Settings2 className="h-3.5 w-3.5" />
         </Button>
@@ -102,6 +106,7 @@ export default function Composer({
           size="icon"
           className="h-7 w-7 text-muted-foreground"
           title="Attach files"
+          disabled={disabled}
           onClick={() => fileInput.current?.click()}
         >
           <Paperclip className="h-3.5 w-3.5" />
@@ -111,6 +116,7 @@ export default function Composer({
           size="sm"
           className="h-7 gap-1 text-xs"
           title="Import a folder"
+          disabled={disabled}
         >
           <Import className="h-3.5 w-3.5" /> Import
         </Button>
