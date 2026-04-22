@@ -114,6 +114,39 @@ export async function resolveProjectFile(projectId: string, relPath: string) {
   };
 }
 
+/**
+ * Maps a project-relative file path to its draws sidecar under
+ * `<project>/.meta/draws/<rel_path>.svg`. Draws are the Draw mode
+ * (P3.2) annotation layer — kept under `.meta` so the exporter and
+ * the file watcher skip them (`.meta` is in `IGNORED_DIRS`). Returns
+ * both the absolute svg path and the parent dir so callers can
+ * `mkdir` before writing.
+ */
+export async function resolveDrawFile(projectId: string, relPath: string) {
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return null;
+  }
+
+  const normalized = normalizeRelativePath(relPath);
+  if (!normalized) {
+    return null;
+  }
+
+  const drawsRoot = path.resolve(project.dir_path, ".meta", "draws");
+  const svgPath = path.resolve(drawsRoot, `${normalized}.svg`);
+  if (!svgPath.startsWith(drawsRoot)) {
+    return null;
+  }
+
+  return {
+    project,
+    relPath: normalized,
+    absolutePath: svgPath,
+    parentDir: path.dirname(svgPath),
+  };
+}
+
 async function scanProjectDir(projectDir: string) {
   const output: FileInfo[] = [];
   await walk(projectDir, projectDir, output);

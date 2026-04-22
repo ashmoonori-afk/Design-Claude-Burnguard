@@ -2,11 +2,13 @@ import type { Comment } from "@bg/shared";
 import type { CanvasMode } from "./types";
 import type { SelectedNode } from "@/types/project";
 import type { EditTarget } from "@/components/canvas/EditLayer";
+import type { DrawTool } from "@/components/canvas/DrawLayer";
 import type {
   TweaksStyleKey,
   TweaksTarget,
 } from "@/components/canvas/TweaksLayer";
 import CommentPanel from "./CommentPanel";
+import DrawPanel from "./DrawPanel";
 import EditPanel from "./EditPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 import TweaksPanel from "./TweaksPanel";
@@ -35,6 +37,16 @@ export default function ModePanel({
   onApplyTweak,
   onResetTweaks,
   onClearTweaks,
+  drawTool,
+  drawColor,
+  drawStrokeWidth,
+  drawHasShapes,
+  onChangeDrawTool,
+  onChangeDrawColor,
+  onChangeDrawWidth,
+  onUndoDraw,
+  onRedoDraw,
+  onClearDraw,
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
@@ -57,6 +69,16 @@ export default function ModePanel({
   onApplyTweak: (patch: Partial<Record<TweaksStyleKey, string | null>>) => void;
   onResetTweaks: () => void;
   onClearTweaks: () => void;
+  drawTool: DrawTool;
+  drawColor: string;
+  drawStrokeWidth: number;
+  drawHasShapes: boolean;
+  onChangeDrawTool: (t: DrawTool) => void;
+  onChangeDrawColor: (c: string) => void;
+  onChangeDrawWidth: (w: number) => void;
+  onUndoDraw: () => void;
+  onRedoDraw: () => void;
+  onClearDraw: () => void;
 }) {
   if (!mode) return null;
 
@@ -92,9 +114,17 @@ export default function ModePanel({
         />
       )}
       {mode === "draw" && (
-        <EmptyPanel
-          title="Draw"
-          body="Overlay sketching ships in Phase 3."
+        <DrawPanel
+          tool={drawTool}
+          color={drawColor}
+          strokeWidth={drawStrokeWidth}
+          hasShapes={drawHasShapes}
+          onChangeTool={onChangeDrawTool}
+          onChangeColor={onChangeDrawColor}
+          onChangeWidth={onChangeDrawWidth}
+          onUndo={onUndoDraw}
+          onRedo={onRedoDraw}
+          onClear={onClearDraw}
         />
       )}
     </aside>

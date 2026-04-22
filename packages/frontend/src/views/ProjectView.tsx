@@ -42,11 +42,19 @@ import PermissionDialog, {
   type PermissionRequest,
 } from "@/components/chat/PermissionDialog";
 import Canvas from "@/components/canvas/Canvas";
+import {
+  deserializeDraws,
+  serializeDraws,
+  type DrawLayerHandle,
+  type DrawShape,
+  type DrawTool,
+} from "@/components/canvas/DrawLayer";
 import type { EditTarget } from "@/components/canvas/EditLayer";
 import type {
   TweaksStyleKey,
   TweaksTarget,
 } from "@/components/canvas/TweaksLayer";
+import { getProjectDraws, putProjectDraws } from "@/api/draws";
 import ModePanel from "@/components/modes/ModePanel";
 import type { CanvasMode } from "@/components/modes/types";
 import ArtifactTabs from "@/components/project/ArtifactTabs";
@@ -73,6 +81,12 @@ export default function ProjectView() {
   const [tweaksTarget, setTweaksTarget] = useState<TweaksTarget | null>(null);
   const tweaksUndoRef = useRef<TweaksUndoFrame[]>([]);
   const tweaksRedoRef = useRef<TweaksUndoFrame[]>([]);
+  const [drawTool, setDrawTool] = useState<DrawTool>("pen");
+  const [drawColor, setDrawColor] = useState("#EF4444");
+  const [drawStrokeWidth, setDrawStrokeWidth] = useState(4);
+  const [drawShapes, setDrawShapes] = useState<DrawShape[]>([]);
+  const [drawResetKey, setDrawResetKey] = useState("");
+  const drawLayerRef = useRef<DrawLayerHandle | null>(null);
   const [decidedToolCallIds, setDecidedToolCallIds] = useState<Set<string>>(
     () => new Set<string>(),
   );
@@ -306,6 +320,8 @@ export default function ProjectView() {
     setTweaksTarget(null);
     tweaksUndoRef.current = [];
     tweaksRedoRef.current = [];
+    setDrawShapes([]);
+    setDrawResetKey("");
     setDecidedToolCallIds(new Set());
     setRefreshTick(0);
   }, [id]);
@@ -314,6 +330,75 @@ export default function ProjectView() {
     setEditTarget(null);
     setTweaksTarget(null);
   }, [activeTabId]);
+
+  const putDrawsMutation = useMutation({
+    mutationFn: ({
+      relPath,
+      svg,
+    }: {
+      relPath: string;
+      svg: string;
+    }) => putProjectDraws(id!, relPath, svg),
+    onError: (err) => {
+      pushToast({
+        title: "Could not save draw",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
+  // Load saved draws for the current file tab. Computed inline from
+  // openFileTabs so we don't depend on the `activeRelPath` that's
+  // derived later in render after the early-return guard.
+  useEffect(() => {
+    if (!id) return;
+    const tab = openFileTabs.find((t) => t.id === activeTabId);
+    const relForDraws = tab?.kind === "file" ? tab.relPath ?? null : null;
+    if (!relForDraws) {
+      setDrawShapes([]);
+      setDrawResetKey(`none:${activeTabId}`);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const svg = await getProjectDraws(id, relForDraws);
+        if (cancelled) return;
+        setDrawShapes(deserializeDraws(svg));
+        setDrawResetKey(`${id}:${relForDraws}:${Date.now()}`);
+      } catch {
+        if (cancelled) return;
+        setDrawShapes([]);
+        setDrawResetKey(`${id}:${relForDraws}:err`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, activeTabId, openFileTabs]);
+
+  // Global Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z for Draw mode — routes to
+  // DrawLayer's internal undo/redo stack via ref. Draw shapes don't need
+  // the server-round-trip that Tweaks needs because the layer is purely
+  // frontend state; the serialized PUT only fires on commit.
+  useEffect(() => {
+    if (mode !== "draw") return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) drawLayerRef.current?.redo();
+      else drawLayerRef.current?.undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode]);
 
   // Global Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z for Tweaks. Only fires when the
   // user isn't typing into an input / textarea / contentEditable so the
@@ -604,6 +689,25 @@ export default function ProjectView() {
               onSelectEditTarget={setEditTarget}
               tweaksSelectedBgId={tweaksTarget?.bg_id ?? null}
               onSelectTweaksTarget={setTweaksTarget}
+              drawTool={drawTool}
+              drawColor={drawColor}
+              drawStrokeWidth={drawStrokeWidth}
+              drawInitialShapes={drawShapes}
+              drawResetKey={drawResetKey}
+              drawLayerRef={drawLayerRef}
+              onCommitDraws={(shapes) => {
+                setDrawShapes(shapes);
+                if (!activeRelPath) return;
+                const rect = document
+                  .querySelector("iframe")
+                  ?.getBoundingClientRect();
+                const svg = serializeDraws(
+                  rect?.width ?? 1280,
+                  rect?.height ?? 720,
+                  shapes,
+                );
+                putDrawsMutation.mutate({ relPath: activeRelPath, svg });
+              }}
             />
             <ModePanel
               mode={mode}
@@ -679,6 +783,16 @@ export default function ProjectView() {
                 });
               }}
               onClearTweaks={() => setTweaksTarget(null)}
+              drawTool={drawTool}
+              drawColor={drawColor}
+              drawStrokeWidth={drawStrokeWidth}
+              drawHasShapes={drawShapes.length > 0}
+              onChangeDrawTool={setDrawTool}
+              onChangeDrawColor={setDrawColor}
+              onChangeDrawWidth={setDrawStrokeWidth}
+              onUndoDraw={() => drawLayerRef.current?.undo()}
+              onRedoDraw={() => drawLayerRef.current?.redo()}
+              onClearDraw={() => drawLayerRef.current?.clear()}
             />
           </>
         )}

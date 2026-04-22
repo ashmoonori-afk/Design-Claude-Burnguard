@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Hono } from "hono";
 import type {
@@ -10,7 +10,7 @@ import type {
   FileInfo,
   PatchFileResponse,
 } from "@bg/shared";
-import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles, resolveProjectFile } from "../services/files";
+import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles, resolveDrawFile, resolveProjectFile } from "../services/files";
 import { enqueueProjectExport } from "../services/exports";
 import { FilePatchError, patchHtmlNode } from "../services/file-patch";
 import { getExportJob, listProjectExports } from "../db/exports";
@@ -200,6 +200,77 @@ artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
     }
     throw err;
   }
+});
+
+/**
+ * Draw mode (P3.2) annotations are stored per-file under
+ * `<project>/.meta/draws/<rel_path>.svg`. GET returns the saved svg
+ * (or 404 if the user hasn't drawn yet). PUT overwrites with the new
+ * svg; body is a plain string.
+ */
+artifactRoutes.get("/api/projects/:id/draws/*", async (c) => {
+  const projectId = c.req.param("id");
+  const prefix = `/api/projects/${projectId}/draws/`;
+  const rawPath = c.req.path;
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+  const resolved = await resolveDrawFile(projectId, relPath);
+  if (!resolved) {
+    return c.json(fail("project_not_found", "Project or path invalid", { projectId, relPath }), 404);
+  }
+
+  try {
+    const info = await stat(resolved.absolutePath);
+    if (!info.isFile()) {
+      return c.json(fail("not_a_file", "Draws sidecar is not a file", { relPath }), 400);
+    }
+  } catch {
+    // No saved draws yet — return an empty svg so the client doesn't
+    // have to special-case 404.
+    c.header("Content-Type", "image/svg+xml; charset=utf-8");
+    c.header("Cache-Control", "no-cache");
+    return c.body('<svg xmlns="http://www.w3.org/2000/svg"></svg>', 200);
+  }
+
+  const body = await readFile(resolved.absolutePath, "utf8");
+  c.header("Content-Type", "image/svg+xml; charset=utf-8");
+  c.header("Cache-Control", "no-cache");
+  return c.body(body, 200);
+});
+
+artifactRoutes.put("/api/projects/:id/draws/*", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
+  }
+
+  const prefix = `/api/projects/${projectId}/draws/`;
+  const rawPath = c.req.path;
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+
+  const resolved = await resolveDrawFile(projectId, relPath);
+  if (!resolved) {
+    return c.json(fail("path_escape", "Resolved path escapes the draws root", { relPath }), 400);
+  }
+
+  const body = await c.req.text();
+  if (typeof body !== "string" || body.length > 2_000_000) {
+    return c.json(fail("invalid_body", "svg body required (string, <= 2MB)"), 400);
+  }
+
+  await mkdir(resolved.parentDir, { recursive: true });
+  await writeFile(resolved.absolutePath, body, "utf8");
+  return c.json(ok({ rel_path: resolved.relPath, bytes: body.length }));
 });
 
 artifactRoutes.get("/api/projects/:id/exports", async (c) => {

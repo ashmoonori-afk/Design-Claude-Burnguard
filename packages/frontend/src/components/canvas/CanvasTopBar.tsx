@@ -8,7 +8,7 @@ const MODES: Array<{ id: CanvasMode; label: string; phase?: number }> = [
   { id: "tweaks", label: "Tweaks" },
   { id: "comment", label: "Comment" },
   { id: "edit", label: "Edit" },
-  { id: "draw", label: "Draw", phase: 3 },
+  { id: "draw", label: "Draw" },
 ];
 
 export default function CanvasTopBar({

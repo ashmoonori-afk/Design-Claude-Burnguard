@@ -2,6 +2,12 @@ import { useEffect, useRef } from "react";
 import type { Comment } from "@bg/shared";
 import CanvasTopBar from "./CanvasTopBar";
 import CommentLayer from "./CommentLayer";
+import type { Ref } from "react";
+import DrawLayer, {
+  type DrawLayerHandle,
+  type DrawShape,
+  type DrawTool,
+} from "./DrawLayer";
 import EditLayer, { type EditTarget } from "./EditLayer";
 import SelectorOverlay from "./SelectorOverlay";
 import TweaksLayer, { type TweaksTarget } from "./TweaksLayer";
@@ -74,6 +80,13 @@ export default function Canvas({
   onSelectEditTarget,
   tweaksSelectedBgId,
   onSelectTweaksTarget,
+  drawTool,
+  drawColor,
+  drawStrokeWidth,
+  drawInitialShapes,
+  drawResetKey,
+  drawLayerRef,
+  onCommitDraws,
   onActiveSlideChange,
 }: {
   mode: CanvasMode | null;
@@ -97,6 +110,13 @@ export default function Canvas({
   onSelectEditTarget: (target: EditTarget | null) => void;
   tweaksSelectedBgId: string | null;
   onSelectTweaksTarget: (target: TweaksTarget | null) => void;
+  drawTool: DrawTool;
+  drawColor: string;
+  drawStrokeWidth: number;
+  drawInitialShapes: DrawShape[];
+  drawResetKey: string;
+  drawLayerRef: Ref<DrawLayerHandle>;
+  onCommitDraws: (shapes: DrawShape[]) => void;
   onActiveSlideChange: (value: number | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -170,6 +190,16 @@ export default function Canvas({
           iframeRef={iframeRef}
           selectedBgId={mode === "tweaks" ? tweaksSelectedBgId : null}
           onSelect={onSelectTweaksTarget}
+        />
+        <DrawLayer
+          ref={drawLayerRef}
+          active={mode === "draw"}
+          tool={drawTool}
+          color={drawColor}
+          strokeWidth={drawStrokeWidth}
+          initialShapes={drawInitialShapes}
+          resetKey={drawResetKey}
+          onCommit={onCommitDraws}
         />
       </div>
     </div>
