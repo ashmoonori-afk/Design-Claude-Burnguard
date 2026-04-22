@@ -1,5 +1,7 @@
+import type { Comment } from "@bg/shared";
 import type { CanvasMode } from "./types";
 import type { SelectedNode } from "@/types/project";
+import CommentPanel from "./CommentPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 
 /**
@@ -10,9 +12,21 @@ import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 export default function ModePanel({
   mode,
   selection,
+  comments,
+  activeRelPath,
+  focusedCommentId,
+  onFocusComment,
+  onUpdateCommentBody,
+  onToggleCommentResolved,
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
+  comments: Comment[];
+  activeRelPath: string | null;
+  focusedCommentId: string | null;
+  onFocusComment: (id: string | null) => void;
+  onUpdateCommentBody: (id: string, body: string) => void;
+  onToggleCommentResolved: (id: string, resolved: boolean) => void;
 }) {
   if (!mode) return null;
 
@@ -26,9 +40,13 @@ export default function ModePanel({
         />
       )}
       {mode === "comment" && (
-        <EmptyPanel
-          title="Comment"
-          body="Anchor-based comments ship in Phase 2."
+        <CommentPanel
+          comments={comments}
+          activeRelPath={activeRelPath}
+          focusedId={focusedCommentId}
+          onFocus={onFocusComment}
+          onUpdateBody={onUpdateCommentBody}
+          onToggleResolved={onToggleCommentResolved}
         />
       )}
       {mode === "edit" && (

@@ -1,4 +1,5 @@
 import { listSessionAttachments } from "../db/attachments";
+import { listProjectComments } from "../db/comments";
 import { getSessionProject } from "../db/events";
 import { getDesignSystemDetail } from "../db/seed";
 import { indexProjectFiles, listIndexedProjectFiles } from "./files";
@@ -11,12 +12,13 @@ export async function buildSessionContext(sessionId: string) {
 
   await indexProjectFiles(project.project_id);
 
-  const [designSystem, files, attachments] = await Promise.all([
+  const [designSystem, files, attachments, comments] = await Promise.all([
     project.design_system_id
       ? getDesignSystemDetail(project.design_system_id)
       : Promise.resolve(null),
     listIndexedProjectFiles(project.project_id),
     listSessionAttachments(sessionId),
+    listProjectComments(project.project_id),
   ]);
 
   return {
@@ -24,6 +26,7 @@ export async function buildSessionContext(sessionId: string) {
     designSystem,
     files,
     attachments,
+    openComments: comments.filter((c) => c.resolved_at === null),
   };
 }
 

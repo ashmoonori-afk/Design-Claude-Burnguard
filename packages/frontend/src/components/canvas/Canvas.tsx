@@ -1,5 +1,7 @@
 import { useRef } from "react";
+import type { Comment } from "@bg/shared";
 import CanvasTopBar from "./CanvasTopBar";
+import CommentLayer from "./CommentLayer";
 import SelectorOverlay from "./SelectorOverlay";
 import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
@@ -60,6 +62,11 @@ export default function Canvas({
   onModeChange,
   onSelect,
   onRefresh,
+  comments,
+  activeRelPath,
+  focusedCommentId,
+  onCreateComment,
+  onFocusComment,
 }: {
   mode: CanvasMode | null;
   src?: string | null;
@@ -67,8 +74,18 @@ export default function Canvas({
   onModeChange: (m: CanvasMode | null) => void;
   onSelect: (s: SelectedNode) => void;
   onRefresh: () => void;
+  comments: Comment[];
+  activeRelPath: string | null;
+  focusedCommentId: string | null;
+  onCreateComment: (input: {
+    x_pct: number;
+    y_pct: number;
+    node_selector: string;
+  }) => void;
+  onFocusComment: (id: string | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-muted/40">
@@ -80,6 +97,7 @@ export default function Canvas({
       <div ref={containerRef} className="relative flex-1 overflow-hidden">
         {src ? (
           <iframe
+            ref={iframeRef}
             key={frameKey}
             title="Canvas"
             src={src}
@@ -88,6 +106,7 @@ export default function Canvas({
           />
         ) : (
           <iframe
+            ref={iframeRef}
             title="Canvas placeholder"
             srcDoc={PLACEHOLDER_SRC}
             sandbox="allow-scripts allow-same-origin"
@@ -95,6 +114,15 @@ export default function Canvas({
           />
         )}
         <SelectorOverlay active={mode === "select"} onSelect={onSelect} />
+        <CommentLayer
+          active={mode === "comment"}
+          comments={comments}
+          activeRelPath={activeRelPath}
+          iframeRef={iframeRef}
+          focusedId={focusedCommentId}
+          onCreate={onCreateComment}
+          onFocus={onFocusComment}
+        />
       </div>
     </div>
   );

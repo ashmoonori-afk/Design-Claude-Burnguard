@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 const MODES: Array<{ id: CanvasMode; label: string; phase?: number }> = [
   { id: "select", label: "Select" },
   { id: "tweaks", label: "Tweaks", phase: 3 },
-  { id: "comment", label: "Comment", phase: 2 },
+  { id: "comment", label: "Comment" },
   { id: "edit", label: "Edit", phase: 2 },
   { id: "draw", label: "Draw", phase: 3 },
 ];

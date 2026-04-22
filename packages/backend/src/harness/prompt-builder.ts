@@ -113,6 +113,21 @@ export async function buildPrompt(
     lines.push("");
   }
 
+  // Open comments pinned on the canvas by the user. Only unresolved pins
+  // are forwarded so the CLI knows which notes still need addressing.
+  if (context.openComments.length > 0) {
+    lines.push("## Open comments");
+    for (const comment of context.openComments) {
+      const body = comment.body.trim() || "(no note)";
+      const selector = comment.node_selector || "body";
+      const position = `x=${comment.x_pct.toFixed(1)}% y=${comment.y_pct.toFixed(1)}%`;
+      lines.push(
+        `- [${comment.id}] ${comment.rel_path} @ ${selector} (${position}) — ${body}`,
+      );
+    }
+    lines.push("");
+  }
+
   // Project-type-specific authoring skill. Injected AFTER the design system
   // (which defines *look*) and BEFORE Delivery (which defines *scope*), so
   // the skill can reference tokens introduced above and still be governed

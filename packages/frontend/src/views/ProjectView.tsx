@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  Comment,
   FileInfo,
   NormalizedEvent,
   ProjectDetail,
@@ -23,6 +24,11 @@ import {
   refreshArtifacts,
 } from "@/api/project";
 import { ApiError } from "@/api/client";
+import {
+  createProjectComment,
+  listProjectComments,
+  updateProjectComment,
+} from "@/api/comments";
 import {
   listSessionEvents,
   sendUserEvent,
@@ -50,6 +56,7 @@ export default function ProjectView() {
   const [openFileTabs, setOpenFileTabs] = useState<ArtifactTab[]>([]);
   const [mode, setMode] = useState<CanvasMode | null>(null);
   const [selection, setSelection] = useState<SelectedNode | null>(null);
+  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [sendPending, setSendPending] = useState(false);
   const seenEventIdsRef = useRef(new Set<string>());
@@ -82,6 +89,11 @@ export default function ProjectView() {
     queryFn: () => listSessionEvents(sessionQuery.data!.id),
     enabled: Boolean(sessionQuery.data?.id),
   });
+  const commentsQuery = useQuery({
+    queryKey: ["project", id, "comments"],
+    queryFn: () => listProjectComments(id!),
+    enabled: Boolean(id),
+  });
 
   const refreshMutation = useMutation({
     mutationFn: () => refreshArtifacts(id!),
@@ -97,6 +109,55 @@ export default function ProjectView() {
     onError: (error) => {
       pushToast({
         title: "Refresh failed",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
+
+  const createCommentMutation = useMutation({
+    mutationFn: (input: {
+      rel_path: string;
+      x_pct: number;
+      y_pct: number;
+      node_selector: string;
+    }) => createProjectComment(id!, input),
+    onSuccess: (created) => {
+      queryClient.setQueryData<Comment[]>(
+        ["project", id, "comments"],
+        (prev) => (prev ? [...prev, created] : [created]),
+      );
+      setFocusedCommentId(created.id);
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not create comment",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
+
+  const updateCommentMutation = useMutation({
+    mutationFn: ({
+      commentId,
+      patch,
+    }: {
+      commentId: string;
+      patch: { body?: string; resolved?: boolean };
+    }) => updateProjectComment(id!, commentId, patch),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Comment[]>(
+        ["project", id, "comments"],
+        (prev) =>
+          prev
+            ? prev.map((c) => (c.id === updated.id ? updated : c))
+            : [updated],
+      );
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Could not update comment",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -126,6 +187,7 @@ export default function ProjectView() {
     setOpenFileTabs([]);
     setMode(null);
     setSelection(null);
+    setFocusedCommentId(null);
     setRefreshTick(0);
   }, [id]);
 
@@ -252,6 +314,9 @@ export default function ProjectView() {
   }
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const activeRelPath =
+    activeTab?.kind === "file" && activeTab.relPath ? activeTab.relPath : null;
+  const comments = commentsQuery.data ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -339,8 +404,38 @@ export default function ProjectView() {
                 if (!id) return;
                 refreshMutation.mutate();
               }}
+              comments={comments}
+              activeRelPath={activeRelPath}
+              focusedCommentId={focusedCommentId}
+              onCreateComment={(input) => {
+                if (!activeRelPath) return;
+                createCommentMutation.mutate({
+                  rel_path: activeRelPath,
+                  ...input,
+                });
+              }}
+              onFocusComment={setFocusedCommentId}
             />
-            <ModePanel mode={mode} selection={selection} />
+            <ModePanel
+              mode={mode}
+              selection={selection}
+              comments={comments}
+              activeRelPath={activeRelPath}
+              focusedCommentId={focusedCommentId}
+              onFocusComment={setFocusedCommentId}
+              onUpdateCommentBody={(commentId, body) =>
+                updateCommentMutation.mutate({
+                  commentId,
+                  patch: { body },
+                })
+              }
+              onToggleCommentResolved={(commentId, resolved) =>
+                updateCommentMutation.mutate({
+                  commentId,
+                  patch: { resolved },
+                })
+              }
+            />
           </>
         )}
       </div>

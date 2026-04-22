@@ -5,8 +5,10 @@
 > **Next-session pickup (2026-04-22):** Phase 1 functionally complete (late
 > alpha). Phase 2 **Milestone A (Slide Deck Foundation)** shipped in 3
 > commits — `15c01e8` (template), `3ef5786`/`8730704` (runtime + hover nav
-> bar), `94762ed` (deck-aware prompt skill). **Resume at P2.4 (Comment
-> mode)** under §7 Phase 2 Sprint Plan below.
+> bar), `94762ed` (deck-aware prompt skill). **P2.4 (Comment mode)**
+> implemented: `comments` table + CRUD routes, `CommentLayer` overlay,
+> `CommentPanel` with resolve toggle; all three packages typecheck green.
+> **Resume at P2.5 (Edit mode)** under §7 Phase 2 Sprint Plan below.
 
 ## 1. Current Stage
 
@@ -145,7 +147,7 @@ reconstructing context.
 
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
-| **P2.4** | 🔲 | **Comment mode (pin + thread)** — `comments` table (`id`, `project_id`, `rel_path`, `node_selector`, `x_pct`, `y_pct`, `resolved_at`). REST: `GET`/`POST`/`PATCH /api/projects/:id/comments`. Canvas: clicking in Comment mode drops a pin; side panel holds the thread. | `backend/src/db/schema.ts`, `backend/src/routes/comments.ts` (new), `backend/src/db/comments.ts` (new), `frontend/src/components/canvas/CommentLayer.tsx` (new), `frontend/src/components/modes/CommentPanel.tsx` | Clicking in comment mode creates a persisted pin that survives a reload; resolve toggles it |
+| **P2.4** | ✅ | **Comment mode (pin + thread)** — `comments` table (`id`, `project_id`, `rel_path`, `node_selector`, `x_pct`, `y_pct`, `body`, `resolved_at`, `created_at`, `updated_at`). REST: `GET /api/projects/:id/comments`, `POST /api/projects/:id/comments`, `PATCH /api/projects/:id/comments/:commentId`. Canvas: clicking in Comment mode drops a pin anchored to a file-relative percentage; side panel holds the note and resolve toggle. Open (unresolved) comments are forwarded to the CLI prompt under `## Open comments`. | `backend/src/db/schema.ts`, `backend/src/db/migrations/0002_comments_pin.sql` (new), `backend/src/db/comments.ts` (new), `backend/src/routes/comments.ts` (new), `backend/src/server.ts`, `backend/src/services/context.ts`, `backend/src/harness/prompt-builder.ts`, `shared/src/comment.ts` (new), `frontend/src/api/comments.ts` (new), `frontend/src/components/canvas/CommentLayer.tsx` (new), `frontend/src/components/modes/CommentPanel.tsx` (new), `frontend/src/components/canvas/Canvas.tsx`, `frontend/src/components/canvas/CanvasTopBar.tsx`, `frontend/src/components/modes/ModePanel.tsx`, `frontend/src/views/ProjectView.tsx` | Clicking in comment mode creates a persisted pin that survives a reload; resolve toggles it; unresolved pins appear in the next CLI turn's prompt |
 | **P2.5** | 🔲 | **Edit mode (contenteditable → PATCH)** — iframe elements with `data-bg-node-id` become editable; on blur the runtime posts the new text to a new `PATCH /api/projects/:id/fs/*` handler, which updates only the targeted node via `node-html-parser`. | `backend/src/routes/artifacts.ts` (+PATCH), `backend/src/services/file-patch.ts` (new), `frontend/src/components/modes/EditMode.tsx` (new) | Inline-edit a title → save to disk → reload shows the new value; other DOM untouched |
 | **P2.6** | 🔲 | **Permission gate UI for tool calls** — When a `tool.permission_required` event arrives, open a Radix Dialog. Allow/Deny routes to `POST /api/sessions/:id/tool-decision`. Existing `user.tool_decision` event type already defined. | `frontend/src/components/chat/PermissionDialog.tsx` (new), `backend/src/routes/session.ts` (+decision handler), `frontend/src/views/ProjectView.tsx` (hook the event) | Synthesized permission event triggers a modal; Deny aborts the turn cleanly |
 
