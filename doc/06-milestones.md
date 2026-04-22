@@ -2,13 +2,13 @@
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-22):** Phase 1 functionally complete (late
-> alpha). Phase 2 **Milestone A (Slide Deck Foundation)** shipped in 3
-> commits — `15c01e8` (template), `3ef5786`/`8730704` (runtime + hover nav
-> bar), `94762ed` (deck-aware prompt skill). **P2.4 (Comment mode)**
-> implemented: `comments` table + CRUD routes, `CommentLayer` overlay,
-> `CommentPanel` with resolve toggle; all three packages typecheck green.
-> **Resume at P2.5 (Edit mode)** under §7 Phase 2 Sprint Plan below.
+> **Next-session pickup (2026-04-22):** Phase 1 sign-off items are all
+> closed in code; awaiting Windows smoke-test pass to flip the phase to
+> "complete". Phase 2 **Milestones A + P2.4 + P2.5** shipped. Latest
+> commits: `ef7dedd` (real selector overlay), `9e22903` (backend
+> regression tests: prompt-builder + file-patch, 11/11 green via `bun
+> test`), `192a3c8` (P2.5 edit mode foundation). **Resume at P2.6
+> (Permission gate UI)** under §7 Phase 2 Sprint Plan below.
 
 ## 1. Current Stage
 
@@ -46,31 +46,29 @@ That means the phase is no longer "just planned", but it is also not signed off 
 ### 2.2 Partially done
 
 - file watching exists, but watcher activity only refreshes indexed files; chat `file.changed` is still adapter-driven
-- selector mode exists as a UI surface, but it is still a placeholder overlay
-- interrupt route exists, but it does not yet stop a live subprocess
-- slide deck support exists in templates/runtime, but the broader Phase 2 workflow is not delivered
+- slide deck support exists in templates/runtime, and P2.4 (comment) + P2.5 (edit) modes have shipped, but the rest of the Phase 2 workflow (permission gate, PDF/PPTX export, settings, tutorials) is not delivered
 
 ### 2.3 Not done
 
-- automated integration and end-to-end tests
-- structured Codex parser
+- end-to-end (Playwright) tests — backend unit tests exist as of `9e22903`
+- structured Codex parser (decision: ship raw-mode for Phase 1; upgrade deferred — see §6)
 - true permission gate flow
 - PDF export
 - PPTX export
 - handoff export
-- real comment/edit/tweaks/draw modes
+- real tweaks/draw modes (Phase 3)
 
 ## 3. Remaining Work For Phase 1 Sign-Off
 
-The minimum remaining work to call Phase 1 complete is:
+| # | Item | Status |
+|---|------|--------|
+| 1 | Replace selector placeholder with real iframe DOM messaging | ✅ `ef7dedd` — `elementFromPoint` + `getComputedStyle`, persistent selection box (200ms poll), `data-bg-node-id` / `#id` / tag fallback |
+| 2 | Implement real interrupt semantics for active CLI subprocesses | ✅ `de33be2` — `activeTurns` map + `AbortController`; adapters pass `signal` to `Bun.spawn({signal, killSignal:"SIGKILL"})`; `/api/sessions/:id/interrupt` aborts and emits `status.idle{stopReason:"interrupted"}` |
+| 3 | Decide whether Codex raw-mode is sufficient for Phase 1 | ✅ Decision: **ship raw-mode** for Phase 1. `codex/index.ts` streams stdout as `chat.delta` chunks and emits a terminal `chat.message_end` + `status.idle`. Structured parser (tool calls, file tracking) deferred until Codex's structured output lands — tracked as a Phase 2+ follow-up. |
+| 4 | Minimal committed regression test layer | ✅ `9e22903` — `packages/backend/tests/` with `prompt-builder.test.ts` (5 cases) + `file-patch.test.ts` (6 cases); wired `bun test`; 11/11 green. Broader E2E (Playwright) deferred to Phase 2 P2.10. |
+| 5 | Re-run and document a clean Windows smoke-test pass | 🔲 Pending — requires hands-on run: create/seed a slide_deck project, send a turn, verify selector + comment + edit + html_zip export + interrupt on a long-running turn. |
 
-1. Replace the selector placeholder with real parent/iframe DOM messaging
-2. Implement real interrupt semantics for active CLI subprocesses
-3. Decide whether Codex raw-mode is sufficient for Phase 1 or needs one more normalization pass
-4. Add at least a minimal committed regression test layer for turn orchestration and export
-5. Re-run and document a clean Windows smoke-test pass against the full alpha loop
-
-If those are finished without changing scope again, the repo can reasonably move from "late Phase 1" to "Phase 1 complete".
+When #5 passes without re-opening any of 1–4, the repo flips from "late Phase 1" to "Phase 1 complete".
 
 ## 4. Original Phase Plan Versus Current Reality
 
@@ -149,12 +147,12 @@ reconstructing context.
 | **P2.2** | ✅ | `3ef5786` + `8730704` | `deck-stage.js` runtime: pagination, keyboard nav (←/→/Space/Home/End/f/Esc), hash-based routing, touch swipe, MutationObserver for CLI edits, hover-visible nav bar with `N / M` counter | Browser renders one slide at a time, arrows navigate, nav bar fades in on mousemove |
 | **P2.3** | ✅ | `94762ed` | Deck-aware prompt builder — injects `DECK_SKILL_MD` only when `project.type === "slide_deck"` (15-slide pitch scaffold, `data-bg-node-id` rules, inline CSS, no external deps) | Deck-type sessions get the skill block; prototype sessions unchanged (verified via direct buildPrompt import) |
 
-### Milestone 2.B — Interaction Modes 🔲
+### Milestone 2.B — Interaction Modes 🟡
 
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
 | **P2.4** | ✅ | **Comment mode (pin + thread)** — `comments` table (`id`, `project_id`, `rel_path`, `node_selector`, `x_pct`, `y_pct`, `body`, `resolved_at`, `created_at`, `updated_at`). REST: `GET /api/projects/:id/comments`, `POST /api/projects/:id/comments`, `PATCH /api/projects/:id/comments/:commentId`. Canvas: clicking in Comment mode drops a pin anchored to a file-relative percentage; side panel holds the note and resolve toggle. Open (unresolved) comments are forwarded to the CLI prompt under `## Open comments`. | `backend/src/db/schema.ts`, `backend/src/db/migrations/0002_comments_pin.sql` (new), `backend/src/db/comments.ts` (new), `backend/src/routes/comments.ts` (new), `backend/src/server.ts`, `backend/src/services/context.ts`, `backend/src/harness/prompt-builder.ts`, `shared/src/comment.ts` (new), `frontend/src/api/comments.ts` (new), `frontend/src/components/canvas/CommentLayer.tsx` (new), `frontend/src/components/modes/CommentPanel.tsx` (new), `frontend/src/components/canvas/Canvas.tsx`, `frontend/src/components/canvas/CanvasTopBar.tsx`, `frontend/src/components/modes/ModePanel.tsx`, `frontend/src/views/ProjectView.tsx` | Clicking in comment mode creates a persisted pin that survives a reload; resolve toggles it; unresolved pins appear in the next CLI turn's prompt |
-| **P2.5** | 🔲 | **Edit mode (contenteditable → PATCH)** — iframe elements with `data-bg-node-id` become editable; on blur the runtime posts the new text to a new `PATCH /api/projects/:id/fs/*` handler, which updates only the targeted node via `node-html-parser`. | `backend/src/routes/artifacts.ts` (+PATCH), `backend/src/services/file-patch.ts` (new), `frontend/src/components/modes/EditMode.tsx` (new) | Inline-edit a title → save to disk → reload shows the new value; other DOM untouched |
+| **P2.5** | ✅ | **Edit mode (hover + property inspector → PATCH)** — `192a3c8`. Hover in Edit mode highlights any `[data-bg-node-id]` via iframe `elementFromPoint`; click locks a persistent orange selection box (200ms poll). Right-side `EditPanel` shows the tag + node id, a `<textarea>` for text, and attribute rows; Save diffs against the target and posts only changed fields to `PATCH /api/projects/:id/fs/*`. `applyHtmlNodePatch` (pure) rewrites only the targeted node; `data-bg-node-id` is immutable so pins don't orphan. Reindex + iframe `refreshTick` after save. | `backend/src/routes/artifacts.ts` (+PATCH), `backend/src/services/file-patch.ts` (new), `frontend/src/components/canvas/EditLayer.tsx` (new), `frontend/src/components/modes/EditPanel.tsx` (new), `frontend/src/api/files.ts` (new), `shared/src/file-patch.ts` (new) | Inline-edit a title → save to disk → iframe reload shows the new value; unit-tested via `bun test` (6 cases). |
 | **P2.6** | 🔲 | **Permission gate UI for tool calls** — When a `tool.permission_required` event arrives, open a Radix Dialog. Allow/Deny routes to `POST /api/sessions/:id/tool-decision`. Existing `user.tool_decision` event type already defined. | `frontend/src/components/chat/PermissionDialog.tsx` (new), `backend/src/routes/session.ts` (+decision handler), `frontend/src/views/ProjectView.tsx` (hook the event) | Synthesized permission event triggers a modal; Deny aborts the turn cleanly |
 
 ### Milestone 2.C — Exports & Settings 🔲
