@@ -1,9 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import type { BackendId, SettingsSummary } from "@bg/shared";
 import { Palette } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { getSettings, listDesignSystems } from "@/api/home";
 import NewProjectPanel, {
   type ProjectType,
 } from "@/components/home/NewProjectPanel";
+import { Badge } from "@/components/ui/badge";
 
 const TYPES: Array<{ id: ProjectType; label: string }> = [
   { id: "prototype", label: "Prototype" },
@@ -12,36 +16,56 @@ const TYPES: Array<{ id: ProjectType; label: string }> = [
   { id: "other", label: "Other" },
 ];
 
+const FALLBACK_SETTINGS: SettingsSummary = {
+  user: { id: "local", display_name: "You" },
+  app_version: "0.0.1-phase0",
+  default_backend: "claude-code",
+  theme: "light",
+};
+
 export default function Sidebar() {
+  const navigate = useNavigate();
   const [activeType, setActiveType] = useState<ProjectType>("slide_deck");
 
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
+  });
+  const systemsQuery = useQuery({
+    queryKey: ["design-systems", "published"],
+    queryFn: () => listDesignSystems("published"),
+  });
+
+  const settings = settingsQuery.data ?? FALLBACK_SETTINGS;
+  const systems = systemsQuery.data ?? [];
+
   return (
-    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col">
+    <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-background">
       <header className="p-6 pb-4">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-md bg-accent/15 text-accent grid place-items-center">
+          <div className="grid h-9 w-9 place-items-center rounded-md bg-accent/15 text-accent">
             <Palette className="h-5 w-5" />
           </div>
           <div>
             <div className="text-[15px] font-semibold leading-none">
               BurnGuard Design
             </div>
-            <div className="flex items-center gap-1.5 mt-1">
+            <div className="mt-1 flex items-center gap-1.5">
               <Badge
                 variant="outline"
-                className="text-[10px] py-0 h-4 rounded-sm"
+                className="h-4 rounded-sm py-0 text-[10px]"
               >
                 Local
               </Badge>
               <span className="text-[11px] text-muted-foreground">
-                v0.0.1
+                v{settings.app_version}
               </span>
             </div>
           </div>
         </div>
       </header>
 
-      <nav className="px-4 flex gap-0.5 border-b border-border">
+      <nav className="flex gap-0.5 border-b border-border px-4">
         {TYPES.map((t) => (
           <button
             key={t.id}
@@ -59,14 +83,22 @@ export default function Sidebar() {
       </nav>
 
       <div className="flex-1 overflow-y-auto">
-        <NewProjectPanel type={activeType} />
+        <NewProjectPanel
+          type={activeType}
+          designSystems={systems}
+          defaultBackend={settings.default_backend as BackendId}
+          onCreated={(project) => navigate(`/projects/${project.id}`)}
+        />
       </div>
 
-      <footer className="p-4 border-t border-border">
+      <footer className="border-t border-border p-4">
         <div className="text-xs text-muted-foreground">
-          Signed in as <span className="text-foreground">You</span>
+          Signed in as{" "}
+          <span className="text-foreground">
+            {settings.user.display_name}
+          </span>
         </div>
-        <div className="flex items-center gap-3 mt-1">
+        <div className="mt-1 flex items-center gap-3">
           <a
             href="#"
             className="text-xs text-muted-foreground hover:text-foreground"

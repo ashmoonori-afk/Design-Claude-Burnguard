@@ -6,7 +6,10 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "composite": true
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": ".typecheck/tsconfig-node"
   },
   "include": ["vite.config.ts"]
 }

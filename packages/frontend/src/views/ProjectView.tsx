@@ -1,19 +1,421 @@
-import { useParams } from "react-router-dom";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  ArtifactSummary,
+  FileInfo,
+  NormalizedEvent,
+  ProjectDetail,
+  SessionInfo,
+} from "@bg/shared";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  getArtifacts,
+  getProject,
+  getProjectSession,
+  listProjectFiles,
+  refreshArtifacts,
+} from "@/api/project";
+import { ApiError } from "@/api/client";
+import {
+  listSessionEvents,
+  sendUserEvent,
+  subscribeSessionStream,
+} from "@/api/session";
+import ChatPane from "@/components/chat/ChatPane";
+import Canvas from "@/components/canvas/Canvas";
+import ModePanel from "@/components/modes/ModePanel";
+import type { CanvasMode } from "@/components/modes/types";
+import ArtifactTabs from "@/components/project/ArtifactTabs";
+import ProjectTopBar from "@/components/project/ProjectTopBar";
+import { useUIStore } from "@/state/uiStore";
+import type { ArtifactTab, SelectedNode } from "@/types/project";
 
 export default function ProjectView() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const pushToast = useUIStore((s) => s.pushToast);
+  const [events, setEvents] = useState<NormalizedEvent[]>([]);
+  const [sessionState, setSessionState] = useState<SessionInfo | null>(null);
+  const [activeTabId, setActiveTabId] = useState("design-system");
+  const [openFileTabs, setOpenFileTabs] = useState<ArtifactTab[]>([]);
+  const [mode, setMode] = useState<CanvasMode>("select");
+  const [selection, setSelection] = useState<SelectedNode | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const seenEventIdsRef = useRef(new Set<string>());
+  const latestEventTsRef = useRef<number | undefined>(undefined);
+
+  const projectQuery = useQuery({
+    queryKey: ["project", id],
+    queryFn: () => getProject(id!),
+    enabled: Boolean(id),
+  });
+  const sessionQuery = useQuery({
+    queryKey: ["project", id, "session"],
+    queryFn: () => getProjectSession(id!),
+    enabled: Boolean(id),
+  });
+  const filesQuery = useQuery({
+    queryKey: ["project", id, "files"],
+    queryFn: () => listProjectFiles(id!),
+    enabled: Boolean(id),
+  });
+  const artifactsQuery = useQuery({
+    queryKey: ["project", id, "artifacts"],
+    queryFn: () => getArtifacts(id!),
+    enabled: Boolean(id),
+  });
+  const replayQuery = useQuery({
+    queryKey: ["session", sessionQuery.data?.id, "events"],
+    queryFn: () => listSessionEvents(sessionQuery.data!.id),
+    enabled: Boolean(sessionQuery.data?.id),
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: () => refreshArtifacts(id!),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+      ]);
+      setRefreshTick((value) => value + 1);
+    },
+    onError: (error) => {
+      pushToast({
+        title: "Refresh failed",
+        body: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    },
+  });
+
+  useEffect(() => {
+    const error = projectQuery.error;
+    if (!(error instanceof ApiError) || error.status !== 404) {
+      return;
+    }
+
+    pushToast({
+      title: "Project not found",
+      tone: "error",
+    });
+    navigate("/", { replace: true });
+  }, [navigate, projectQuery.error, pushToast]);
+
+  useEffect(() => {
+    if (sessionQuery.data) {
+      setSessionState(sessionQuery.data);
+    }
+  }, [sessionQuery.data]);
+
+  useEffect(() => {
+    if (!replayQuery.data) {
+      return;
+    }
+
+    appendEvents(replayQuery.data, seenEventIdsRef, latestEventTsRef, setEvents);
+  }, [replayQuery.data]);
+
+  useEffect(() => {
+    const sessionId = sessionQuery.data?.id;
+    if (!sessionId || replayQuery.status !== "success") {
+      return;
+    }
+
+    let active = true;
+    let cleanup = () => {};
+
+    const connect = async () => {
+      const gap = await listSessionEvents(sessionId, latestEventTsRef.current);
+      if (!active) {
+        return;
+      }
+
+      appendEvents(gap, seenEventIdsRef, latestEventTsRef, setEvents);
+      cleanup = subscribeSessionStream(sessionId, (event) => {
+        appendEvents([event], seenEventIdsRef, latestEventTsRef, setEvents);
+        setSessionState((current) => applyEventToSession(current, event));
+
+        if (event.type === "file.changed" && id) {
+          openFileAsTab(event.path, setOpenFileTabs, setActiveTabId);
+          void queryClient.invalidateQueries({ queryKey: ["project", id, "files"] });
+        }
+      });
+    };
+
+    void connect();
+
+    return () => {
+      active = false;
+      cleanup();
+    };
+  }, [id, queryClient, replayQuery.status, sessionQuery.data?.id]);
+
+  useEffect(() => {
+    const project = projectQuery.data;
+    if (!project) {
+      return;
+    }
+
+    openFileAsTab(project.entrypoint, setOpenFileTabs, setActiveTabId);
+  }, [projectQuery.data]);
+
+  const project = projectQuery.data ?? null;
+  const files = filesQuery.data ?? [];
+  const artifacts = artifactsQuery.data ?? null;
+  const session = sessionState;
+  const tabs = useMemo(
+    () => buildTabs(project, openFileTabs),
+    [openFileTabs, project],
+  );
+  const canvasSrc = useMemo(() => {
+    if (!project) {
+      return artifacts?.entrypoint_url ?? null;
+    }
+
+    const activeFile = tabs.find(
+      (tab) => tab.id === activeTabId && tab.kind === "file" && tab.relPath,
+    );
+    if (!activeFile?.relPath) {
+      return artifacts?.entrypoint_url ?? null;
+    }
+
+    return `/api/projects/${project.id}/fs/${encodeRelPath(activeFile.relPath)}`;
+  }, [activeTabId, artifacts?.entrypoint_url, project, tabs]);
+
+  useEffect(() => {
+    if (!tabs.find((tab) => tab.id === activeTabId)) {
+      setActiveTabId(tabs[0]?.id ?? "design-system");
+    }
+  }, [activeTabId, tabs]);
+
+  const isLoading =
+    projectQuery.isLoading ||
+    sessionQuery.isLoading ||
+    filesQuery.isLoading ||
+    artifactsQuery.isLoading;
+
+  if (isLoading) {
+    return (
+      <div className="grid flex-1 place-items-center">
+        <div className="text-sm text-muted-foreground">Loading project...</div>
+      </div>
+    );
+  }
+
+  if (!project || !session || !artifacts) {
+    return (
+      <div className="grid flex-1 place-items-center">
+        <div className="text-sm text-destructive">Project unavailable</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 grid place-items-center">
-      <div className="max-w-md text-center">
-        <div className="text-xs text-muted-foreground uppercase tracking-wider">
-          Project shell
-        </div>
-        <div className="mt-2 text-lg font-medium font-mono">{id}</div>
-        <p className="mt-4 text-sm text-muted-foreground">
-          ProjectView lands in FE-S1-04 (shell) and FE-S2-04 (real data). This is
-          a routing stub.
-        </p>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ProjectTopBar
+        project={project}
+        tabsSlot={
+          <ArtifactTabs
+            tabs={tabs}
+            activeId={activeTabId}
+            onSelect={setActiveTabId}
+            onClose={(tabId) => {
+              setOpenFileTabs((current) => current.filter((tab) => tab.id !== tabId));
+              if (activeTabId === tabId) {
+                setActiveTabId(project.entrypoint);
+              }
+            }}
+          />
+        }
+      />
+      <div className="flex min-h-0 flex-1">
+        <ChatPane
+          events={events}
+          session={session}
+          onSend={(text, attachedFiles) => {
+            if (session.status === "running") {
+              pushToast({
+                title: "Session is already running",
+                tone: "warn",
+              });
+              return;
+            }
+
+            void sendUserEvent(session.id, {
+              type: "user.message",
+              text,
+              files: attachedFiles,
+            }).catch((error) => {
+              pushToast({
+                title: "Could not send message",
+                body: error instanceof Error ? error.message : String(error),
+                tone: "error",
+              });
+            });
+          }}
+        />
+        <Canvas
+          mode={mode}
+          src={canvasSrc}
+          frameKey={`${canvasSrc ?? "entrypoint"}:${refreshTick}`}
+          onModeChange={setMode}
+          onSelect={setSelection}
+          onRefresh={() => {
+            if (!id) {
+              return;
+            }
+            refreshMutation.mutate();
+          }}
+        />
+        <ModePanel mode={mode} selection={selection} />
       </div>
     </div>
   );
+}
+
+function appendEvents(
+  incoming: NormalizedEvent[],
+  seenEventIdsRef: MutableRefObject<Set<string>>,
+  latestEventTsRef: MutableRefObject<number | undefined>,
+  setEvents: Dispatch<SetStateAction<NormalizedEvent[]>>,
+) {
+  if (incoming.length === 0) {
+    return;
+  }
+
+  const next = incoming.filter((event) => !seenEventIdsRef.current.has(event.id));
+  if (next.length === 0) {
+    return;
+  }
+
+  for (const event of next) {
+    seenEventIdsRef.current.add(event.id);
+    latestEventTsRef.current = Math.max(
+      latestEventTsRef.current ?? 0,
+      event.ts,
+    );
+  }
+
+  setEvents((current) => mergeEvents(current, next));
+}
+
+function buildTabs(
+  project: ProjectDetail | null,
+  openFileTabs: ArtifactTab[],
+): ArtifactTab[] {
+  return [
+    {
+      id: "design-system",
+      title: project?.design_system_name ?? "Design System",
+      kind: "design_system",
+      closeable: false,
+    },
+    {
+      id: "design-files",
+      title: "Design Files",
+      kind: "design_files",
+      closeable: false,
+    },
+    ...openFileTabs,
+  ];
+}
+
+function mergeEvents(current: NormalizedEvent[], incoming: NormalizedEvent[]) {
+  const merged = new Map<string, NormalizedEvent>();
+  for (const event of current) {
+    merged.set(event.id, event);
+  }
+  for (const event of incoming) {
+    merged.set(event.id, event);
+  }
+  return [...merged.values()].sort((a, b) =>
+    a.ts === b.ts ? a.id.localeCompare(b.id) : a.ts - b.ts,
+  );
+}
+
+function applyEventToSession(
+  current: SessionInfo | null,
+  event: NormalizedEvent,
+): SessionInfo | null {
+  if (!current) {
+    return current;
+  }
+
+  switch (event.type) {
+    case "usage.delta":
+      return {
+        ...current,
+        usage: {
+          ...current.usage,
+          input: current.usage.input + event.input,
+          output: current.usage.output + event.output,
+          cached: current.usage.cached + (event.cached ?? 0),
+        },
+        updated_at: event.ts,
+        last_active_at: event.ts,
+      };
+    case "status.running":
+      return {
+        ...current,
+        status: "running",
+        updated_at: event.ts,
+        last_active_at: event.ts,
+      };
+    case "status.idle":
+      return {
+        ...current,
+        status: "idle",
+        updated_at: event.ts,
+        last_active_at: event.ts,
+      };
+    case "status.error":
+      return {
+        ...current,
+        status: "error",
+        updated_at: event.ts,
+        last_active_at: event.ts,
+      };
+    default:
+      return current;
+  }
+}
+
+function openFileAsTab(
+  relPath: string,
+  setOpenFileTabs: Dispatch<SetStateAction<ArtifactTab[]>>,
+  setActiveTabId: Dispatch<SetStateAction<string>>,
+) {
+  setOpenFileTabs((current) => {
+    if (current.some((tab) => tab.relPath === relPath)) {
+      return current;
+    }
+
+    return [
+      ...current,
+      {
+        id: relPath,
+        title: relPath,
+        kind: "file",
+        relPath,
+        closeable: true,
+      },
+    ];
+  });
+  setActiveTabId(relPath);
+}
+
+function encodeRelPath(relPath: string) {
+  return relPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
 }

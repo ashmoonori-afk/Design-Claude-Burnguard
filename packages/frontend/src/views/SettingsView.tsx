@@ -1,14 +1,19 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useUIStore } from "@/state/uiStore";
+
+/**
+ * `/settings` is a convenience route that opens the SettingsModal then
+ * returns to home. The modal lives globally in App.tsx.
+ */
 export default function SettingsView() {
-  return (
-    <div className="flex-1 grid place-items-center">
-      <div className="max-w-md text-center">
-        <div className="text-xs text-muted-foreground uppercase tracking-wider">
-          Settings
-        </div>
-        <p className="mt-4 text-sm text-muted-foreground">
-          Settings modal arrives in FE-S2-05. This is a placeholder route.
-        </p>
-      </div>
-    </div>
-  );
+  const navigate = useNavigate();
+  const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+
+  useEffect(() => {
+    setSettingsOpen(true);
+    navigate("/", { replace: true });
+  }, [navigate, setSettingsOpen]);
+
+  return null;
 }

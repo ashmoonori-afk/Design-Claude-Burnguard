@@ -12,7 +12,8 @@ Thumbs.db
 # Tool caches
 .vite
 .turbo
-.tsbuildinfo
+*.tsbuildinfo
+.typecheck
 
 # User data (never commit anyone's ~/.burnguard that happens to be here)
 .burnguard

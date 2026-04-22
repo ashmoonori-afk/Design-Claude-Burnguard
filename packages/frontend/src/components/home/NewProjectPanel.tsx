@@ -1,8 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import type {
+  BackendId,
+  CreateProjectResponse,
+  DesignSystemSummary,
+} from "@bg/shared";
+import { createProject } from "@/api/home";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
+import { useUIStore } from "@/state/uiStore";
 
 export type ProjectType =
   | "prototype"
@@ -17,22 +26,76 @@ const TYPE_LABEL: Record<ProjectType, string> = {
   other: "New project",
 };
 
-// Placeholder content for FE-S1-03 static layout.
-// Switches to DesignSystemSummary[] from backend fixtures the moment Gate A lands.
-const DS_PLACEHOLDERS = [
-  { id: "goldman-sachs", label: "Goldman Sachs Design System" },
-];
-
-export default function NewProjectPanel({ type }: { type: ProjectType }) {
+export default function NewProjectPanel({
+  type,
+  designSystems,
+  defaultBackend,
+  onCreated,
+}: {
+  type: ProjectType;
+  designSystems: DesignSystemSummary[];
+  defaultBackend: BackendId;
+  onCreated: (project: CreateProjectResponse) => void;
+}) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const pushToast = useUIStore((s) => s.pushToast);
   const [name, setName] = useState("");
-  const [ds, setDs] = useState(DS_PLACEHOLDERS[0].id);
+  const [dsId, setDsId] = useState<string>(designSystems[0]?.id ?? "");
   const [useSpeakerNotes, setUseSpeakerNotes] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const canCreate = name.trim().length > 0;
+  useEffect(() => {
+    if (!designSystems.find((s) => s.id === dsId) && designSystems[0]) {
+      setDsId(designSystems[0].id);
+    }
+  }, [designSystems, dsId]);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createProject({
+        name: name.trim(),
+        type,
+        design_system_id: dsId || null,
+        backend_id: defaultBackend,
+        options:
+          type === "slide_deck"
+            ? { use_speaker_notes: useSpeakerNotes }
+            : undefined,
+      }),
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      onCreated(created);
+      navigate(`/projects/${created.id}`);
+      setName("");
+      setUseSpeakerNotes(false);
+      setError(null);
+    },
+    onError: (err) => {
+      const message =
+        err instanceof Error ? err.message : "Failed to create project";
+      setError(message);
+      pushToast({
+        title: "Could not create project",
+        body: message,
+        tone: "error",
+      });
+    },
+  });
+
+  const canCreate = name.trim().length > 0 && !createMutation.isPending;
+  const hasSystems = designSystems.length > 0;
+
+  function handleCreate() {
+    if (!canCreate || !hasSystems) {
+      return;
+    }
+    createMutation.mutate();
+  }
 
   return (
     <div className="p-6">
-      <h2 className="text-base font-semibold mb-4">{TYPE_LABEL[type]}</h2>
+      <h2 className="mb-4 text-base font-semibold">{TYPE_LABEL[type]}</h2>
 
       <div className="space-y-4">
         <div className="space-y-1.5">
@@ -59,15 +122,21 @@ export default function NewProjectPanel({ type }: { type: ProjectType }) {
           </label>
           <select
             id="design-system"
-            value={ds}
-            onChange={(e) => setDs(e.target.value)}
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+            value={dsId}
+            onChange={(e) => setDsId(e.target.value)}
+            disabled={!hasSystems || createMutation.isPending}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
           >
-            {DS_PLACEHOLDERS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
+            {hasSystems ? (
+              designSystems.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.is_template ? " (Template)" : ""}
+                </option>
+              ))
+            ) : (
+              <option value="">No design systems available</option>
+            )}
           </select>
         </div>
 
@@ -88,25 +157,22 @@ export default function NewProjectPanel({ type }: { type: ProjectType }) {
       </div>
 
       <Button
-        className="w-full mt-6"
+        className="mt-6 w-full"
         variant="cta"
-        disabled={!canCreate}
-        onClick={() =>
-          alert(
-            `[static stub] would create ${type} "${name}" with ${ds}${
-              type === "slide_deck"
-                ? `, speaker_notes=${useSpeakerNotes}`
-                : ""
-            }`,
-          )
-        }
+        disabled={!canCreate || !hasSystems}
+        onClick={handleCreate}
       >
-        <Plus className="h-4 w-4" /> Create
+        <Plus className="h-4 w-4" />{" "}
+        {createMutation.isPending ? "Creating..." : "Create"}
       </Button>
 
-      <p className="mt-3 text-[11px] text-muted-foreground text-center">
-        Only you can see your project by default.
-      </p>
+      {error ? (
+        <p className="mt-3 text-center text-[11px] text-destructive">{error}</p>
+      ) : (
+        <p className="mt-3 text-center text-[11px] text-muted-foreground">
+          Only you can see your project by default.
+        </p>
+      )}
     </div>
   );
 }

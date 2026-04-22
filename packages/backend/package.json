@@ -8,8 +8,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bg/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
-    "@bg/shared": "workspace:*"
+    "ulid": "^3.0.2"
   },
   "devDependencies": {
     "@types/bun": "latest"

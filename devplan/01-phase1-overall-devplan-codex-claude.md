@@ -1,5 +1,39 @@
 # Phase 1 Overall Dev Plan
 
+## Implementation Snapshot
+
+As of 2026-04-22:
+
+- Gate A is landed.
+- Gate B is landed for Home, Project boot, session replay/send, SSE, settings, and backend detection.
+- Gate C is mostly landed with files, artifacts, and refresh routes; selector `postMessage` payloads are still open.
+- Gate D is mostly landed with export create/status/download routes and real settings persistence.
+
+Implemented slices:
+
+- shared DTOs and response envelopes
+- SQLite bootstrap, migrations, seed data, config persistence
+- Home, Project, Design System, Settings, and Export frontend wiring
+- session replay plus SSE tail
+- file list, artifact metadata, refresh, and HTML zip export
+- production frontend serving from backend
+- Windows executable build
+
+Remaining blockers for true Phase 1 completion:
+
+- replace the internal turn stub with real Claude Code adapter execution
+- add the initial Codex adapter path beyond contract-level support
+- land selector iframe messaging and real element selection
+- add export status polling/download UX polish
+- add committed integration and E2E smoke coverage
+
+Current stabilization issues from manual testing:
+
+- export completion is asynchronous and currently requires polling to surface completion in the UI
+- `/systems/:id` still needs the same not-found redirect/toast behavior already used for missing projects
+- selector overlay is still placeholder behavior until BE-S4-08 is frozen in code
+- formal automated test coverage is still absent
+
 ## Team Model
 
 - `codex` owns backend, harness, adapters, persistence, APIs, export pipeline, packaging, and backend test infrastructure.

@@ -1,5 +1,31 @@
 # Phase 1 Frontend Sprint Plan
 
+## Implementation Snapshot
+
+As of 2026-04-22, the frontend has real API wiring for:
+
+- Home projects, examples, systems, backend detection, and settings
+- sidebar project creation flow
+- Project boot via real project/session/files/artifacts routes
+- replay fetch plus SSE live event subscription
+- canvas iframe loading from backend-served artifact files
+- refresh mutation against the backend
+- settings modal save/load against the backend
+- export create against the backend
+
+Still incomplete for frontend Phase 1 closure:
+
+- export status polling and download UX
+- not-found redirect/toast handling for missing design systems
+- selector overlay real `postMessage` integration
+- formal frontend E2E smoke coverage
+
+Current stabilization notes:
+
+- replay plus SSE dedupe is wired, but needs repeated browser-refresh testing against long-running real adapter sessions once adapters land
+- project send flow is live, but current session execution still depends on the backend stub turn runner rather than the real adapters
+- file-change-to-open-tab behavior is partially covered through Project view state, but full UI verification is still needed during manual QA
+
 ## Ownership
 
 `claude` owns:

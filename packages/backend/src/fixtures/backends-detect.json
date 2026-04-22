@@ -1,0 +1,15 @@
+{
+  "backends": [
+    {
+      "id": "claude-code",
+      "found": true,
+      "version": "1.0.23",
+      "binary_path": "C:/Users/lg/AppData/Roaming/npm/claude.cmd"
+    },
+    {
+      "id": "codex",
+      "found": false,
+      "install_hint": "Install from https://github.com/openai/codex"
+    }
+  ]
+}

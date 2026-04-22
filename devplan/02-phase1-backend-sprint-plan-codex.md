@@ -1,5 +1,35 @@
 # Phase 1 Backend Sprint Plan
 
+## Implementation Snapshot
+
+As of 2026-04-22, the backend has working implementations for:
+
+- local app bootstrap under `~/.burnguard/`
+- config persistence
+- SQLite schema, migration runner, and seed flow
+- Home routes, Project routes, Design System routes, session replay/send/SSE routes
+- backend CLI detection
+- file indexing, artifact metadata, refresh route, and project file serving
+- attachment persistence for multipart session sends
+- HTML zip export create/status/download routes
+- checkpoint baseline and per-session trace logging
+- production frontend bundle serving
+- Windows executable compilation
+
+Still not complete:
+
+- real Claude Code adapter detect/runner/parser integration
+- real Codex adapter integration beyond contract-level support
+- parser fixture tests
+- committed backend integration tests
+- selector payload contract work for iframe messaging
+
+Current backend stabilization notes:
+
+- export completion is async and succeeds in smoke tests, but frontend polling still needs to be relied on for status progression
+- file watching baseline exists, but long-running watcher behavior still needs soak testing
+- retry/error classification is only baseline-level and still needs hardening against real adapter failures
+
 ## Ownership
 
 `codex` owns:

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "goldman-sachs",
+    "name": "Goldman Sachs Design System",
+    "status": "published",
+    "is_template": false,
+    "thumbnail_path": "/fixtures/thumbnails/goldman-sachs.png",
+    "updated_at": 1713751200000
+  },
+  {
+    "id": "toss",
+    "name": "Toss Design System",
+    "status": "published",
+    "is_template": true,
+    "thumbnail_path": "/fixtures/thumbnails/toss.png",
+    "updated_at": 1713664800000
+  },
+  {
+    "id": "salt",
+    "name": "Salt Design System",
+    "status": "review",
+    "is_template": false,
+    "thumbnail_path": "/fixtures/thumbnails/salt.png",
+    "updated_at": 1713578400000
+  },
+  {
+    "id": "internal-labs",
+    "name": "Internal Labs System",
+    "status": "draft",
+    "is_template": false,
+    "thumbnail_path": null,
+    "updated_at": 1713492000000
+  }
+]

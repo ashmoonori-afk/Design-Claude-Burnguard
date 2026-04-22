@@ -1,34 +1,64 @@
+import path from "node:path";
+import { existsSync } from "node:fs";
 import { Hono } from "hono";
-import { APP_NAME, APP_VERSION, type HealthResponse } from "@bg/shared";
-
-const startTime = Date.now();
+import { APP_NAME } from "@bg/shared";
+import { healthRoutes } from "./routes/health";
+import { artifactRoutes } from "./routes/artifacts";
+import { homeRoutes } from "./routes/home";
+import { projectRoutes } from "./routes/project";
+import { sessionRoutes } from "./routes/session";
+import { systemRoutes } from "./routes/system";
+import { resolveRepoRoot } from "./lib/paths";
 
 export const app = new Hono();
 
-app.get("/api/health", (c) => {
-  const body: HealthResponse = {
-    ok: true,
-    name: APP_NAME,
-    version: APP_VERSION,
-    uptimeMs: Date.now() - startTime,
-    runtime: typeof Bun !== "undefined" ? "bun" : "node",
-    platform: process.platform,
-  };
-  return c.json(body);
+app.route("/", healthRoutes);
+app.route("/", artifactRoutes);
+app.route("/", homeRoutes);
+app.route("/", projectRoutes);
+app.route("/", sessionRoutes);
+app.route("/", systemRoutes);
+
+app.get("/assets/*", async (c) => {
+  const distDir = findFrontendDistDir();
+  const assetPath = c.req.param("*") ?? "";
+  if (!distDir || !assetPath) {
+    return c.notFound();
+  }
+
+  const absolutePath = path.join(distDir, "assets", assetPath);
+  if (!existsSync(absolutePath)) {
+    return c.notFound();
+  }
+
+  return new Response(Bun.file(absolutePath));
 });
 
-/**
- * Phase 0: inline a hello page so the binary alone (without the Vite frontend
- * bundled yet) proves the distribution path works. Phase 1 replaces this with
- * embedded frontend assets served via Bun.file().
- */
-app.get("/", (c) => {
+app.get("*", async (c) => {
+  const pathname = new URL(c.req.url).pathname;
+  if (pathname.startsWith("/api/")) {
+    return c.notFound();
+  }
+
+  const distDir = findFrontendDistDir();
+  if (distDir) {
+    const indexPath = path.join(distDir, "index.html");
+    if (existsSync(indexPath)) {
+      return new Response(Bun.file(indexPath), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
+  }
+
   return c.html(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${APP_NAME} — Phase 0</title>
+  <title>${APP_NAME} - Phase 0</title>
   <style>
     :root { color-scheme: light; }
     body {
@@ -61,18 +91,14 @@ app.get("/", (c) => {
       line-height: 1.6;
     }
     .foot { margin-top: 24px; font-size: 12px; color: #9FB1BD; }
-    code { background: #F2F5F7; padding: 2px 6px; border-radius: 4px; }
-    a { color: #186ADE; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>${APP_NAME}</h1>
-    <p class="sub">Phase 0 — the compiled binary boots, Hono serves HTTP, the browser opened automatically.</p>
-    <div class="kv" id="kv">loading /api/health…</div>
-    <p class="foot">
-      This inline page ships with the binary. In Phase 1 it is replaced by the Vite-built React SPA, served from embedded assets.
-    </p>
+    <p class="sub">Frontend dist not found yet. Build the Vite app to replace this placeholder.</p>
+    <div class="kv" id="kv">loading /api/health...</div>
+    <p class="foot">Phase 1 serves the React app from <code>packages/frontend/dist</code>.</p>
   </div>
   <script>
     fetch("/api/health")
@@ -91,3 +117,13 @@ app.get("/", (c) => {
 </body>
 </html>`);
 });
+
+function findFrontendDistDir() {
+  const repoRoot = resolveRepoRoot();
+  const candidates = [
+    path.join(repoRoot, "packages", "frontend", "dist"),
+    path.join(import.meta.dir, "..", "..", "frontend", "dist"),
+  ];
+
+  return candidates.find((candidate) => existsSync(path.join(candidate, "index.html"))) ?? null;
+}
