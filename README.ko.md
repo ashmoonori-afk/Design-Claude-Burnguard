@@ -1,3 +1,7 @@
+<p align="right">
+  <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/English-README-004fff?style=for-the-badge" /></a>
+</p>
+
 # BurnGuard Design
 
 BurnGuard Design은 이미 설치되어 있는 `claude`, `codex` CLI를 채팅 + 캔버스 워크플로로 감싸는 로컬 우선 AI 디자인 워크스페이스입니다. 프로젝트 파일을 SaaS로 옮기지 않고도 프로토타입과 슬라이드 덱을 생성, 수정, 리뷰, export할 수 있게 만드는 것이 목표입니다.
