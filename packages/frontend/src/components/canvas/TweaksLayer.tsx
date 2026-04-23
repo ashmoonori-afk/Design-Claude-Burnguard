@@ -18,7 +18,7 @@ export const TWEAKS_STYLE_KEYS = [
   "color",
   "line-height",
   "letter-spacing",
-  "background",
+  "background-color",
   "padding",
   "margin",
   "border-radius",
