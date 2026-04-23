@@ -76,7 +76,7 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
   let payload: UserEvent | null = null;
 
   if (contentType.includes("application/json")) {
-    const body = await c.req.json<unknown>();
+    const body = await c.req.json<unknown>().catch(() => null);
     if (
       isRecord(body) &&
       body.type === "user.message" &&
@@ -98,7 +98,16 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
       const fileEntries = form
         .getAll("files")
         .filter((value): value is File => value instanceof File);
-      const attachmentPaths = await saveSessionAttachments(id, fileEntries);
+      let attachmentPaths: string[];
+      try {
+        attachmentPaths = await saveSessionAttachments(id, fileEntries);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return c.json(
+          fail("invalid_attachments", "Attachment upload rejected", { message }),
+          400,
+        );
+      }
       payload = {
         type: "user.message",
         text,

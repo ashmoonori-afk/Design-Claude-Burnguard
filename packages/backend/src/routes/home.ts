@@ -107,7 +107,7 @@ homeRoutes.get("/api/design-systems", async (c) => {
 });
 
 homeRoutes.post("/api/projects", async (c) => {
-  const body = await c.req.json<unknown>();
+  const body = await c.req.json<unknown>().catch(() => null);
   if (!isRecord(body)) {
     return c.json(fail("invalid_body", "Expected a JSON object request body"), 400);
   }
@@ -160,7 +160,7 @@ homeRoutes.get("/api/settings", async (c) => {
 });
 
 homeRoutes.patch("/api/settings", async (c) => {
-  const patch = await c.req.json<unknown>();
+  const patch = await c.req.json<unknown>().catch(() => null);
   if (!isRecord(patch)) {
     return c.json(fail("invalid_body", "Expected a JSON object request body"), 400);
   }

@@ -78,7 +78,7 @@ export default function PresentOverlay({
         key={src}
         title="Presentation"
         src={withPresentFlag(src)}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
         className="absolute inset-0 h-full w-full border-0 bg-black"
       />
       <button

@@ -5,13 +5,12 @@ import {
   type MouseEvent,
   type RefObject,
 } from "react";
+import {
+  requestFrameBgAtPoint,
+  requestFrameRectForBgId,
+  type FrameRect,
+} from "./frame-bridge";
 
-/**
- * Properties surfaced to the Tweaks inspector. Kept to a tight CSS subset
- * so the panel stays usable — font/box/colour fundamentals. Adding more
- * later is fine but reach-y properties (transforms, grid template) deserve
- * their own panel.
- */
 export const TWEAKS_STYLE_KEYS = [
   "font-size",
   "font-weight",
@@ -33,12 +32,6 @@ export interface TweaksTarget {
   inline: Partial<Record<TweaksStyleKey, string>>;
 }
 
-/**
- * Hover-to-highlight + click-to-lock overlay for Tweaks mode. Only
- * elements with `data-bg-node-id` are selectable — same contract as Edit
- * mode — so style changes can PATCH to a stable anchor. Sky-emerald theme
- * distinguishes it from Edit (orange) and Select (sky).
- */
 export default function TweaksLayer({
   active,
   iframeRef,
@@ -51,8 +44,9 @@ export default function TweaksLayer({
   onSelect: (target: TweaksTarget | null) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
-  const [selectedRect, setSelectedRect] = useState<DOMRect | null>(null);
+  const requestSeqRef = useRef(0);
+  const [hoverRect, setHoverRect] = useState<FrameRect | null>(null);
+  const [selectedRect, setSelectedRect] = useState<FrameRect | null>(null);
 
   useEffect(() => {
     if (!active) {
@@ -67,24 +61,13 @@ export default function TweaksLayer({
       return;
     }
     let alive = true;
-    const tick = () => {
+    const tick = async () => {
       if (!alive) return;
-      const doc = readDoc(iframeRef.current);
-      if (!doc) {
-        setSelectedRect(null);
-        return;
-      }
-      const el = doc.querySelector(
-        `[data-bg-node-id="${cssEscape(selectedBgId)}"]`,
-      );
-      if (!(el instanceof HTMLElement)) {
-        setSelectedRect(null);
-        return;
-      }
-      const rect = el.getBoundingClientRect();
+      const rect = await requestFrameRectForBgId(iframeRef.current, selectedBgId);
+      if (!alive) return;
       setSelectedRect((prev) => (rectEqual(prev, rect) ? prev : rect));
     };
-    tick();
+    void tick();
     const id = window.setInterval(tick, 200);
     return () => {
       alive = false;
@@ -100,25 +83,13 @@ export default function TweaksLayer({
     const overlayRect = overlayRef.current.getBoundingClientRect();
     const relX = e.clientX - overlayRect.left;
     const relY = e.clientY - overlayRect.top;
-    const doc = readDoc(iframeRef.current);
-    if (!doc) {
-      setHoverRect(null);
-      return;
-    }
-    try {
-      // See SelectorOverlay.tsx — cross-realm `instanceof HTMLElement`
-      // is always false for iframe nodes. Null-check instead.
-      const el = doc.elementFromPoint(relX, relY);
-      const target = el ? el.closest("[data-bg-node-id]") : null;
-      if (!target) {
-        setHoverRect(null);
-        return;
-      }
-      const next = target.getBoundingClientRect();
-      setHoverRect((prev) => (rectEqual(prev, next) ? prev : next));
-    } catch {
-      setHoverRect(null);
-    }
+    const seq = ++requestSeqRef.current;
+    void requestFrameBgAtPoint(iframeRef.current, relX, relY).then((hit) => {
+      if (requestSeqRef.current !== seq) return;
+      setHoverRect((prev) =>
+        rectEqual(prev, hit?.rect ?? null) ? prev : (hit?.rect ?? null),
+      );
+    });
   };
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -128,29 +99,25 @@ export default function TweaksLayer({
     const overlayRect = overlayRef.current.getBoundingClientRect();
     const relX = e.clientX - overlayRect.left;
     const relY = e.clientY - overlayRect.top;
-    const doc = readDoc(iframeRef.current);
-    const view = readView(iframeRef.current);
-    if (!doc || !view) return;
+    void requestFrameBgAtPoint(iframeRef.current, relX, relY).then((hit) => {
+      if (!hit?.bgId) {
+        onSelect(null);
+        return;
+      }
 
-    const el = doc.elementFromPoint(relX, relY);
-    const target = el ? el.closest("[data-bg-node-id]") : null;
-    if (!target) {
-      onSelect(null);
-      return;
-    }
+      const computed: Partial<Record<TweaksStyleKey, string>> = {};
+      const inline: Partial<Record<TweaksStyleKey, string>> = {};
+      for (const key of TWEAKS_STYLE_KEYS) {
+        if (hit.computed[key]) computed[key] = hit.computed[key];
+        if (hit.inline[key]) inline[key] = hit.inline[key];
+      }
 
-    const bg_id = target.getAttribute("data-bg-node-id") ?? "";
-    const computed: Partial<Record<TweaksStyleKey, string>> = {};
-    const style = view.getComputedStyle(target);
-    for (const key of TWEAKS_STYLE_KEYS) {
-      computed[key] = style.getPropertyValue(key).trim();
-    }
-    const inline = parseInlineStyle(target.getAttribute("style") ?? "");
-    onSelect({
-      bg_id,
-      tag: target.tagName.toLowerCase(),
-      computed,
-      inline,
+      onSelect({
+        bg_id: hit.bgId,
+        tag: hit.tag ?? "div",
+        computed,
+        inline,
+      });
     });
   };
 
@@ -192,55 +159,12 @@ export default function TweaksLayer({
   );
 }
 
-function parseInlineStyle(raw: string): Partial<Record<TweaksStyleKey, string>> {
-  const out: Partial<Record<TweaksStyleKey, string>> = {};
-  const known = new Set<string>(TWEAKS_STYLE_KEYS);
-  for (const decl of raw.split(";")) {
-    const trimmed = decl.trim();
-    if (!trimmed) continue;
-    const colon = trimmed.indexOf(":");
-    if (colon <= 0) continue;
-    const key = trimmed.slice(0, colon).trim();
-    const value = trimmed.slice(colon + 1).trim();
-    if (!key || !value) continue;
-    if (known.has(key)) {
-      out[key as TweaksStyleKey] = value;
-    }
-  }
-  return out;
-}
-
-function readDoc(iframe: HTMLIFrameElement | null): Document | null {
-  if (!iframe) return null;
-  try {
-    return iframe.contentDocument;
-  } catch {
-    return null;
-  }
-}
-
-function readView(iframe: HTMLIFrameElement | null): Window | null {
-  if (!iframe) return null;
-  try {
-    return iframe.contentWindow;
-  } catch {
-    return null;
-  }
-}
-
-function rectEqual(a: DOMRect | null, b: DOMRect): boolean {
-  if (!a) return false;
+function rectEqual(a: FrameRect | null, b: FrameRect | null): boolean {
+  if (!a || !b) return a === b;
   return (
     a.left === b.left &&
     a.top === b.top &&
     a.width === b.width &&
     a.height === b.height
   );
-}
-
-function cssEscape(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/"/g, '\\"');
 }

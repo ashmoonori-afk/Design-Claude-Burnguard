@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Comment } from "@bg/shared";
 import CanvasTopBar from "./CanvasTopBar";
 import CommentLayer from "./CommentLayer";
@@ -11,6 +11,10 @@ import DrawLayer, {
 import EditLayer, { type EditTarget } from "./EditLayer";
 import SelectorOverlay from "./SelectorOverlay";
 import TweaksLayer, { type TweaksTarget } from "./TweaksLayer";
+import {
+  buildSandboxedArtifactSrcDoc,
+  requestFrameActiveSlide,
+} from "./frame-bridge";
 import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
 
@@ -121,14 +125,50 @@ export default function Canvas({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [frameSrcDoc, setFrameSrcDoc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) {
+      setFrameSrcDoc(null);
+      return;
+    }
+
+    let cancelled = false;
+    setFrameSrcDoc(null);
+
+    void fetch(src)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`artifact_fetch_failed:${response.status}`);
+        }
+        return response.text();
+      })
+      .then((html) => {
+        if (cancelled) return;
+        setFrameSrcDoc(
+          buildSandboxedArtifactSrcDoc(
+            html,
+            new URL(src, window.location.href).toString(),
+          ),
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFrameSrcDoc(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [frameKey, src]);
 
   useEffect(() => {
     let alive = true;
-    const tick = () => {
+    const tick = async () => {
       if (!alive) return;
-      onActiveSlideChange(readActiveSlideIdx(iframeRef.current));
+      onActiveSlideChange(await requestFrameActiveSlide(iframeRef.current));
     };
-    tick();
+    void tick();
     const id = window.setInterval(tick, 200);
     return () => {
       alive = false;
@@ -150,8 +190,8 @@ export default function Canvas({
             ref={iframeRef}
             key={frameKey}
             title="Canvas"
-            src={src}
-            sandbox="allow-scripts allow-same-origin"
+            srcDoc={frameSrcDoc ?? PLACEHOLDER_SRC}
+            sandbox="allow-scripts"
             className="absolute inset-0 h-full w-full border-0 bg-background"
           />
         ) : (
@@ -159,7 +199,7 @@ export default function Canvas({
             ref={iframeRef}
             title="Canvas placeholder"
             srcDoc={PLACEHOLDER_SRC}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts"
             className="absolute inset-0 h-full w-full border-0 bg-background"
           />
         )}
@@ -204,21 +244,4 @@ export default function Canvas({
       </div>
     </div>
   );
-}
-
-function readActiveSlideIdx(iframe: HTMLIFrameElement | null): number | null {
-  if (!iframe) return null;
-  let doc: Document | null = null;
-  try {
-    doc = iframe.contentDocument;
-  } catch {
-    return null;
-  }
-  if (!doc) return null;
-  const slides = doc.querySelectorAll("[data-slide]");
-  if (slides.length === 0) return null;
-  const active = doc.querySelector("[data-slide][data-active]");
-  if (!active) return 0;
-  const idx = Array.prototype.indexOf.call(slides, active);
-  return idx >= 0 ? idx : 0;
 }

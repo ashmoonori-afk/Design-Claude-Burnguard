@@ -5,31 +5,13 @@ import {
   type MouseEvent,
   type RefObject,
 } from "react";
+import {
+  requestFrameRectForSelector,
+  requestFrameSelectAtPoint,
+  type FrameRect,
+} from "./frame-bridge";
 import type { SelectedNode } from "@/types/project";
 
-const READ_STYLE_KEYS = [
-  "font-family",
-  "font-size",
-  "font-weight",
-  "color",
-  "line-height",
-  "letter-spacing",
-  "width",
-  "height",
-  "padding",
-  "margin",
-  "border",
-  "border-radius",
-  "background",
-] as const;
-
-/**
- * Hover-to-highlight + click-to-inspect selector overlay. Uses the iframe's
- * contentDocument for real element hit-testing and getComputedStyle for the
- * read-only property panel. Works on any project artifact — nodes don't need
- * a `data-bg-node-id`; it's preferred when present but falls back to `id` or
- * tag name so plain HTML still selects cleanly.
- */
 export default function SelectorOverlay({
   active,
   iframeRef,
@@ -42,9 +24,10 @@ export default function SelectorOverlay({
   onSelect: (selection: SelectedNode | null) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+  const requestSeqRef = useRef(0);
+  const [hoverRect, setHoverRect] = useState<FrameRect | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [selectedRect, setSelectedRect] = useState<DOMRect | null>(null);
+  const [selectedRect, setSelectedRect] = useState<FrameRect | null>(null);
 
   useEffect(() => {
     if (!active) {
@@ -54,31 +37,22 @@ export default function SelectorOverlay({
     }
   }, [active]);
 
-  // Keep the persistent box aligned with the selected element as the iframe
-  // reflows. Mirrors EditLayer's polling approach so both overlays behave
-  // identically in deck and prototype projects.
   useEffect(() => {
     if (!selectedKey) {
       setSelectedRect(null);
       return;
     }
     let alive = true;
-    const tick = () => {
+    const tick = async () => {
       if (!alive) return;
-      const doc = readDoc(iframeRef.current);
-      if (!doc) {
-        setSelectedRect(null);
-        return;
-      }
-      const el = findByKey(doc, selectedKey);
-      if (!el) {
-        setSelectedRect(null);
-        return;
-      }
-      const rect = el.getBoundingClientRect();
+      const rect = await requestFrameRectForSelector(
+        iframeRef.current,
+        selectedKey,
+      );
+      if (!alive) return;
       setSelectedRect((prev) => (rectEqual(prev, rect) ? prev : rect));
     };
-    tick();
+    void tick();
     const id = window.setInterval(tick, 200);
     return () => {
       alive = false;
@@ -86,60 +60,49 @@ export default function SelectorOverlay({
     };
   }, [iframeRef, selectedKey]);
 
-  const pickTarget = (e: MouseEvent<HTMLDivElement>): HTMLElement | null => {
-    if (!overlayRef.current) return null;
+  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+    if (!active || !overlayRef.current) {
+      setHoverRect(null);
+      return;
+    }
     const rect = overlayRef.current.getBoundingClientRect();
     const relX = e.clientX - rect.left;
     const relY = e.clientY - rect.top;
-    const doc = readDoc(iframeRef.current);
-    if (!doc) return null;
-    try {
-      // `instanceof HTMLElement` with the parent window's constructor is
-      // always false for iframe nodes (each same-origin frame has its own
-      // realm). Just null-check — `elementFromPoint` returns Element|null
-      // and downstream only uses Element APIs (getBoundingClientRect,
-      // getAttribute, closest, getComputedStyle).
-      const el = doc.elementFromPoint(relX, relY);
-      return (el ?? null) as HTMLElement | null;
-    } catch {
-      return null;
-    }
-  };
-
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!active) {
-      setHoverRect(null);
-      return;
-    }
-    const el = pickTarget(e);
-    if (!el) {
-      setHoverRect(null);
-      return;
-    }
-    const next = el.getBoundingClientRect();
-    setHoverRect((prev) => (rectEqual(prev, next) ? prev : next));
+    const seq = ++requestSeqRef.current;
+    void requestFrameSelectAtPoint(iframeRef.current, relX, relY).then((hit) => {
+      if (requestSeqRef.current !== seq) return;
+      setHoverRect((prev) =>
+        rectEqual(prev, hit?.rect ?? null) ? prev : (hit?.rect ?? null),
+      );
+    });
   };
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
     if (!active || !overlayRef.current) return;
     if (e.target !== overlayRef.current) return;
-    const el = pickTarget(e);
-    if (!el) {
-      setSelectedKey(null);
-      onSelect(null);
-      return;
-    }
-    const key = deriveKey(el);
-    const rect = el.getBoundingClientRect();
-    const view = readView(iframeRef.current);
-    const computed = view ? readComputed(view, el) : {};
-    setSelectedKey(key);
-    setSelectedRect(rect);
-    onSelect({
-      nodeId: key,
-      rect: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
-      computed,
-      file: activeRelPath ?? "",
+    const rect = overlayRef.current.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+    void requestFrameSelectAtPoint(iframeRef.current, relX, relY).then((hit) => {
+      if (!hit?.selector || !hit.rect) {
+        setSelectedKey(null);
+        setSelectedRect(null);
+        onSelect(null);
+        return;
+      }
+      setSelectedKey(hit.selector);
+      setSelectedRect(hit.rect);
+      onSelect({
+        nodeId: hit.selector,
+        rect: {
+          x: hit.rect.left,
+          y: hit.rect.top,
+          w: hit.rect.width,
+          h: hit.rect.height,
+        },
+        computed: hit.computed,
+        file: activeRelPath ?? "",
+      });
     });
   };
 
@@ -181,55 +144,8 @@ export default function SelectorOverlay({
   );
 }
 
-function deriveKey(el: HTMLElement): string {
-  const bg = el.getAttribute("data-bg-node-id");
-  if (bg) return `[data-bg-node-id="${bg}"]`;
-  if (el.id) return `#${el.id}`;
-  return el.tagName.toLowerCase();
-}
-
-function findByKey(doc: Document, key: string): HTMLElement | null {
-  try {
-    const el = doc.querySelector(key);
-    return el instanceof HTMLElement ? el : null;
-  } catch {
-    return null;
-  }
-}
-
-function readDoc(iframe: HTMLIFrameElement | null): Document | null {
-  if (!iframe) return null;
-  try {
-    return iframe.contentDocument;
-  } catch {
-    return null;
-  }
-}
-
-function readView(iframe: HTMLIFrameElement | null): Window | null {
-  if (!iframe) return null;
-  try {
-    return iframe.contentWindow;
-  } catch {
-    return null;
-  }
-}
-
-function readComputed(view: Window, el: HTMLElement): Record<string, string> {
-  try {
-    const style = view.getComputedStyle(el);
-    const out: Record<string, string> = {};
-    for (const key of READ_STYLE_KEYS) {
-      out[key] = style.getPropertyValue(key).trim();
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-function rectEqual(a: DOMRect | null, b: DOMRect): boolean {
-  if (!a) return false;
+function rectEqual(a: FrameRect | null, b: FrameRect | null): boolean {
+  if (!a || !b) return a === b;
   return (
     a.left === b.left &&
     a.top === b.top &&

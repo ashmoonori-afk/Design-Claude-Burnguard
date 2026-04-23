@@ -9,6 +9,8 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse } from "node-html-parser";
@@ -66,6 +68,21 @@ const TEXT_FILE_EXTENSIONS = new Set([
 
 const UI_KIT_EXTENSIONS = new Set([".html", ".jsx", ".tsx", ".css"]);
 const LOGO_EXTENSIONS = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp"]);
+const MAX_LINKED_PAGES = 4;
+const MAX_HTML_BYTES = 900_000;
+const MAX_CSS_BYTES = 700_000;
+const MAX_LOGO_BYTES = 2_500_000;
+const MAX_TOTAL_DOWNLOAD_BYTES = 8_000_000;
+const MAX_FETCH_REDIRECTS = 5;
+const BLOCKED_IMPORT_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "::1",
+  "metadata",
+  "metadata.google.internal",
+  "169.254.169.254",
+]);
 
 type SupportedExtractionSource = Extract<DesignSystemSourceType, "github" | "website">;
 
@@ -371,14 +388,25 @@ async function ingestWebsiteSource(
     );
   }
 
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new DesignSystemExtractError(
-      "website_fetch_failed",
-      `Website fetch failed with HTTP ${response.status}`,
-    );
-  }
-  const html = await response.text();
+  let totalDownloadedBytes = 0;
+  const noteBytes = (bytes: number) => {
+    totalDownloadedBytes += bytes;
+    if (totalDownloadedBytes > MAX_TOTAL_DOWNLOAD_BYTES) {
+      throw new DesignSystemExtractError(
+        "website_fetch_failed",
+        `Website import exceeded ${MAX_TOTAL_DOWNLOAD_BYTES} bytes total download budget`,
+      );
+    }
+  };
+
+  const homepage = await fetchWebsiteResource(url, {
+    maxBytes: MAX_HTML_BYTES,
+    kind: "html",
+    noteBytes,
+  });
+  url = homepage.finalUrl;
+  const html = homepage.text;
+
   const websiteDir = path.join(ingestDir, "website");
   const uploadsDir = path.join(websiteDir, "uploads", "linked-css");
   const pagesDir = path.join(websiteDir, "uploads", "pages");
@@ -398,17 +426,23 @@ async function ingestWebsiteSource(
   const logoFiles: Array<{ absolutePath: string; fileName: string }> = [];
   const pageHtmlByUrl = new Map<string, string>([[url.toString(), html]]);
   const pageQueue = await collectCandidateWebsitePages(url, html);
+
   for (const page of pageQueue) {
     if (pageHtmlByUrl.has(page.toString())) continue;
     try {
-      const pageResponse = await fetch(page);
-      if (!pageResponse.ok) continue;
-      const pageHtml = await pageResponse.text();
-      pageHtmlByUrl.set(page.toString(), pageHtml);
+      const pageFetch = await fetchWebsiteResource(page, {
+        maxBytes: MAX_HTML_BYTES,
+        kind: "html",
+        noteBytes,
+      });
+      if (pageHtmlByUrl.has(pageFetch.finalUrl.toString())) continue;
+      pageHtmlByUrl.set(pageFetch.finalUrl.toString(), pageFetch.text);
       const fileName = `page-${pageHtmlByUrl.size}.html`;
-      await writeFile(path.join(pagesDir, fileName), pageHtml, "utf8");
-    } catch {
-      notes.push(`Skipped linked page: ${page.toString()}`);
+      await writeFile(path.join(pagesDir, fileName), pageFetch.text, "utf8");
+    } catch (error) {
+      notes.push(
+        `Skipped linked page: ${page.toString()} (${error instanceof Error ? error.message : "fetch failed"})`,
+      );
     }
   }
 
@@ -450,7 +484,9 @@ async function ingestWebsiteSource(
         { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
         extractCssStyleSignals(inlineCss),
       );
-      for (const family of extractFontFamilies(inlineCss)) fontFamilies.add(family);
+      for (const family of extractFontFamilies(inlineCss)) {
+        fontFamilies.add(family);
+      }
     }
 
     const pageBase = new URL(pageUrl);
@@ -461,11 +497,14 @@ async function ingestWebsiteSource(
       try {
         const cssUrl = new URL(href, pageBase);
         if (cssUrl.origin !== url.origin) continue;
-        if (seenStylesheets.has(cssUrl.toString())) continue;
-        seenStylesheets.add(cssUrl.toString());
-        const cssResponse = await fetch(cssUrl);
-        if (!cssResponse.ok) continue;
-        const cssText = await cssResponse.text();
+        const cssFetch = await fetchWebsiteResource(cssUrl, {
+          maxBytes: MAX_CSS_BYTES,
+          kind: "css",
+          noteBytes,
+        });
+        if (seenStylesheets.has(cssFetch.finalUrl.toString())) continue;
+        seenStylesheets.add(cssFetch.finalUrl.toString());
+        const cssText = cssFetch.text;
         const fileName = `linked-${stylesheetIndex}.css`;
         stylesheetIndex += 1;
         const absolute = path.join(uploadsDir, fileName);
@@ -475,9 +514,13 @@ async function ingestWebsiteSource(
           { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
           extractCssStyleSignals(cssText),
         );
-        for (const family of extractFontFamilies(cssText)) fontFamilies.add(family);
-      } catch {
-        notes.push(`Skipped linked stylesheet: ${href}`);
+        for (const family of extractFontFamilies(cssText)) {
+          fontFamilies.add(family);
+        }
+      } catch (error) {
+        notes.push(
+          `Skipped linked stylesheet: ${href} (${error instanceof Error ? error.message : "fetch failed"})`,
+        );
       }
     }
 
@@ -486,18 +529,22 @@ async function ingestWebsiteSource(
       if (!src || !/logo|brand/i.test(src)) continue;
       try {
         const logoUrl = new URL(src, pageBase);
-        const dedupedName = safeFileName(path.basename(logoUrl.pathname) || "logo.png");
-        if (logoFiles.some((logo) => logo.fileName === dedupedName)) continue;
-        const logoResponse = await fetch(logoUrl);
-        if (!logoResponse.ok) continue;
-        const absolutePath = path.join(websiteDir, dedupedName);
-        await writeFile(
-          absolutePath,
-          Buffer.from(await logoResponse.arrayBuffer()),
+        const dedupedName = safeFileName(
+          path.basename(logoUrl.pathname) || "logo.png",
         );
+        if (logoFiles.some((logo) => logo.fileName === dedupedName)) continue;
+        const logoFetch = await fetchWebsiteResource(logoUrl, {
+          maxBytes: MAX_LOGO_BYTES,
+          kind: "asset",
+          noteBytes,
+        });
+        const absolutePath = path.join(websiteDir, dedupedName);
+        await writeFile(absolutePath, logoFetch.buffer);
         logoFiles.push({ absolutePath, fileName: dedupedName });
-      } catch {
-        notes.push(`Skipped logo candidate: ${src}`);
+      } catch (error) {
+        notes.push(
+          `Skipped logo candidate: ${src} (${error instanceof Error ? error.message : "fetch failed"})`,
+        );
       }
     }
   }
@@ -525,7 +572,7 @@ async function ingestWebsiteSource(
     shadows: [...shadows],
     notes,
     logoFiles: logoFiles.slice(0, 8),
-    uiKitFiles: [...pageHtmlByUrl.keys()].map((pageUrl, index) => ({
+    uiKitFiles: [...pageHtmlByUrl.keys()].map((_pageUrl, index) => ({
       absolutePath:
         index === 0
           ? path.join(websiteDir, "index.html")
@@ -1138,12 +1185,18 @@ function previewBody(
   const firstFont = escapeHtml(analysis.fontFamilies[0] ?? "Inter");
   const sampleButton = escapeHtml(analysis.componentSamples.buttons[0] ?? "Primary");
   const sampleCardTitle = escapeHtml(analysis.componentSamples.cards[0] ?? "Insight card");
+  const sampleForm = escapeHtml(analysis.componentSamples.forms[0] ?? "Email");
+  const sampleBadge = escapeHtml(analysis.componentSamples.badges[0] ?? "Published");
+  const sampleTable = escapeHtml(analysis.componentSamples.tables[0] ?? "Row 1");
   const sampleHeading = escapeHtml(analysis.componentSamples.headings[0] ?? "Display sample");
   const sampleBody = escapeHtml(
     analysis.componentSamples.body[0] ??
       "Design systems work best when everyday copy feels calm and readable.",
   );
   const sampleSpacing = analysis.spacingValues.slice(0, 6);
+  const sampleColors = analysis.colors.slice(0, 6);
+  const sampleFontSizes = analysis.fontSizes.slice(0, 3);
+  const sampleFontWeights = analysis.fontWeights.slice(0, 2);
   const sampleRadius = analysis.radii[0] ?? "4px";
   const sampleShadow =
     analysis.shadows[0] ?? "0 1px 2px rgba(15,23,42,0.08)";
@@ -1153,19 +1206,19 @@ function previewBody(
     case "brand-icons":
       return `<div class="eyebrow">Brand</div><div class="title">Icon direction</div><div class="muted">Quiet, geometric, interface-safe iconography.</div><div class="chips"><div class="chip">1.5px stroke</div><div class="chip">Low ornament</div><div class="chip">Grid aligned</div></div>`;
     case "colors-brand":
-      return `<div class="eyebrow">Color</div><div class="title">Brand colors</div><div class="stack"><div class="swatch" style="background:#0057B8"></div><div class="swatch" style="background:#2563eb"></div><div class="swatch" style="background:#0ea5e9"></div></div>`;
+      return `<div class="eyebrow">Color</div><div class="title">Brand colors</div><div class="stack">${(sampleColors.length > 0 ? sampleColors.slice(0, 3) : ["#0057B8", "#2563eb", "#0ea5e9"]).map((value) => `<div class="swatch" style="background:${escapeHtml(value)}"></div>`).join("")}</div><div class="muted">${sampleColors.length > 0 ? "Source-derived swatches" : "Fallback swatches"}</div>`;
     case "colors-neutrals":
-      return `<div class="eyebrow">Color</div><div class="title">Neutral scale</div><div class="stack"><div class="swatch" style="background:#0f172a"></div><div class="swatch" style="background:#64748b"></div><div class="swatch" style="background:#f8fafc"></div></div>`;
+      return `<div class="eyebrow">Color</div><div class="title">Neutral scale</div><div class="stack">${(sampleColors.length >= 6 ? sampleColors.slice(3, 6) : ["#0f172a", "#64748b", "#f8fafc"]).map((value) => `<div class="swatch" style="background:${escapeHtml(value)}"></div>`).join("")}</div>`;
     case "colors-ramps":
-      return `<div class="eyebrow">Color</div><div class="title">Accent ramps</div><div class="grid"><div class="swatch" style="background:#dc2626"></div><div class="swatch" style="background:#ea580c"></div><div class="swatch" style="background:#16a34a"></div><div class="swatch" style="background:#7c3aed"></div></div>`;
+      return `<div class="eyebrow">Color</div><div class="title">Accent ramps</div><div class="grid">${(sampleColors.length > 0 ? sampleColors.slice(0, 4) : ["#dc2626", "#ea580c", "#16a34a", "#7c3aed"]).map((value) => `<div class="swatch" style="background:${escapeHtml(value)}"></div>`).join("")}</div>`;
     case "colors-semantic":
       return `<div class="eyebrow">Color</div><div class="title">Semantic roles</div><div class="chips"><div class="chip">Success</div><div class="chip">Warning</div><div class="chip">Error</div><div class="chip">Info</div></div>`;
     case "colors-charts":
-      return `<div class="eyebrow">Color</div><div class="title">Chart palette</div><div class="grid"><div class="swatch" style="background:#1d4ed8"></div><div class="swatch" style="background:#0891b2"></div><div class="swatch" style="background:#16a34a"></div><div class="swatch" style="background:#ea580c"></div></div>`;
+      return `<div class="eyebrow">Color</div><div class="title">Chart palette</div><div class="grid">${(sampleColors.length > 0 ? sampleColors.slice(0, 4) : ["#1d4ed8", "#0891b2", "#16a34a", "#ea580c"]).map((value) => `<div class="swatch" style="background:${escapeHtml(value)}"></div>`).join("")}</div>`;
     case "type-display":
-      return `<div class="eyebrow">Typography</div><div class="title" style="font-size:26px">${sampleHeading}</div><div class="muted">Primary display family candidate: ${firstFont}</div>`;
+      return `<div class="eyebrow">Typography</div><div class="title" style="font-size:${escapeHtml(sampleFontSizes[0] ?? "26px")};font-weight:${escapeHtml(sampleFontWeights[0] ?? "700")}">${sampleHeading}</div><div class="muted">Primary display family candidate: ${firstFont}</div>`;
     case "type-headings":
-      return `<div class="eyebrow">Typography</div><div class="title">Heading hierarchy</div><div class="stack"><div style="font-size:20px;font-weight:700">H1 Heading</div><div style="font-size:16px;font-weight:600">H2 Heading</div><div class="muted">Structured, low-hype hierarchy.</div></div>`;
+      return `<div class="eyebrow">Typography</div><div class="title">Heading hierarchy</div><div class="stack"><div style="font-size:${escapeHtml(sampleFontSizes[0] ?? "20px")};font-weight:${escapeHtml(sampleFontWeights[0] ?? "700")}">H1 Heading</div><div style="font-size:${escapeHtml(sampleFontSizes[1] ?? "16px")};font-weight:${escapeHtml(sampleFontWeights[1] ?? "600")}">H2 Heading</div><div class="muted">Structured, low-hype hierarchy.</div></div>`;
     case "type-body":
       return `<div class="eyebrow">Typography</div><div class="title">Body copy</div><div class="muted">${sampleBody}</div>`;
     case "spacing":
@@ -1177,9 +1230,9 @@ function previewBody(
     case "components-cards":
       return `<div class="eyebrow">Components</div><div class="title">Cards</div><div class="stack"><div class="field"><strong>${sampleCardTitle}</strong><div class="muted">${sampleBody}</div></div><div class="field"><strong>Editorial card</strong><div class="muted">Quiet frame, clear grouping.</div></div></div>`;
     case "components-forms":
-      return `<div class="eyebrow">Components</div><div class="title">Forms</div><div class="stack"><div class="field">Label<br>Input field</div><div class="field">Select field</div></div>`;
+      return `<div class="eyebrow">Components</div><div class="title">Forms</div><div class="stack"><div class="field">Label<br>${sampleForm}</div><div class="field">${sampleBody}</div></div>`;
     case "components-badges-table":
-      return `<div class="eyebrow">Components</div><div class="title">Badges & table</div><div class="chips"><div class="chip">Published</div><div class="chip">Draft</div></div><table><thead><tr><th>Item</th><th>Status</th></tr></thead><tbody><tr><td>Token sync</td><td>Ready</td></tr><tr><td>Preview cards</td><td>Draft</td></tr></tbody></table>`;
+      return `<div class="eyebrow">Components</div><div class="title">Badges & table</div><div class="chips"><div class="chip">${sampleBadge}</div><div class="chip">Draft</div></div><table><thead><tr><th>Item</th><th>Status</th></tr></thead><tbody><tr><td>${sampleTable}</td><td>Ready</td></tr><tr><td>Preview cards</td><td>Draft</td></tr></tbody></table>`;
   }
 }
 
@@ -1303,6 +1356,161 @@ function collectHtmlTextSamples(
   return out;
 }
 
+interface WebsiteFetchOptions {
+  maxBytes: number;
+  kind: "html" | "css" | "asset";
+  noteBytes: (bytes: number) => void;
+}
+
+async function fetchWebsiteResource(
+  inputUrl: URL,
+  options: WebsiteFetchOptions,
+): Promise<{ finalUrl: URL; text: string; buffer: Buffer }> {
+  let current = new URL(inputUrl.toString());
+
+  for (let redirectCount = 0; redirectCount <= MAX_FETCH_REDIRECTS; redirectCount += 1) {
+    await assertSafeImportUrl(current);
+    const response = await fetch(current, {
+      redirect: "manual",
+      headers: { "user-agent": "BurnGuard/0.3.1 design-system-import" },
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new DesignSystemExtractError(
+          "website_fetch_failed",
+          `Redirect missing Location header for ${current.toString()}`,
+        );
+      }
+      current = new URL(location, current);
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new DesignSystemExtractError(
+        "website_fetch_failed",
+        `Website fetch failed with HTTP ${response.status}`,
+      );
+    }
+
+    const buffer = await readResponseWithinLimit(response, options.maxBytes);
+    options.noteBytes(buffer.byteLength);
+    return {
+      finalUrl: current,
+      text:
+        options.kind === "asset" ? "" : buffer.toString("utf8"),
+      buffer,
+    };
+  }
+
+  throw new DesignSystemExtractError(
+    "website_fetch_failed",
+    `Too many redirects while fetching ${inputUrl.toString()}`,
+  );
+}
+
+async function readResponseWithinLimit(
+  response: Response,
+  maxBytes: number,
+): Promise<Buffer> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return Buffer.alloc(0);
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      throw new DesignSystemExtractError(
+        "website_fetch_failed",
+        `Fetched resource exceeded ${maxBytes} bytes`,
+      );
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+}
+
+async function assertSafeImportUrl(url: URL) {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new DesignSystemExtractError(
+      "invalid_source_url",
+      `Website URL must be http(s): ${url.toString()}`,
+    );
+  }
+
+  const host = normalizeHost(url.hostname);
+  if (isUnsafeImportHostname(host)) {
+    throw new DesignSystemExtractError(
+      "invalid_source_url",
+      `Blocked private or local website host: ${url.hostname}`,
+    );
+  }
+
+  if (isIP(host) !== 0) {
+    return;
+  }
+
+  const resolved = await lookup(host, { all: true, verbatim: true }).catch(
+    () => [],
+  );
+  for (const entry of resolved) {
+    if (isUnsafeImportHostname(normalizeHost(entry.address))) {
+      throw new DesignSystemExtractError(
+        "invalid_source_url",
+        `Blocked hostname resolved to a private or local address: ${url.hostname}`,
+      );
+    }
+  }
+}
+
+export function isUnsafeImportHostname(hostname: string): boolean {
+  const host = normalizeHost(hostname);
+  if (!host) return true;
+  if (BLOCKED_IMPORT_HOSTS.has(host)) return true;
+  if (
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".home") ||
+    host.endsWith(".lan") ||
+    host.endsWith(".arpa")
+  ) {
+    return true;
+  }
+
+  const ipVersion = isIP(host);
+  if (ipVersion === 4) {
+    const parts = host.split(".").map((part) => Number.parseInt(part, 10));
+    const [a, b] = parts;
+    if (
+      a === 10 ||
+      a === 127 ||
+      a === 0 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    ) {
+      return true;
+    }
+    return false;
+  }
+  if (ipVersion === 6) {
+    if (host === "::1") return true;
+    if (host.startsWith("fc") || host.startsWith("fd")) return true;
+    if (host.startsWith("fe80:")) return true;
+  }
+  return false;
+}
+
+function normalizeHost(hostname: string): string {
+  return hostname.trim().replace(/^\[|\]$/g, "").toLowerCase();
+}
+
 async function collectCandidateWebsitePages(baseUrl: URL, html: string) {
   const root = parse(html);
   const candidates: URL[] = [];
@@ -1319,7 +1527,7 @@ async function collectCandidateWebsitePages(baseUrl: URL, html: string) {
       if (/\.(pdf|png|jpg|jpeg|svg|zip)$/i.test(next.pathname)) continue;
       seen.add(next.toString());
       candidates.push(next);
-      if (candidates.length >= 4) break;
+      if (candidates.length >= MAX_LINKED_PAGES) break;
     } catch {
       // ignore malformed href
     }

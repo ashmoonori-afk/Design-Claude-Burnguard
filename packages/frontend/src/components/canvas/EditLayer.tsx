@@ -5,6 +5,11 @@ import {
   type MouseEvent,
   type RefObject,
 } from "react";
+import {
+  requestFrameBgAtPoint,
+  requestFrameRectForBgId,
+  type FrameRect,
+} from "./frame-bridge";
 
 export interface EditTarget {
   bg_id: string;
@@ -25,35 +30,23 @@ export default function EditLayer({
   onSelect: (target: EditTarget | null) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
-  const [selectedRect, setSelectedRect] = useState<DOMRect | null>(null);
+  const requestSeqRef = useRef(0);
+  const [hoverRect, setHoverRect] = useState<FrameRect | null>(null);
+  const [selectedRect, setSelectedRect] = useState<FrameRect | null>(null);
 
-  // Keep the persistent selection box aligned with the element as the
-  // iframe resizes / reflows. Stops on unselect.
   useEffect(() => {
     if (!selectedBgId) {
       setSelectedRect(null);
       return;
     }
     let alive = true;
-    const tick = () => {
+    const tick = async () => {
       if (!alive) return;
-      const doc = readDoc(iframeRef.current);
-      if (!doc) {
-        setSelectedRect(null);
-        return;
-      }
-      const el = doc.querySelector(
-        `[data-bg-node-id="${cssEscape(selectedBgId)}"]`,
-      );
-      if (!(el instanceof HTMLElement)) {
-        setSelectedRect(null);
-        return;
-      }
-      const rect = el.getBoundingClientRect();
+      const rect = await requestFrameRectForBgId(iframeRef.current, selectedBgId);
+      if (!alive) return;
       setSelectedRect((prev) => (rectEqual(prev, rect) ? prev : rect));
     };
-    tick();
+    void tick();
     const id = window.setInterval(tick, 200);
     return () => {
       alive = false;
@@ -69,25 +62,13 @@ export default function EditLayer({
     const overlayRect = overlayRef.current.getBoundingClientRect();
     const relX = e.clientX - overlayRect.left;
     const relY = e.clientY - overlayRect.top;
-    const doc = readDoc(iframeRef.current);
-    if (!doc) {
-      setHoverRect(null);
-      return;
-    }
-    try {
-      // See SelectorOverlay.tsx — cross-realm `instanceof HTMLElement`
-      // is always false for iframe nodes. Null-check instead.
-      const el = doc.elementFromPoint(relX, relY);
-      const target = el ? el.closest("[data-bg-node-id]") : null;
-      if (!target) {
-        setHoverRect(null);
-        return;
-      }
-      const next = target.getBoundingClientRect();
-      setHoverRect((prev) => (rectEqual(prev, next) ? prev : next));
-    } catch {
-      setHoverRect(null);
-    }
+    const seq = ++requestSeqRef.current;
+    void requestFrameBgAtPoint(iframeRef.current, relX, relY).then((hit) => {
+      if (requestSeqRef.current !== seq) return;
+      setHoverRect((prev) =>
+        rectEqual(prev, hit?.rect ?? null) ? prev : (hit?.rect ?? null),
+      );
+    });
   };
 
   const handleClick = (e: MouseEvent<HTMLDivElement>) => {
@@ -97,26 +78,17 @@ export default function EditLayer({
     const overlayRect = overlayRef.current.getBoundingClientRect();
     const relX = e.clientX - overlayRect.left;
     const relY = e.clientY - overlayRect.top;
-    const doc = readDoc(iframeRef.current);
-    if (!doc) return;
-
-    const el = doc.elementFromPoint(relX, relY);
-    const target = el ? el.closest("[data-bg-node-id]") : null;
-    if (!target) {
-      onSelect(null);
-      return;
-    }
-
-    const bg_id = target.getAttribute("data-bg-node-id") ?? "";
-    const attributes: Record<string, string> = {};
-    for (const attr of Array.from(target.attributes)) {
-      attributes[attr.name] = attr.value;
-    }
-    onSelect({
-      bg_id,
-      tag: target.tagName.toLowerCase(),
-      text: target.textContent ?? "",
-      attributes,
+    void requestFrameBgAtPoint(iframeRef.current, relX, relY).then((hit) => {
+      if (!hit?.bgId) {
+        onSelect(null);
+        return;
+      }
+      onSelect({
+        bg_id: hit.bgId,
+        tag: hit.tag ?? "div",
+        text: hit.text ?? "",
+        attributes: hit.attributes,
+      });
     });
   };
 
@@ -158,30 +130,12 @@ export default function EditLayer({
   );
 }
 
-function readDoc(iframe: HTMLIFrameElement | null): Document | null {
-  if (!iframe) return null;
-  try {
-    return iframe.contentDocument;
-  } catch {
-    return null;
-  }
-}
-
-function rectEqual(a: DOMRect | null, b: DOMRect): boolean {
-  if (!a) return false;
+function rectEqual(a: FrameRect | null, b: FrameRect | null): boolean {
+  if (!a || !b) return a === b;
   return (
     a.left === b.left &&
     a.top === b.top &&
     a.width === b.width &&
     a.height === b.height
   );
-}
-
-function cssEscape(value: string): string {
-  // `CSS.escape` exists in all target browsers, but guard anyway so the
-  // test environment (jsdom-free) doesn't blow up.
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/"/g, '\\"');
 }

@@ -47,7 +47,7 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
     return c.json(fail("project_not_found", "Project not found", { id }), 404);
   }
 
-  const body = await c.req.json<unknown>();
+  const body = await c.req.json<unknown>().catch(() => null);
   if (!isRecord(body)) {
     return c.json(
       fail("invalid_body", "Expected a JSON object request body"),
@@ -111,7 +111,7 @@ commentRoutes.patch("/api/projects/:id/comments/:commentId", async (c) => {
     return c.json(fail("project_not_found", "Project not found", { id }), 404);
   }
 
-  const body = await c.req.json<unknown>();
+  const body = await c.req.json<unknown>().catch(() => null);
   if (!isRecord(body)) {
     return c.json(
       fail("invalid_body", "Expected a JSON object request body"),

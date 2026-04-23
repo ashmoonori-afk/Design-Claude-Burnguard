@@ -1,5 +1,6 @@
 import { useRef, type MouseEvent, type RefObject } from "react";
 import type { Comment } from "@bg/shared";
+import { requestFrameCommentAtPoint } from "./frame-bridge";
 import { cn } from "@/lib/utils";
 
 interface PinInput {
@@ -35,9 +36,6 @@ export default function CommentLayer({
         if (c.rel_path !== activeRelPath) return false;
         if (c.resolved_at !== null) return false;
         if (activeSlideIdx != null) {
-          // Deck context — pin must match the active slide. Legacy pins
-          // from before migration 0003 carry slide_index=NULL; treat them
-          // as if they belong to slide 0 so they don't leak into every page.
           const pinSlide = c.slide_index ?? 0;
           if (pinSlide !== activeSlideIdx) return false;
         }
@@ -55,32 +53,16 @@ export default function CommentLayer({
     const x_pct = (relX / rect.width) * 100;
     const y_pct = (relY / rect.height) * 100;
 
-    let node_selector = "body";
-    let slide_index: number | null = null;
-    const iframeDoc = iframeRef.current?.contentDocument ?? null;
-    if (iframeDoc) {
-      try {
-        // See SelectorOverlay.tsx — cross-realm `instanceof HTMLElement` is
-        // always false for iframe nodes. Null-check instead.
-        const el = iframeDoc.elementFromPoint(relX, relY);
-        if (el) {
-          const slide = el.closest("[data-slide]");
-          if (slide) {
-            const all = Array.from(iframeDoc.querySelectorAll("[data-slide]"));
-            const idx = all.indexOf(slide);
-            slide_index = idx >= 0 ? idx : null;
-          }
-          const bgId = el.getAttribute("data-bg-node-id");
-          if (bgId) node_selector = `[data-bg-node-id="${bgId}"]`;
-          else if (el.id) node_selector = `#${el.id}`;
-          else node_selector = el.tagName.toLowerCase();
-        }
-      } catch {
-        // cross-origin or not ready — fall back to "body".
-      }
-    }
-
-    onCreate({ x_pct, y_pct, node_selector, slide_index });
+    void requestFrameCommentAtPoint(iframeRef.current, relX, relY).then(
+      (hit) => {
+        onCreate({
+          x_pct,
+          y_pct,
+          node_selector: hit?.selector ?? "body",
+          slide_index: hit?.slideIndex ?? null,
+        });
+      },
+    );
   };
 
   return (

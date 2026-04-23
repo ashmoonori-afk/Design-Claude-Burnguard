@@ -29,7 +29,7 @@ function fail(
 export const systemRoutes = new Hono();
 
 systemRoutes.post("/api/design-systems/extract", async (c) => {
-  const body = await c.req.json<unknown>();
+  const body = await c.req.json<unknown>().catch(() => null);
   if (!body || typeof body !== "object") {
     return c.json(fail("invalid_body", "Expected a JSON object request body"), 400);
   }

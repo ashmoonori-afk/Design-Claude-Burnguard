@@ -5,6 +5,7 @@ import {
   extractCssStyleSignals,
   extractHtmlComponentSamples,
   inferSourceType,
+  isUnsafeImportHostname,
 } from "../src/services/design-system-extract";
 
 describe("inferSourceType", () => {
@@ -90,5 +91,23 @@ describe("contentTypeForDesignSystemFile", () => {
     expect(contentTypeForDesignSystemFile("assets/logos/brand.svg")).toBe(
       "image/svg+xml",
     );
+  });
+});
+
+describe("isUnsafeImportHostname", () => {
+  test("blocks localhost and private network literals", () => {
+    expect(isUnsafeImportHostname("localhost")).toBe(true);
+    expect(isUnsafeImportHostname("127.0.0.1")).toBe(true);
+    expect(isUnsafeImportHostname("192.168.0.10")).toBe(true);
+    expect(isUnsafeImportHostname("172.20.1.2")).toBe(true);
+    expect(isUnsafeImportHostname("10.0.0.8")).toBe(true);
+    expect(isUnsafeImportHostname("169.254.169.254")).toBe(true);
+    expect(isUnsafeImportHostname("::1")).toBe(true);
+  });
+
+  test("allows public hostnames and public ip literals", () => {
+    expect(isUnsafeImportHostname("example.com")).toBe(false);
+    expect(isUnsafeImportHostname("brand.example.com")).toBe(false);
+    expect(isUnsafeImportHostname("8.8.8.8")).toBe(false);
   });
 });

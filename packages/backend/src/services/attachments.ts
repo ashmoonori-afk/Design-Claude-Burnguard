@@ -5,18 +5,37 @@ import { ulid } from "ulid";
 import { insertAttachment } from "../db/attachments";
 import { getSessionProject } from "../db/events";
 
+const MAX_ATTACHMENT_COUNT = 8;
+const MAX_ATTACHMENT_BYTES_PER_FILE = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES_TOTAL = 25 * 1024 * 1024;
+
 export async function saveSessionAttachments(sessionId: string, files: File[]) {
   const context = await getSessionProject(sessionId);
   if (!context) {
     throw new Error("session_not_found");
   }
 
+  if (files.length > MAX_ATTACHMENT_COUNT) {
+    throw new Error(`attachment_limit_exceeded:${MAX_ATTACHMENT_COUNT}`);
+  }
+
   const attachmentsDir = path.join(context.project_dir, ".attachments");
   await mkdir(attachmentsDir, { recursive: true });
 
   const records: string[] = [];
+  let totalBytes = 0;
 
   for (const file of files) {
+    if (file.size > MAX_ATTACHMENT_BYTES_PER_FILE) {
+      throw new Error(
+        `attachment_too_large:${file.name || "attachment"}:${MAX_ATTACHMENT_BYTES_PER_FILE}`,
+      );
+    }
+    totalBytes += file.size;
+    if (totalBytes > MAX_ATTACHMENT_BYTES_TOTAL) {
+      throw new Error(`attachment_total_too_large:${MAX_ATTACHMENT_BYTES_TOTAL}`);
+    }
+
     const base = sanitize(file.name || "attachment");
     const storedName = `${ulid()}-${base}`;
     const absolutePath = path.join(attachmentsDir, storedName);
@@ -41,4 +60,3 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
 function sanitize(value: string) {
   return value.replace(/[^\w.-]+/g, "_");
 }
-
