@@ -1042,7 +1042,7 @@ export async function readUploadManifest(manifestPath: string): Promise<UploadMa
   };
 }
 
-function normalizeUploadStringList(value: unknown, limit: number): string[] {
+export function normalizeUploadStringList(value: unknown, limit: number): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
@@ -1057,7 +1057,7 @@ function normalizeUploadStringList(value: unknown, limit: number): string[] {
   return out;
 }
 
-function normalizeUploadPages(value: unknown): UploadManifestPage[] {
+export function normalizeUploadPages(value: unknown): UploadManifestPage[] {
   if (!Array.isArray(value)) return [];
   const out: UploadManifestPage[] = [];
   for (const entry of value) {
