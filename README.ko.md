@@ -10,10 +10,10 @@ BurnGuard Design은 이미 설치되어 있는 `claude`, `codex` CLI를 채팅 +
 
 ## 현재 단계
 
-- 현재 상태: **Phase 3 대부분 완료**
-- 완료: Phase 1, Phase 2 A/B/C, Phase 3 A/B, Phase 3 C 대부분
-- 남은 큰 작업: **P3.11 Linux 빌드**
-- 검증 상태: `bun test` 통과, `npm run typecheck` 통과
+- 현재 상태: **Phase 3 대부분 완료, Phase 4 착수**
+- 완료: Phase 1, Phase 2 A/B/C, Phase 3 A/B, Phase 3 C 대부분, 그리고 **P4.1 디자인 시스템 자동 추출**
+- 남은 큰 작업: **P3.11 Linux 빌드**, Phase 4 잔여 (파일 업로드 추출, Figma 싱크, 자동 업데이트, 서명)
+- 검증 상태: `bun test` 67/67 통과, `npm run typecheck` 통과 (backend + frontend)
 
 ## 지금 되는 것
 
@@ -22,15 +22,18 @@ BurnGuard Design은 이미 설치되어 있는 `claude`, `codex` CLI를 채팅 +
 - 정규화된 chat/tool/file/status 이벤트 스트리밍
 - 현재 결과물을 iframe 기반 캔버스에서 실시간 확인
 - Comment, Edit, Tweaks, Draw, Present 모드
+- Tweaks 인스펙터가 타입별 컨트롤 제공 — 크기 필드는 숫자+`px` 입력, 색상은 브랜드 팔레트 피커, padding / margin / border-radius는 4방향 shorthand 컴포저
 - interrupt, rollback, export 흐름
 - `html_zip`, `pdf`, `pptx`, `handoff` export
+- **github 레포 URL 또는 실 웹사이트 URL에서 디자인 시스템을 자동 추출** — clone / fetch → 토큰 + 폰트 + 로고 파싱 → `~/.burnguard/data/systems/<id>/` 아래에 16개 프리뷰 카드가 포함된 BurnGuard 표준 폴더로 스캐폴딩
 
 ## Claude Design 대비 남은 작업
 
-- Linux 패키징과 배포 경로
+- Linux 패키징과 배포 경로 (P3.11)
+- 파일 업로드 (PDF / PPTX / Figma export) 기반 DS 추출 + Figma REST 싱크 (P4.2 / P4.3)
 - 브라우저 기반 E2E 자동화
 - 업스트림 CLI가 완전한 스트리밍 decision round-trip을 지원할 때의 실연동
-- 자동 업데이트, 코드 서명, 외부 디자인 파일 기반 디자인 시스템 추출
+- 자동 업데이트 채널, Windows SmartScreen / macOS notarization 서명 (P4.4 / P4.5)
 
 ## 실행 방법
 

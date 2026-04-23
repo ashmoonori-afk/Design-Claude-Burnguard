@@ -10,10 +10,10 @@ Current release: `0.3.1`
 
 ## Status
 
-- Current stage: **Phase 3 mostly shipped**
-- Shipped: Phase 1, Phase 2 A/B/C, Phase 3 A/B, and most of Phase 3 C
-- Still open: **P3.11 Linux build**
-- Validation status: `bun test` green, `npm run typecheck` green
+- Current stage: **Phase 3 mostly shipped; Phase 4 started**
+- Shipped: Phase 1, Phase 2 A/B/C, Phase 3 A/B, most of Phase 3 C, and **P4.1 DS auto-extract**
+- Still open: **P3.11 Linux build**, Phase 4 remaining slices (file upload extract, Figma sync, auto-update, signing)
+- Validation status: `bun test` 67/67 green, `npm run typecheck` green (backend + frontend)
 
 ## What It Does
 
@@ -22,15 +22,18 @@ Current release: `0.3.1`
 - Streams normalized chat/tool/file/status events into the app UI
 - Renders the current artifact in a live iframe canvas
 - Supports comments, inline edit mode, tweaks mode, draw mode, and present mode
+- Tweaks inspector has typed controls — numeric `px` inputs for sizes, a brand-palette color picker, and 4-side padding / margin / border-radius shorthand composer
 - Supports interrupt, rollback, and export workflows
 - Exports `html_zip`, `pdf`, `pptx`, and `handoff`
+- **Auto-extracts a draft design system from any github repo URL or live website URL** — clone / fetch → parse tokens + fonts + logos → scaffold the canonical BurnGuard folder under `~/.burnguard/data/systems/<id>/` with 16 preview cards
 
 ## Remaining Work Compared To The Claude Design Goal
 
-- Linux packaging and release path
+- Linux packaging and release path (P3.11)
+- Uploaded-file DS extract (PDF / PPTX / Figma export) + Figma REST sync (P4.2 / P4.3)
 - Full browser E2E automation
 - True live tool-decision round-trip once upstream CLI streaming supports it fully
-- Auto-update, signing, and design-system ingestion from external design files
+- Auto-update channel and Windows SmartScreen / macOS notarization signing (P4.4 / P4.5)
 
 ## Running Locally
 

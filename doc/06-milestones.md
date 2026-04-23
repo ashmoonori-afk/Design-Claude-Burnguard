@@ -2,17 +2,20 @@
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-23):** Phase 3 **Milestone A + B
-> fully shipped; Milestone C 3/4 shipped**. Phase 1 / M2.B / M2.C
-> still waiting on the manual smoke-test pass at
-> `doc/07-manual-smoke-test.md`. P3 latest commits: `8ff541f`
-> (review fixes — full handoff bundle + Tweaks Escape revert),
-> `9c26d7c` (P3.10 macOS build), `cea4a53` (P3.9 watcher
-> file.changed), `c7e4f09` / `5cae730` / `fabc070` (P3.8 polish:
-> version + dead buttons + brand palette), `860fc1e` (P3.7 turn
-> rollback), `ff27231` (P3.6 tool-decision channel). `bun test`:
-> 63/63 pass. **Resume at P3.11 (Linux build)** to close Milestone
-> 3.C; P3.10 Mac bundle awaits hands-on Mac verification tonight.
+> **Next-session pickup (2026-04-23, afternoon):** Phase 3 **Milestone
+> A + B fully shipped; Milestone C 3/4 shipped + P3.12 Tweaks polish
+> shipped**. Phase 4 **started ahead of schedule** — P4.1 DS
+> auto-extract from github + website URLs is live (`68a8103` +
+> `eafcd0c` + `e0bdae5`). Phase 1 smoke gaps narrowed: 1.2 selector
+> overlay fix (`49892a4`) unblocked the hover path; 1.3 interrupt
+> stays as a known gap per `doc/07-manual-smoke-test.md` "Known gaps".
+> Latest P3 / polish commits: `432521c` (P3.12 Tweaks structured
+> controls — px size inputs + brand color picker + 4-side box),
+> `49892a4` (overlay cross-realm instanceof fix), `eae7ccc` (version
+> 0.3.1 sync). `bun test`: 67/67 pass. **Resume at P3.11 (Linux
+> build)** to close Milestone 3.C, or pick up Phase 4 (Figma sync /
+> upload-file DS extract / auto-update / signing). P3.10 Mac bundle
+> still awaits hands-on Mac verification.
 
 ## 1. Current Stage
 
@@ -80,7 +83,7 @@ requires working through `doc/07-manual-smoke-test.md` at a keyboard.
 | 2 | Implement real interrupt semantics for active CLI subprocesses | ✅ `de33be2` — `activeTurns` map + `AbortController`; adapters pass `signal` to `Bun.spawn({signal, killSignal:"SIGKILL"})`; `/api/sessions/:id/interrupt` aborts and emits `status.idle{stopReason:"interrupted"}` |
 | 3 | Decide whether Codex raw-mode is sufficient for Phase 1 | ✅ Decision: **ship raw-mode** for Phase 1. `codex/index.ts` streams stdout as `chat.delta` chunks and emits a terminal `chat.message_end` + `status.idle`. Structured parser (tool calls, file tracking) deferred until Codex's structured output lands — tracked as a Phase 2+ follow-up. |
 | 4 | Minimal committed regression test layer | ✅ `9e22903` — `packages/backend/tests/` with `prompt-builder.test.ts` (5 cases) + `file-patch.test.ts` (6 cases); wired `bun test`; 11/11 green. Broader E2E (Playwright) deferred to Phase 2 P2.10. |
-| 5 | Re-run and document a clean Windows smoke-test pass | 🔲 Pending — **checklist now lives at `doc/07-manual-smoke-test.md`**. §1 covers Phase 1 sign-off; §2 covers Milestone 2.B (P2.4/P2.5/P2.6) and §2.4–§2.7 cover Milestone 2.C (PDF, PPTX, Settings chromium install, backend switch, tutorials + export matrix). Human at the keyboard only. |
+| 5 | Re-run and document a clean Windows smoke-test pass | 🟡 Partial — **checklist at `doc/07-manual-smoke-test.md`**. 1.2 Selector was initially failing ("cursor swapped to crosshair but no hover box"); root cause was cross-realm `instanceof HTMLElement` on iframe nodes in all four overlays. Fixed in `49892a4` — re-run of §1.2 pending. 1.3 Interrupt not verifiable this session (turns finished before interrupt click); recorded under "Known gaps" in `doc/07-manual-smoke-test.md`. §2 Milestone 2.B/2.C items never exercised yet. Human at the keyboard only. |
 
 When #5 passes without re-opening any of 1–4, the repo flips from "late Phase 1" to "Phase 1 complete".
 
@@ -148,10 +151,17 @@ Planned focus (see §8 for the commit-sized sprint plan):
 
 ### Phase 4 - Design system ingestion and platform polish
 
+Status: **started ahead of schedule — P4.1 shipped**. Remaining slices
+queued for pickup any time after P3.11 closes.
+
 Planned focus:
-- upload a designed file and automatically extract a reusable design system
-- broader design system extraction/import flows from external sources
-- auto-update and SmartScreen signing
+- ✅ DS auto-extract from github + website URLs (P4.1 — `68a8103` +
+  `eafcd0c` + `e0bdae5`); see §9 for the slice detail
+- 🔲 upload a designed file (PDF / PPTX / Figma export) and extract
+  a reusable design system (P4.2)
+- 🔲 Figma REST sync (P4.3)
+- 🔲 Auto-update channel (P4.4)
+- 🔲 Windows SmartScreen signing + macOS notarization (P4.5)
 
 ## 6. Delivery Guidance
 
@@ -241,6 +251,7 @@ Broken into 11 commit-sized slices across four milestones. Same rules as
 | **P3.9** | ✅ | **Watcher-driven `file.changed`** — `cea4a53`. FS watcher publishes real `file.changed` events to the session broker whenever a project file is edited / created / deleted outside of a CLI turn (e.g. a VS Code save). `file-change-broker.ts` dedupes against adapter-emitted events by (projectId, path) within a 2s window, so an adapter write doesn't produce a duplicate when the watcher catches its own write. Watcher events carry `turnId: "external"` as a sentinel. `.meta/` and `.attachments/` top-level paths are skipped. | `services/file-change-broker.ts` (new — dedupe cache + publish helper), `services/watchers.ts` (emit + debounce + session cache), `services/turns.ts` (notes adapter events into dedupe cache), `backend/tests/file-change-broker.test.ts` | Save a deck file in VS Code → chat shows `file.changed` within 1s, canvas reloads. |
 | **P3.10** | ✅ | **macOS build** — `9c26d7c`. `scripts/build-mac.ts` cross-compiles `bun-darwin-arm64` and assembles a real `.app` bundle (Info.plist with APP_VERSION, minimum macOS 11, staged frontend inside `Contents/MacOS/`, icon slot for `assets/icon.icns` when present). `--dmg` path calls `hdiutil create -format UDZO` on macOS only. `package.json` gains `build:mac` + `build:mac:dmg`. Fixed `--external electron` on both mac + windows compile scripts (playwright-core's optional electron loader was failing the bun compile). | `scripts/build-mac.ts` (new), `scripts/build-binary.ts` (+ external electron), `package.json` scripts, README build section | `bun run build:mac` produces a runnable `.app` bundle; on macOS, `build:mac:dmg` produces a working `.dmg`. Mac-side hands-on verification pending. |
 | **P3.11** | 🔲 | **Linux build** — AppImage via `bun-linux-x64`. Falls back to a plain tarball if AppImage tooling isn't available. | `scripts/build-linux.ts` (new), `package.json` scripts | `bun run build:linux` produces an AppImage that runs on Ubuntu 22.04+ |
+| **P3.12** | ✅ | **Tweaks structured controls** — `432521c`. Replaces the generic text-input grid with typed controls: numeric `px` inputs with trailing unit label for `font-size` / `line-height` / `letter-spacing`; dropdown of common weights for `font-weight`; popover-style color pickers backed by the brand palette (`src/index.css` → 28 swatches in Grey / Blue / Accent groups) + hex input + Clear for `color` / `background-color`; 4-side compact inputs for `padding` / `margin` / `border-radius` that recompose the shortest CSS shorthand on commit. `background` shorthand renamed internally to `background-color` so the picker operates on a clean colour value. No changes to the PATCH contract or ProjectView's undo/redo wiring. Helpers extracted to `tweaks-utils.ts` (`parseSides` / `composeSides` / `numericFromLength` / `normalizeHex`); palette data in `tweaks-palette.ts`. | `frontend/src/components/modes/TweaksPanel.tsx` (rewrite), `frontend/src/components/modes/tweaks-palette.ts` (new), `frontend/src/components/modes/tweaks-utils.ts` (new), `frontend/src/components/canvas/TweaksLayer.tsx` (key rename) | Opening Tweaks on any deck element exposes numeric-only size inputs, a clickable palette for colours, and 4-side shorthand controls that match the node's computed values. Polish follow-up on P3.1 that unblocks real design work. |
 
 ### Ground rules for Phase 3
 
@@ -265,3 +276,29 @@ Broken into 11 commit-sized slices across four milestones. Same rules as
 - Auto-update + SmartScreen signing
 - Full dark-mode visual design (P3.8 covers the token / focus work but
   not a polished dark palette)
+
+## 9. Phase 4 Sprint Plan
+
+Sliced commit-by-commit. Same rules as Phase 2 / 3 — one commit per
+slice, each ends green, each carries its own DoD.
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P4.1** | ✅ | **DS auto-extract — github + website URLs.** `POST /api/design-systems/extract` clones a shallow git repo (`git clone --depth=1`) or fetches a live homepage HTML (+ same-origin linked CSS) into a temp dir, walks the tree collecting CSS custom properties, font-families, and logo-like asset candidates, then templates a canonical BurnGuard design system under `~/.burnguard/data/systems/<id>/` (README.md, SKILL.md, colors_and_type.css, fonts/, assets/logos/, preview/*.html × 16, ui_kits/website/, uploads/). Companion `GET /api/design-systems/:id/files/*` serves any file under the system dir with a sniffed Content-Type so iframe previews + linked CSS resolve without a separate static host. Drizzle enum grows a `"website"` source_type; migration `0004_design_systems_website_source_type.sql` rebuilds the SQLite CHECK constraint to match (migrate.ts toggles `PRAGMA foreign_keys` off/on around the loop so the DROP+RENAME doesn't trip the projects FK). Home → **Systems** tab carries the import form (source URL + auto/github/website selector + optional name); submission navigates to the new DS and shows a validation card. Test coverage: 4 unit tests for the pure helpers (`inferSourceType` / `extractCssCustomProperties` / `contentTypeForDesignSystemFile`); `bun test` 67/67. | `backend/src/services/design-system-extract.ts` (new ~1100 lines), `backend/src/routes/system.ts`, `backend/src/db/schema.ts`, `backend/src/db/seed.ts` (+createDesignSystemRecord), `backend/src/db/migrate.ts` (FK toggle), `backend/src/db/migrations/0004_design_systems_website_source_type.sql` (new), `shared/src/design-system.ts` (+DesignSystemSourceType / request+response types), `frontend/src/api/design-system.ts` (new), `frontend/src/views/HomeView.tsx` (+import form on Systems tab), `frontend/src/views/DesignSystemView.tsx` (+validation card), `frontend/src/components/systems/*` (drop "preview route pending" copy), `backend/tests/design-system-extract.test.ts` (new), `doc/05-design-system-format.md` | Import a small public repo or any homepage → new DS appears in Home → Systems tab as a Draft → preview cards render → files under `~/.burnguard/data/systems/<id>/` match the canonical layout |
+| **P4.2** | 🔲 | **Upload-file DS extract (PDF / PPTX / Figma export).** Reuse the same canonical writer; swap the source ingest stage for a multipart upload → parse via pdfjs / pptxgenjs / Figma export JSON → cluster colors (k-means) + detect fonts from embedded metadata. | `backend/src/services/design-system-extract.ts` (+uploadIngest), `backend/src/routes/system.ts` (+POST /upload), `frontend/src/views/HomeView.tsx` (upload button + progress) | Upload a 10-slide PPTX → canonical DS created; primary brand colors within 10% delta of manually picked values |
+| **P4.3** | 🔲 | **Figma REST sync.** Accept a Figma PAT (stored in `config.json`, chmod 600) + a file URL; fetch styles + component thumbnails; emit the same canonical bundle. Two-way sync (publish back) stays out of scope for P4.3. | `backend/src/services/figma.ts` (new), `backend/src/services/design-system-extract.ts` (+figmaIngest), `backend/src/routes/system.ts` (+POST /extract with source_type=figma), UI secret form | Authenticate with a test Figma file; tokens extract matches the styles page |
+| **P4.4** | 🔲 | **Auto-update channel.** Publish signed releases to a static bucket; app checks on launch, offers download + restart; fall back to the current manual download path. | `scripts/release.ts`, `backend/src/services/updater.ts` (new), `shared/src/release.ts` (new), `frontend/src/components/updater/UpdateBanner.tsx` (new) | New release available → in-app banner → one-click download + restart reopens with the new binary |
+| **P4.5** | 🔲 | **Windows SmartScreen signing + macOS notarization.** Wire `signtool.exe` (Windows) + `codesign` + `notarytool` (macOS) into the existing `build:windows` / `build:mac` scripts. Requires an EV code signing cert (Windows) + Apple Developer ID. | `scripts/build-binary.ts` / `scripts/build-mac.ts`, CI workflow, signing secrets | Windows SmartScreen no longer flags the binary on first run; macOS Gatekeeper admits the .app without right-click-open |
+
+### Ground rules for Phase 4
+
+1. **One commit per slice.** Same as Phase 2 / 3.
+2. **Every new extraction source reuses `writeCanonicalDesignSystem`.**
+   Source-specific ingest is the only variant; the canonical layout
+   stays identical across github / website / upload / figma.
+3. **No schema drift without a migration.** Anything that widens an
+   enum or adds a column ships with its own `NNNN_*.sql` plus the
+   migrate.ts FK toggle pattern that landed in P4.1.
+4. **Merge boundaries:** P4.3 is a natural PR cut (covers all the
+   "ingest a design system" work); P4.5 is the next one (covers all
+   the "make it publishable" work).
