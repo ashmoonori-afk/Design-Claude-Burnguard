@@ -114,7 +114,8 @@ click (backed by `npx playwright install chromium`).
 - Uploaded-file DS extract (PDF / PPTX / Figma export) + Figma REST sync (P4.2 / P4.3)
 - Full browser E2E automation
 - True live tool-decision round-trip once upstream CLI streaming supports it fully
-- Auto-update channel and Windows SmartScreen / macOS notarization signing (P4.4 / P4.5)
+- Windows/macOS managed auto-update channel (Phase 5 P5.1)
+- Windows SmartScreen / macOS notarization signing (P4.5)
 
 ## Running Locally
 

@@ -302,3 +302,21 @@ slice, each ends green, each carries its own DoD.
 4. **Merge boundaries:** P4.3 is a natural PR cut (covers all the
    "ingest a design system" work); P4.5 is the next one (covers all
    the "make it publishable" work).
+
+## 10. Phase 5 Sprint Plan
+
+Focused on post-packaging distribution work that should happen only
+after the Windows/macOS binary layouts are stable.
+
+| # | Status | Slice | Key files | DoD |
+|---|---|---|---|---|
+| **P5.1** | ?뵴 | **Windows + macOS managed auto-update channel.** Do not update the git repo directly. Publish a release manifest (`latest.json`) plus per-platform zip artifacts, detect updates on launch, download into `~/.burnguard/cache/updates/`, and apply via platform-specific installers. Windows uses a helper/updater process to replace the running `.exe`; macOS replaces the managed `.app` bundle and relaunches it. Linux remains out of scope for this slice. | `scripts/release.ts`, `shared/src/release.ts` (new), `backend/src/services/updater.ts` (new), `backend/src/services/install-paths.ts` (new), `backend/src/services/apply-update-win.ts` (new), `backend/src/services/apply-update-mac.ts` (new), `backend/src/routes/updater.ts` (new), `frontend/src/api/updater.ts` (new), `frontend/src/components/updater/UpdateBanner.tsx` (new) | A managed Windows or macOS install detects a newer release, downloads the correct platform asset, applies it, and relaunches on the new version without touching user data in `~/.burnguard` |
+
+### Ground rules for Phase 5
+
+1. **Managed installs only.** Auto-update must target a known app root,
+   not a random zip extraction or git clone location.
+2. **Release artifacts, not repo sync.** Update from staged zip bundles
+   described by a manifest; never `git pull` the repo at runtime.
+3. **Windows and macOS first.** Linux remains out of scope until the
+   packaging format is stable.
