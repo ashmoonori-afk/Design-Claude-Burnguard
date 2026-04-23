@@ -14,6 +14,7 @@ export default function DesignSystemView({
   const { id: paramId } = useParams();
   const id = systemIdOverride ?? paramId;
   const [system, setSystem] = useState<DesignSystemDetail | null>(null);
+  const [extractionNotes, setExtractionNotes] = useState<string[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -24,6 +25,25 @@ export default function DesignSystemView({
         setSystem(next);
       }
     });
+
+    // Best-effort fetch of the extraction report written by P4.1 / P4.2
+    // ingestion. Non-extracted systems (seeded samples) return 404, which
+    // we treat as "no notes" without surfacing an error.
+    void fetch(`/api/design-systems/${id}/files/uploads/extraction-report.json`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as { notes?: unknown };
+      })
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        const notes = Array.isArray(payload.notes)
+          ? payload.notes.filter((n): n is string => typeof n === "string")
+          : [];
+        setExtractionNotes(notes);
+      })
+      .catch(() => {
+        // ignore — notes are advisory
+      });
 
     return () => {
       cancelled = true;
@@ -56,7 +76,7 @@ export default function DesignSystemView({
           </p>
 
           {system.status === "draft" ? (
-            <DraftValidationCard system={system} />
+            <DraftValidationCard system={system} notes={extractionNotes} />
           ) : null}
 
           <dl className="mt-8 grid gap-4 text-sm md:grid-cols-2">
@@ -87,8 +107,10 @@ export default function DesignSystemView({
 
 function DraftValidationCard({
   system,
+  notes,
 }: {
   system: DesignSystemDetail;
+  notes: string[];
 }) {
   return (
     <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/80 p-5">
@@ -137,6 +159,25 @@ function DraftValidationCard({
               accurately before review or publish.
             </p>
           </div>
+
+          {notes.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-white/80 px-4 py-3">
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-800">
+                Extraction notes
+              </div>
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-foreground">
+                {notes.map((note, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span
+                      className="mt-[7px] inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                      aria-hidden="true"
+                    />
+                    <span>{note}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

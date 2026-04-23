@@ -800,6 +800,11 @@ async function ingestUploadSource(input: {
     `Parsed ${manifest.page_count} page(s)/slide(s) from upload.`,
     ...manifest.notes,
   ];
+  if (manifest.page_count > MAX_UPLOAD_UI_KIT_PAGES) {
+    notes.push(
+      `Only the first ${MAX_UPLOAD_UI_KIT_PAGES} of ${manifest.page_count} pages are kept as preview cards; re-upload a trimmed export if you need more.`,
+    );
+  }
 
   return {
     brandName:
