@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   BackendDetectionResult,
   PlaywrightInstallStatus,
@@ -30,6 +31,7 @@ export default function SettingsModal() {
   const open = useUIStore((s) => s.settingsOpen);
   const setOpen = useUIStore((s) => s.setSettingsOpen);
   const pushToast = useUIStore((s) => s.pushToast);
+  const queryClient = useQueryClient();
 
   const [settings, setSettings] = useState<SettingsSummary | null>(null);
   const [detection, setDetection] = useState<BackendDetectionResult | null>(
@@ -146,11 +148,13 @@ export default function SettingsModal() {
     if (!settings) return;
     setSaving(true);
     try {
-      await patchSettings({
+      const next = await patchSettings({
         default_backend: settings.default_backend,
         theme: settings.theme,
+        chat_abort_threshold_ms: settings.chat_abort_threshold_ms,
         user: settings.user,
       });
+      queryClient.setQueryData(["settings"], next);
       pushToast({ title: "Settings saved", tone: "success" });
       setOpen(false);
     } catch (err) {
@@ -339,6 +343,38 @@ export default function SettingsModal() {
                   — small download, first run only.
                 </p>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="abort-threshold"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Interrupt button delay (seconds)
+              </label>
+              <Input
+                id="abort-threshold"
+                type="number"
+                min={0}
+                max={3600}
+                step={30}
+                value={Math.round(settings.chat_abort_threshold_ms / 1000)}
+                onChange={(e) => {
+                  const raw = Number.parseInt(e.target.value, 10);
+                  const clamped = Number.isFinite(raw)
+                    ? Math.max(0, Math.min(3600, raw))
+                    : 300;
+                  setSettings({
+                    ...settings,
+                    chat_abort_threshold_ms: clamped * 1000,
+                  });
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Stop button appears once a chat turn has been running this
+                long. Default 300s (5 min) — lower it if local CLIs stall
+                often, raise it to stay out of the way on cold starts.
+              </p>
             </div>
 
             <div className="space-y-1.5">

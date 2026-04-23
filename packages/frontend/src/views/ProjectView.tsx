@@ -32,7 +32,9 @@ import {
   listProjectComments,
   updateProjectComment,
 } from "@/api/comments";
+import { getSettings } from "@/api/home";
 import {
+  interruptSession,
   listSessionEvents,
   sendUserEvent,
   submitToolDecision,
@@ -129,6 +131,10 @@ export default function ProjectView() {
     queryKey: ["project", id, "comments"],
     queryFn: () => listProjectComments(id!),
     enabled: Boolean(id),
+  });
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: getSettings,
   });
 
   const refreshMutation = useMutation({
@@ -541,6 +547,44 @@ export default function ProjectView() {
   const artifacts = artifactsQuery.data ?? null;
   const session = sessionState;
   const composerDisabled = sendPending || session?.status === "running";
+
+  // Turn clock. When the composer flips from idle to busy we stamp a
+  // start time; a 1s ticker then drives re-renders so `canInterrupt`
+  // flips on exactly once the configured threshold has elapsed.
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    if (composerDisabled) {
+      setTurnStartedAt((prev) => prev ?? Date.now());
+    } else {
+      setTurnStartedAt(null);
+    }
+  }, [composerDisabled]);
+  useEffect(() => {
+    if (!composerDisabled) return;
+    const handle = window.setInterval(() => setNowTs(Date.now()), 1000);
+    return () => window.clearInterval(handle);
+  }, [composerDisabled]);
+  const abortThresholdMs =
+    settingsQuery.data?.chat_abort_threshold_ms ?? 300_000;
+  const canInterrupt =
+    composerDisabled &&
+    turnStartedAt != null &&
+    nowTs - turnStartedAt >= abortThresholdMs;
+
+  const interruptMutation = useMutation({
+    mutationFn: () => {
+      if (!session) throw new Error("no_session");
+      return interruptSession(session.id);
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Could not interrupt turn",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
   const tabs = useMemo(
     () => buildTabs(project, openFileTabs),
     [openFileTabs, project],
@@ -640,6 +684,9 @@ export default function ProjectView() {
           events={events}
           session={session}
           composerDisabled={composerDisabled}
+          canInterrupt={canInterrupt}
+          interruptPending={interruptMutation.isPending}
+          onInterrupt={() => interruptMutation.mutate()}
           onSend={async (text, attachedFiles) => {
             if (composerDisabled) {
               return;

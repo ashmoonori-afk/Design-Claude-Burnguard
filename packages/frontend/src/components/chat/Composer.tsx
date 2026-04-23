@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Import, Paperclip, Send, Settings2 } from "lucide-react";
+import { Import, Paperclip, Send, Settings2, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -26,9 +26,21 @@ const WAITING_INTERVAL_MS = 2400;
 export default function Composer({
   onSend,
   disabled = false,
+  canInterrupt = false,
+  interruptPending = false,
+  onInterrupt,
 }: {
   onSend: (text: string, files: File[]) => void;
   disabled?: boolean;
+  /**
+   * True when the current turn has exceeded the user's configured
+   * wait threshold and the backend can accept an Interrupt POST.
+   * Only surfaces the Stop button when the composer is also
+   * disabled — idle composers never show Stop.
+   */
+  canInterrupt?: boolean;
+  interruptPending?: boolean;
+  onInterrupt?: () => void;
 }) {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -157,16 +169,30 @@ export default function Composer({
           <Import className="h-3.5 w-3.5" /> Import
         </Button>
         <div className="flex-1" />
-        <Button
-          variant="cta"
-          size="sm"
-          className="h-7 gap-1 text-xs"
-          disabled={!canSend}
-          onClick={send}
-          title="Send (Cmd/Ctrl+Enter)"
-        >
-          <Send className="h-3.5 w-3.5" /> Send
-        </Button>
+        {disabled && canInterrupt ? (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            disabled={interruptPending || !onInterrupt}
+            onClick={() => onInterrupt?.()}
+            title="Interrupt the running turn"
+          >
+            <StopCircle className="h-3.5 w-3.5" />
+            {interruptPending ? "Stopping…" : "Stop"}
+          </Button>
+        ) : (
+          <Button
+            variant="cta"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            disabled={!canSend}
+            onClick={send}
+            title="Send (Cmd/Ctrl+Enter)"
+          >
+            <Send className="h-3.5 w-3.5" /> Send
+          </Button>
+        )}
       </div>
 
       <p className="mt-1.5 text-[10px] text-muted-foreground text-center">

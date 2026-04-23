@@ -73,6 +73,7 @@ function toSettingsSummary(config: Awaited<ReturnType<typeof loadConfig>>): Sett
     app_version: APP_VERSION,
     default_backend: config.defaultBackend,
     theme: config.theme,
+    chat_abort_threshold_ms: config.chat.abortThresholdMs,
   };
 }
 
@@ -180,6 +181,24 @@ homeRoutes.patch("/api/settings", async (c) => {
       );
     }
     config.defaultBackend = patch.default_backend;
+  }
+  if ("chat_abort_threshold_ms" in patch) {
+    const raw = patch.chat_abort_threshold_ms;
+    if (
+      typeof raw !== "number" ||
+      !Number.isFinite(raw) ||
+      raw < 0 ||
+      raw > 86_400_000
+    ) {
+      return c.json(
+        fail(
+          "invalid_chat_abort_threshold",
+          "chat_abort_threshold_ms must be a finite number between 0 and 86_400_000 (24h)",
+        ),
+        400,
+      );
+    }
+    config.chat.abortThresholdMs = Math.round(raw);
   }
   if ("user" in patch) {
     if (!isRecord(patch.user)) {

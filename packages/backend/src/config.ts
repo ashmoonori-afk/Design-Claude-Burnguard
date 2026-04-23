@@ -17,6 +17,14 @@ export interface AppConfig {
     checkpointEveryTurns: number;
     toolAutoAllow: boolean;
   };
+  chat: {
+    /**
+     * Minimum time (ms) a single CLI turn must run before the UI
+     * surfaces the Interrupt button. Keeps fast turns uncluttered
+     * while still giving the user a hard-stop on stuck ones.
+     */
+    abortThresholdMs: number;
+  };
   logs: {
     level: "debug" | "info" | "warn" | "error";
   };
@@ -40,6 +48,9 @@ export const defaultConfig: AppConfig = {
     maxConcurrentSessions: 3,
     checkpointEveryTurns: 5,
     toolAutoAllow: true,
+  },
+  chat: {
+    abortThresholdMs: 300_000,
   },
   logs: {
     level: "info",
@@ -65,6 +76,10 @@ function mergeConfig(input: unknown): AppConfig {
     harness: {
       ...defaultConfig.harness,
       ...source.harness,
+    },
+    chat: {
+      ...defaultConfig.chat,
+      ...source.chat,
     },
     logs: {
       ...defaultConfig.logs,

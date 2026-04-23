@@ -14,6 +14,9 @@ export default function ChatPane({
   events,
   session,
   composerDisabled,
+  canInterrupt,
+  interruptPending,
+  onInterrupt,
   onSend,
   onOpenFile,
   onRevertTurn,
@@ -22,6 +25,9 @@ export default function ChatPane({
   events: NormalizedEvent[];
   session: SessionInfo;
   composerDisabled?: boolean;
+  canInterrupt?: boolean;
+  interruptPending?: boolean;
+  onInterrupt?: () => void;
   onSend: (text: string, files: File[]) => void;
   onOpenFile?: (relPath: string) => void;
   onRevertTurn?: (turnId: string) => void;
@@ -88,7 +94,13 @@ export default function ChatPane({
             onRevertTurn={onRevertTurn}
             revertingTurnId={revertingTurnId}
           />
-          <Composer onSend={onSend} disabled={composerDisabled} />
+          <Composer
+            onSend={onSend}
+            disabled={composerDisabled}
+            canInterrupt={canInterrupt}
+            interruptPending={interruptPending}
+            onInterrupt={onInterrupt}
+          />
         </>
       ) : (
         <div className="flex-1 grid place-items-center text-xs text-muted-foreground p-6 text-center">

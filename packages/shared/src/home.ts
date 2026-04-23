@@ -63,10 +63,20 @@ export interface SettingsSummary {
   app_version: string;
   default_backend: BackendId;
   theme: ThemeMode;
+  /**
+   * Minimum time (ms) a single CLI turn must be running before the
+   * composer surfaces an Interrupt button. Local CLIs routinely take
+   * tens of seconds on a cold start, so the button stays hidden until
+   * the wait is long enough to feel wrong.
+   */
+  chat_abort_threshold_ms: number;
 }
 
 export type SettingsPatch = Partial<
-  Pick<SettingsSummary, "default_backend" | "theme"> & {
+  Pick<
+    SettingsSummary,
+    "default_backend" | "theme" | "chat_abort_threshold_ms"
+  > & {
     user: Partial<SettingsSummary["user"]>;
   }
 >;
