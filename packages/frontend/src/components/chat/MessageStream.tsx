@@ -3,7 +3,6 @@ import type { NormalizedEvent, SessionInfo } from "@bg/shared";
 import AgentMessage from "./blocks/AgentMessage";
 import ThinkingBlock from "./blocks/ThinkingBlock";
 import ToolBadge from "./blocks/ToolBadge";
-import FileRefCard from "./blocks/FileRefCard";
 import ErrorCard from "./blocks/ErrorCard";
 import UsageFooter from "./blocks/UsageFooter";
 import UserMessage from "./blocks/UserMessage";
@@ -56,17 +55,6 @@ export default function MessageStream({
                 }
               />
             );
-          case "file":
-            return (
-              <FileRefCard
-                key={g.ev.id}
-                path={g.ev.path}
-                action={g.ev.action}
-                onClick={
-                  onOpenFile ? () => onOpenFile(g.ev.path) : undefined
-                }
-              />
-            );
           case "error":
             return (
               <ErrorCard
@@ -86,7 +74,6 @@ type UserMessageEv = Extract<NormalizedEvent, { type: "chat.user_message" }>;
 type ToolStarted = Extract<NormalizedEvent, { type: "tool.started" }>;
 type ToolFinished = Extract<NormalizedEvent, { type: "tool.finished" }>;
 type ThinkingEv = Extract<NormalizedEvent, { type: "chat.thinking" }>;
-type FileChangeEv = Extract<NormalizedEvent, { type: "file.changed" }>;
 type ErrorEv = Extract<NormalizedEvent, { type: "status.error" }>;
 
 type Group =
@@ -94,7 +81,6 @@ type Group =
   | { kind: "message"; text: string }
   | { kind: "thinking"; ev: ThinkingEv }
   | { kind: "tool"; started: ToolStarted; finished: ToolFinished | null }
-  | { kind: "file"; ev: FileChangeEv }
   | { kind: "error"; ev: ErrorEv };
 
 function buildGroups(events: NormalizedEvent[]): Group[] {
