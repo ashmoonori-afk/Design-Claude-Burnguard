@@ -17,3 +17,6 @@ Thumbs.db
 
 # User data (never commit anyone's ~/.burnguard that happens to be here)
 .burnguard
+
+# Local draft notes
+reddit-launch-post-draft.md

@@ -73,11 +73,27 @@ interface SourceAnalysis {
   brandName: string;
   cssVars: Map<string, string>;
   fontFamilies: string[];
+  colors: string[];
+  fontSizes: string[];
+  fontWeights: string[];
+  spacingValues: string[];
+  radii: string[];
+  shadows: string[];
   notes: string[];
   logoFiles: Array<{ absolutePath: string; fileName: string }>;
   uiKitFiles: Array<{ absolutePath: string; fileName: string }>;
   rawFiles: string[];
   homepageHtml: string | null;
+  fetchedPageCount: number;
+  componentSamples: {
+    buttons: string[];
+    cards: string[];
+    forms: string[];
+    tables: string[];
+    badges: string[];
+    headings: string[];
+    body: string[];
+  };
 }
 
 export class DesignSystemExtractError extends Error {
@@ -216,6 +232,46 @@ export function extractCssCustomProperties(content: string): Map<string, string>
   return out;
 }
 
+export function extractCssStyleSignals(content: string) {
+  return {
+    colors: extractCssDeclarationValues(
+      content,
+      /(?:^|[;{\s])(color|background(?:-color)?|border(?:-[a-z-]+)?-color)\s*:\s*([^;}{]+)/gi,
+      24,
+    ),
+    fontSizes: extractCssDeclarationValues(
+      content,
+      /(?:^|[;{\s])font-size\s*:\s*([^;}{]+)/gi,
+      16,
+      1,
+    ),
+    fontWeights: extractCssDeclarationValues(
+      content,
+      /(?:^|[;{\s])font-weight\s*:\s*([^;}{]+)/gi,
+      12,
+      1,
+    ),
+    spacingValues: extractCssDeclarationValues(
+      content,
+      /(?:^|[;{\s])(?:margin|padding|gap|column-gap|row-gap)\s*:\s*([^;}{]+)/gi,
+      24,
+      1,
+    ),
+    radii: extractCssDeclarationValues(
+      content,
+      /(?:^|[;{\s])border-radius\s*:\s*([^;}{]+)/gi,
+      12,
+      1,
+    ),
+    shadows: extractCssDeclarationValues(
+      content,
+      /(?:^|[;{\s])box-shadow\s*:\s*([^;}{]+)/gi,
+      12,
+      1,
+    ),
+  };
+}
+
 function extractFontFamilies(content: string): string[] {
   const families = new Set<string>();
   const regex = /font-family\s*:\s*([^;]+);/g;
@@ -228,6 +284,41 @@ function extractFontFamilies(content: string): string[] {
     if (parts[0]) families.add(parts[0]);
   }
   return [...families];
+}
+
+export function extractHtmlComponentSamples(html: string) {
+  const root = parse(html);
+  return {
+    buttons: collectHtmlTextSamples(root, [
+      "button",
+      'a[class*="btn"]',
+      '[role="button"]',
+      'input[type="button"]',
+      'input[type="submit"]',
+    ]),
+    cards: collectHtmlTextSamples(root, [
+      'article',
+      'section[class*="card"]',
+      'div[class*="card"]',
+      '[data-card]',
+    ]),
+    forms: collectHtmlTextSamples(root, [
+      "form",
+      "label",
+      "input",
+      "select",
+      "textarea",
+    ]),
+    tables: collectHtmlTextSamples(root, ["table"]),
+    badges: collectHtmlTextSamples(root, [
+      '[class*="badge"]',
+      '[class*="pill"]',
+      '[class*="tag"]',
+      '[class*="label"]',
+    ]),
+    headings: collectHtmlTextSamples(root, ["h1", "h2", "h3"]),
+    body: collectHtmlTextSamples(root, ["p", "li", "blockquote"]),
+  };
 }
 
 async function ingestGitSource(
@@ -290,72 +381,167 @@ async function ingestWebsiteSource(
   const html = await response.text();
   const websiteDir = path.join(ingestDir, "website");
   const uploadsDir = path.join(websiteDir, "uploads", "linked-css");
+  const pagesDir = path.join(websiteDir, "uploads", "pages");
   await mkdir(uploadsDir, { recursive: true });
+  await mkdir(pagesDir, { recursive: true });
   await writeFile(path.join(websiteDir, "index.html"), html, "utf8");
 
-  const root = parse(html);
   const cssVars = new Map<string, string>();
   const fontFamilies = new Set<string>();
+  const colors = new Set<string>();
+  const fontSizes = new Set<string>();
+  const fontWeights = new Set<string>();
+  const spacingValues = new Set<string>();
+  const radii = new Set<string>();
+  const shadows = new Set<string>();
   const notes: string[] = ["Homepage HTML fetched from website URL."];
   const logoFiles: Array<{ absolutePath: string; fileName: string }> = [];
-
-  for (const style of root.querySelectorAll("style")) {
-    const text = style.textContent;
-    mergeMap(cssVars, extractCssCustomProperties(text));
-    for (const family of extractFontFamilies(text)) fontFamilies.add(family);
-  }
-
-  const links = root.querySelectorAll('link[rel="stylesheet"]');
-  for (let idx = 0; idx < links.length; idx += 1) {
-    const href = links[idx].getAttribute("href");
-    if (!href) continue;
+  const pageHtmlByUrl = new Map<string, string>([[url.toString(), html]]);
+  const pageQueue = await collectCandidateWebsitePages(url, html);
+  for (const page of pageQueue) {
+    if (pageHtmlByUrl.has(page.toString())) continue;
     try {
-      const cssUrl = new URL(href, url);
-      if (cssUrl.origin !== url.origin) continue;
-      const cssResponse = await fetch(cssUrl);
-      if (!cssResponse.ok) continue;
-      const cssText = await cssResponse.text();
-      const fileName = `linked-${idx + 1}.css`;
-      const absolute = path.join(uploadsDir, fileName);
-      await writeFile(absolute, cssText, "utf8");
-      mergeMap(cssVars, extractCssCustomProperties(cssText));
-      for (const family of extractFontFamilies(cssText)) fontFamilies.add(family);
+      const pageResponse = await fetch(page);
+      if (!pageResponse.ok) continue;
+      const pageHtml = await pageResponse.text();
+      pageHtmlByUrl.set(page.toString(), pageHtml);
+      const fileName = `page-${pageHtmlByUrl.size}.html`;
+      await writeFile(path.join(pagesDir, fileName), pageHtml, "utf8");
     } catch {
-      notes.push(`Skipped linked stylesheet: ${href}`);
+      notes.push(`Skipped linked page: ${page.toString()}`);
     }
   }
 
-  const logoCandidate = root
-    .querySelectorAll("img")
-    .find((img) => /logo|brand/i.test(img.getAttribute("src") ?? ""));
-  if (logoCandidate) {
-    const src = logoCandidate.getAttribute("src");
-    if (src) {
+  const componentSamples = {
+    buttons: [] as string[],
+    cards: [] as string[],
+    forms: [] as string[],
+    tables: [] as string[],
+    badges: [] as string[],
+    headings: [] as string[],
+    body: [] as string[],
+  };
+  const seenStylesheets = new Set<string>();
+  let stylesheetIndex = 1;
+
+  for (const [pageUrl, pageHtml] of pageHtmlByUrl) {
+    const root = parse(pageHtml);
+    const sampleSet = extractHtmlComponentSamples(pageHtml);
+    mergeStringSamples(componentSamples.buttons, sampleSet.buttons, 6);
+    mergeStringSamples(componentSamples.cards, sampleSet.cards, 6);
+    mergeStringSamples(componentSamples.forms, sampleSet.forms, 6);
+    mergeStringSamples(componentSamples.tables, sampleSet.tables, 6);
+    mergeStringSamples(componentSamples.badges, sampleSet.badges, 6);
+    mergeStringSamples(componentSamples.headings, sampleSet.headings, 6);
+    mergeStringSamples(componentSamples.body, sampleSet.body, 6);
+
+    const inlineCssChunks: string[] = [];
+    for (const style of root.querySelectorAll("style")) {
+      inlineCssChunks.push(style.textContent);
+    }
+    for (const node of root.querySelectorAll("[style]")) {
+      const value = node.getAttribute("style");
+      if (value) inlineCssChunks.push(value.replaceAll("\n", " "));
+    }
+    if (inlineCssChunks.length > 0) {
+      const inlineCss = inlineCssChunks.join("\n");
+      mergeMap(cssVars, extractCssCustomProperties(inlineCss));
+      mergeSignals(
+        { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
+        extractCssStyleSignals(inlineCss),
+      );
+      for (const family of extractFontFamilies(inlineCss)) fontFamilies.add(family);
+    }
+
+    const pageBase = new URL(pageUrl);
+    const links = root.querySelectorAll('link[rel="stylesheet"]');
+    for (let idx = 0; idx < links.length; idx += 1) {
+      const href = links[idx].getAttribute("href");
+      if (!href) continue;
       try {
-        const logoUrl = new URL(src, url);
+        const cssUrl = new URL(href, pageBase);
+        if (cssUrl.origin !== url.origin) continue;
+        if (seenStylesheets.has(cssUrl.toString())) continue;
+        seenStylesheets.add(cssUrl.toString());
+        const cssResponse = await fetch(cssUrl);
+        if (!cssResponse.ok) continue;
+        const cssText = await cssResponse.text();
+        const fileName = `linked-${stylesheetIndex}.css`;
+        stylesheetIndex += 1;
+        const absolute = path.join(uploadsDir, fileName);
+        await writeFile(absolute, cssText, "utf8");
+        mergeMap(cssVars, extractCssCustomProperties(cssText));
+        mergeSignals(
+          { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
+          extractCssStyleSignals(cssText),
+        );
+        for (const family of extractFontFamilies(cssText)) fontFamilies.add(family);
+      } catch {
+        notes.push(`Skipped linked stylesheet: ${href}`);
+      }
+    }
+
+    for (const image of root.querySelectorAll("img")) {
+      const src = image.getAttribute("src");
+      if (!src || !/logo|brand/i.test(src)) continue;
+      try {
+        const logoUrl = new URL(src, pageBase);
+        const dedupedName = safeFileName(path.basename(logoUrl.pathname) || "logo.png");
+        if (logoFiles.some((logo) => logo.fileName === dedupedName)) continue;
         const logoResponse = await fetch(logoUrl);
-        if (logoResponse.ok) {
-          const ext = path.extname(logoUrl.pathname) || ".png";
-          const fileName = `website-logo${ext}`;
-          const absolutePath = path.join(websiteDir, fileName);
-          await writeFile(absolutePath, Buffer.from(await logoResponse.arrayBuffer()));
-          logoFiles.push({ absolutePath, fileName });
-        }
+        if (!logoResponse.ok) continue;
+        const absolutePath = path.join(websiteDir, dedupedName);
+        await writeFile(
+          absolutePath,
+          Buffer.from(await logoResponse.arrayBuffer()),
+        );
+        logoFiles.push({ absolutePath, fileName: dedupedName });
       } catch {
         notes.push(`Skipped logo candidate: ${src}`);
       }
     }
   }
 
+  if (componentSamples.buttons.length > 0) {
+    notes.push(
+      `Detected component candidates: ${componentSamples.buttons.length} buttons, ${componentSamples.cards.length} cards, ${componentSamples.forms.length} forms.`,
+    );
+  }
+  if (fontSizes.size > 0 || colors.size > 0) {
+    notes.push(
+      `Style signals extracted from website CSS/HTML: ${colors.size} colors, ${fontSizes.size} font sizes, ${spacingValues.size} spacing values.`,
+    );
+  }
+
   return {
     brandName: preferredName?.trim() || deriveBrandNameFromHtml(url, html),
     cssVars,
     fontFamilies: [...fontFamilies],
+    colors: [...colors],
+    fontSizes: [...fontSizes],
+    fontWeights: [...fontWeights],
+    spacingValues: [...spacingValues],
+    radii: [...radii],
+    shadows: [...shadows],
     notes,
-    logoFiles,
-    uiKitFiles: [{ absolutePath: path.join(websiteDir, "index.html"), fileName: "index.html" }],
-    rawFiles: ["uploads/source-url.txt", "uploads/source.html", "uploads/extraction-report.json"],
+    logoFiles: logoFiles.slice(0, 8),
+    uiKitFiles: [...pageHtmlByUrl.keys()].map((pageUrl, index) => ({
+      absolutePath:
+        index === 0
+          ? path.join(websiteDir, "index.html")
+          : path.join(pagesDir, `page-${index + 1}.html`),
+      fileName: index === 0 ? "index.html" : `page-${index + 1}.html`,
+    })),
+    rawFiles: [
+      "uploads/source-url.txt",
+      "uploads/source.html",
+      "uploads/extraction-report.json",
+      "uploads/pages/",
+      "uploads/linked-css/",
+    ],
     homepageHtml: html,
+    fetchedPageCount: pageHtmlByUrl.size,
+    componentSamples,
   };
 }
 
@@ -366,6 +552,12 @@ async function analyzeLocalTree(
   const allFiles = await listFilesRecursive(rootDir);
   const cssVars = new Map<string, string>();
   const fontFamilies = new Set<string>();
+  const colors = new Set<string>();
+  const fontSizes = new Set<string>();
+  const fontWeights = new Set<string>();
+  const spacingValues = new Set<string>();
+  const radii = new Set<string>();
+  const shadows = new Set<string>();
   const logoFiles: Array<{ absolutePath: string; fileName: string }> = [];
   const uiKitFiles: Array<{ absolutePath: string; fileName: string }> = [];
   const notes: string[] = [];
@@ -383,6 +575,10 @@ async function analyzeLocalTree(
     try {
       const content = await readFile(absolutePath, "utf8");
       mergeMap(cssVars, extractCssCustomProperties(content));
+      mergeSignals(
+        { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
+        extractCssStyleSignals(content),
+      );
       for (const family of extractFontFamilies(content)) fontFamilies.add(family);
     } catch {
       notes.push(`Skipped unreadable text file: ${absolutePath}`);
@@ -393,11 +589,27 @@ async function analyzeLocalTree(
     brandName: fallbackBrandName,
     cssVars,
     fontFamilies: [...fontFamilies],
+    colors: [...colors],
+    fontSizes: [...fontSizes],
+    fontWeights: [...fontWeights],
+    spacingValues: [...spacingValues],
+    radii: [...radii],
+    shadows: [...shadows],
     notes,
     logoFiles: logoFiles.slice(0, 8),
     uiKitFiles,
     rawFiles: ["uploads/source-url.txt", "uploads/extraction-report.json"],
     homepageHtml: null,
+    fetchedPageCount: 0,
+    componentSamples: {
+      buttons: [],
+      cards: [],
+      forms: [],
+      tables: [],
+      badges: [],
+      headings: [],
+      body: [],
+    },
   };
 }
 
@@ -462,15 +674,22 @@ async function writeCanonicalDesignSystem(input: {
   await writeText(
     path.join(uploadsDir, "extraction-report.json"),
     JSON.stringify(
-      {
-        system_id: input.systemId,
-        brand_name: input.brandName,
+        {
+          system_id: input.systemId,
+          brand_name: input.brandName,
         source_type: input.sourceType,
-        source_url: input.sourceUrl,
-        detected_css_vars: [...input.analysis.cssVars.entries()],
-        detected_font_families: input.analysis.fontFamilies,
-        notes: input.analysis.notes,
-      },
+          source_url: input.sourceUrl,
+          detected_css_vars: [...input.analysis.cssVars.entries()],
+          detected_font_families: input.analysis.fontFamilies,
+          detected_colors: input.analysis.colors,
+          detected_font_sizes: input.analysis.fontSizes,
+          detected_spacing_values: input.analysis.spacingValues,
+          detected_radii: input.analysis.radii,
+          detected_shadows: input.analysis.shadows,
+          component_samples: input.analysis.componentSamples,
+          fetched_page_count: input.analysis.fetchedPageCount,
+          notes: input.analysis.notes,
+        },
       null,
       2,
     ),
@@ -533,9 +752,16 @@ function buildReadme(
     analysis.logoFiles.length === 0
       ? "- No explicit logo asset was found during ingestion."
       : `- ${analysis.logoFiles.length} logo-like asset(s) were copied into assets/logos.`,
+    analysis.fetchedPageCount > 1
+      ? `- ${analysis.fetchedPageCount} same-origin pages were analyzed for broader component coverage.`
+      : "- Only the landing page was analyzed; deeper site coverage may still be needed.",
     analysis.fontFamilies.length === 0
       ? "- No source font-family declarations were detected; fallback stacks were used."
       : `- Font family candidates detected: ${analysis.fontFamilies.join(", ")}.`,
+    analysis.componentSamples.buttons.length === 0 &&
+    analysis.componentSamples.cards.length === 0
+      ? "- No strong component samples were extracted from the website HTML."
+      : `- Extracted component samples: ${analysis.componentSamples.buttons.length} buttons, ${analysis.componentSamples.cards.length} cards, ${analysis.componentSamples.forms.length} forms.`,
     ...analysis.notes.map((note) => `- ${note}`),
   ];
 
@@ -644,6 +870,13 @@ function buildTokensCss(brandName: string, analysis: SourceAnalysis): string {
       : `\n  /* Source-derived aliases */\n${[...analysis.cssVars.entries()]
           .slice(0, 48)
           .map(([key, value]) => `  --src-${key}: ${value};`)
+          .join("\n")}`;
+  const extractedColorAliases =
+    analysis.colors.length === 0
+      ? ""
+      : `\n  /* Extracted raw colors from source declarations */\n${analysis.colors
+          .slice(0, 16)
+          .map((value, index) => `  --src-color-${index + 1}: ${value};`)
           .join("\n")}`;
 
   return `/* ${brandName} canonical token file */
@@ -779,7 +1012,7 @@ function buildTokensCss(brandName: string, analysis: SourceAnalysis): string {
   --ease-emphasis: cubic-bezier(0.2, 0.9, 0.2, 1);
   --dur-fast: 120ms;
   --dur-base: 200ms;
-  --dur-slow: 320ms;${sourceAliases}
+  --dur-slow: 320ms;${sourceAliases}${extractedColorAliases}
 }
 `;
 }
@@ -903,6 +1136,17 @@ function previewBody(
   analysis: SourceAnalysis,
 ): string {
   const firstFont = escapeHtml(analysis.fontFamilies[0] ?? "Inter");
+  const sampleButton = escapeHtml(analysis.componentSamples.buttons[0] ?? "Primary");
+  const sampleCardTitle = escapeHtml(analysis.componentSamples.cards[0] ?? "Insight card");
+  const sampleHeading = escapeHtml(analysis.componentSamples.headings[0] ?? "Display sample");
+  const sampleBody = escapeHtml(
+    analysis.componentSamples.body[0] ??
+      "Design systems work best when everyday copy feels calm and readable.",
+  );
+  const sampleSpacing = analysis.spacingValues.slice(0, 6);
+  const sampleRadius = analysis.radii[0] ?? "4px";
+  const sampleShadow =
+    analysis.shadows[0] ?? "0 1px 2px rgba(15,23,42,0.08)";
   switch (fileId) {
     case "brand-logos":
       return `<div class="eyebrow">Brand</div><div class="title">Logo inventory</div><div class="muted">${analysis.logoFiles.length} asset(s) copied into assets/logos.</div><div class="chips">${(analysis.logoFiles.length ? analysis.logoFiles : [{ fileName: "No logos detected", absolutePath: "" }]).slice(0, 6).map((logo) => `<div class="chip">${escapeHtml(logo.fileName)}</div>`).join("")}</div>`;
@@ -919,19 +1163,19 @@ function previewBody(
     case "colors-charts":
       return `<div class="eyebrow">Color</div><div class="title">Chart palette</div><div class="grid"><div class="swatch" style="background:#1d4ed8"></div><div class="swatch" style="background:#0891b2"></div><div class="swatch" style="background:#16a34a"></div><div class="swatch" style="background:#ea580c"></div></div>`;
     case "type-display":
-      return `<div class="eyebrow">Typography</div><div class="title" style="font-size:26px">Display sample</div><div class="muted">Primary display family candidate: ${firstFont}</div>`;
+      return `<div class="eyebrow">Typography</div><div class="title" style="font-size:26px">${sampleHeading}</div><div class="muted">Primary display family candidate: ${firstFont}</div>`;
     case "type-headings":
       return `<div class="eyebrow">Typography</div><div class="title">Heading hierarchy</div><div class="stack"><div style="font-size:20px;font-weight:700">H1 Heading</div><div style="font-size:16px;font-weight:600">H2 Heading</div><div class="muted">Structured, low-hype hierarchy.</div></div>`;
     case "type-body":
-      return `<div class="eyebrow">Typography</div><div class="title">Body copy</div><div class="muted">Design systems work best when everyday copy feels calm, measured, and readable across app, deck, and handoff contexts.</div>`;
+      return `<div class="eyebrow">Typography</div><div class="title">Body copy</div><div class="muted">${sampleBody}</div>`;
     case "spacing":
-      return `<div class="eyebrow">Foundations</div><div class="title">Spacing scale</div><div class="chips"><div class="chip">4</div><div class="chip">8</div><div class="chip">12</div><div class="chip">16</div><div class="chip">24</div><div class="chip">32</div></div>`;
+      return `<div class="eyebrow">Foundations</div><div class="title">Spacing scale</div><div class="chips">${(sampleSpacing.length > 0 ? sampleSpacing : ["4px", "8px", "12px", "16px", "24px", "32px"]).map((value) => `<div class="chip">${escapeHtml(value)}</div>`).join("")}</div>`;
     case "radii-shadows":
-      return `<div class="eyebrow">Foundations</div><div class="title">Radii & shadows</div><div class="grid"><div class="field" style="border-radius:4px;box-shadow:0 1px 2px rgba(15,23,42,0.08)">Small radius</div><div class="field" style="border-radius:12px;box-shadow:0 12px 24px rgba(15,23,42,0.12)">Large radius</div></div>`;
+      return `<div class="eyebrow">Foundations</div><div class="title">Radii & shadows</div><div class="grid"><div class="field" style="border-radius:${escapeHtml(sampleRadius)};box-shadow:${escapeHtml(sampleShadow)}">Small radius</div><div class="field" style="border-radius:12px;box-shadow:0 12px 24px rgba(15,23,42,0.12)">Large radius</div></div>`;
     case "components-buttons":
-      return `<div class="eyebrow">Components</div><div class="title">Buttons</div><div class="chips"><button class="btn btn-primary">Primary</button><button class="btn btn-secondary">Secondary</button></div>`;
+      return `<div class="eyebrow">Components</div><div class="title">Buttons</div><div class="chips"><button class="btn btn-primary">${sampleButton}</button><button class="btn btn-secondary">Secondary</button></div>`;
     case "components-cards":
-      return `<div class="eyebrow">Components</div><div class="title">Cards</div><div class="stack"><div class="field"><strong>Insight card</strong><div class="muted">Key metric with concise explanation.</div></div><div class="field"><strong>Editorial card</strong><div class="muted">Quiet frame, clear grouping.</div></div></div>`;
+      return `<div class="eyebrow">Components</div><div class="title">Cards</div><div class="stack"><div class="field"><strong>${sampleCardTitle}</strong><div class="muted">${sampleBody}</div></div><div class="field"><strong>Editorial card</strong><div class="muted">Quiet frame, clear grouping.</div></div></div>`;
     case "components-forms":
       return `<div class="eyebrow">Components</div><div class="title">Forms</div><div class="stack"><div class="field">Label<br>Input field</div><div class="field">Select field</div></div>`;
     case "components-badges-table":
@@ -992,6 +1236,104 @@ function toSystemRelPath(rootDir: string, absolutePath: string): string {
 function mergeMap(target: Map<string, string>, next: Map<string, string>) {
   for (const [key, value] of next) {
     if (!target.has(key)) target.set(key, value);
+  }
+}
+
+function mergeSignals(
+  target: {
+    colors: Set<string>;
+    fontSizes: Set<string>;
+    fontWeights: Set<string>;
+    spacingValues: Set<string>;
+    radii: Set<string>;
+    shadows: Set<string>;
+  },
+  next: {
+    colors: string[];
+    fontSizes: string[];
+    fontWeights: string[];
+    spacingValues: string[];
+    radii: string[];
+    shadows: string[];
+  },
+) {
+  for (const value of next.colors) target.colors.add(value);
+  for (const value of next.fontSizes) target.fontSizes.add(value);
+  for (const value of next.fontWeights) target.fontWeights.add(value);
+  for (const value of next.spacingValues) target.spacingValues.add(value);
+  for (const value of next.radii) target.radii.add(value);
+  for (const value of next.shadows) target.shadows.add(value);
+}
+
+function extractCssDeclarationValues(
+  content: string,
+  regex: RegExp,
+  limit: number,
+  valueGroup = 2,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) && out.length < limit) {
+    const value = (match[valueGroup] ?? "").trim();
+    if (!value || value.length > 120 || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function collectHtmlTextSamples(
+  root: ReturnType<typeof parse>,
+  selectors: string[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const selector of selectors) {
+    for (const node of root.querySelectorAll(selector)) {
+      const text = node.text
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!text || text.length < 2 || text.length > 140 || seen.has(text)) continue;
+      seen.add(text);
+      out.push(text);
+      if (out.length >= 6) return out;
+    }
+  }
+  return out;
+}
+
+async function collectCandidateWebsitePages(baseUrl: URL, html: string) {
+  const root = parse(html);
+  const candidates: URL[] = [];
+  const seen = new Set<string>([baseUrl.toString()]);
+  for (const anchor of root.querySelectorAll("a[href]")) {
+    const href = anchor.getAttribute("href");
+    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+      continue;
+    }
+    try {
+      const next = new URL(href, baseUrl);
+      if (next.origin !== baseUrl.origin) continue;
+      if (seen.has(next.toString())) continue;
+      if (/\.(pdf|png|jpg|jpeg|svg|zip)$/i.test(next.pathname)) continue;
+      seen.add(next.toString());
+      candidates.push(next);
+      if (candidates.length >= 4) break;
+    } catch {
+      // ignore malformed href
+    }
+  }
+  return candidates;
+}
+
+function mergeStringSamples(target: string[], next: string[], limit: number) {
+  const seen = new Set(target);
+  for (const value of next) {
+    if (seen.has(value)) continue;
+    target.push(value);
+    seen.add(value);
+    if (target.length >= limit) return;
   }
 }
 

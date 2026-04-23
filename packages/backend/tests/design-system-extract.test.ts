@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   contentTypeForDesignSystemFile,
   extractCssCustomProperties,
+  extractCssStyleSignals,
+  extractHtmlComponentSamples,
   inferSourceType,
 } from "../src/services/design-system-extract";
 
@@ -28,6 +30,52 @@ describe("extractCssCustomProperties", () => {
     `);
     expect(vars.get("primary-blue")).toBe("#0057B8");
     expect(vars.get("font-sans")).toBe('"Inter"');
+  });
+});
+
+describe("extractCssStyleSignals", () => {
+  test("extracts colors, font sizes, spacing, radii, and shadows from plain css declarations", () => {
+    const signals = extractCssStyleSignals(`
+      .hero {
+        color: #112233;
+        background-color: rgb(1, 2, 3);
+        font-size: 48px;
+        font-weight: 700;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      }
+    `);
+    expect(signals.colors).toContain("#112233");
+    expect(signals.colors).toContain("rgb(1, 2, 3)");
+    expect(signals.fontSizes).toContain("48px");
+    expect(signals.fontWeights).toContain("700");
+    expect(signals.spacingValues).toContain("16px 24px");
+    expect(signals.radii).toContain("12px");
+    expect(signals.shadows[0]).toContain("0 8px 24px");
+  });
+});
+
+describe("extractHtmlComponentSamples", () => {
+  test("extracts representative text samples for common component buckets", () => {
+    const samples = extractHtmlComponentSamples(`
+      <html><body>
+        <h1>Investor Update</h1>
+        <p>Quarterly performance summary.</p>
+        <button>Get started</button>
+        <div class="card">Revenue momentum</div>
+        <form><label>Email</label><input /></form>
+        <span class="badge">Published</span>
+        <table><tr><td>Row 1</td></tr></table>
+      </body></html>
+    `);
+    expect(samples.headings).toContain("Investor Update");
+    expect(samples.body).toContain("Quarterly performance summary.");
+    expect(samples.buttons).toContain("Get started");
+    expect(samples.cards).toContain("Revenue momentum");
+    expect(samples.forms).toContain("Email");
+    expect(samples.badges).toContain("Published");
+    expect(samples.tables).toContain("Row 1");
   });
 });
 
