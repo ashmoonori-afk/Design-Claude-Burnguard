@@ -1,7 +1,27 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Import, Paperclip, Send, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+const IDLE_PLACEHOLDER =
+  "뭘 만들고 싶나요? 로컬 CLI라 응답은 조금 느려요...";
+
+// Local CLIs take a few seconds to get going. Rotating the placeholder
+// while the turn is running turns the wait into a tiny loop of "the
+// app is alive" signals instead of a blank disabled textarea.
+const WAITING_PLACEHOLDERS = [
+  "로컬 CLI 워밍업 중... ☕",
+  "Claude가 키보드를 두드리는 중...",
+  "토큰을 한 장 한 장 세는 중... 📜",
+  "GPU가 기어를 올리는 소리가 들려요...",
+  "deck에 잉크를 바르는 중... 🎨",
+  "프롬프트를 천천히 음미하는 중...",
+  "로컬이라 좀 느립니다. 딴짓해도 돼요.",
+  "당신의 문장을 조립 중... 🧱",
+  "Claude가 스크롤을 읽는 중... 📚",
+  "그림의 남은 한 조각을 찾는 중...",
+];
+const WAITING_INTERVAL_MS = 2400;
 
 export default function Composer({
   onSend,
@@ -13,7 +33,23 @@ export default function Composer({
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [waitingIndex, setWaitingIndex] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Rotate the placeholder every few seconds while the CLI is busy.
+  // Random start so the same message doesn't greet every turn.
+  useEffect(() => {
+    if (!disabled) return;
+    setWaitingIndex(Math.floor(Math.random() * WAITING_PLACEHOLDERS.length));
+    const id = window.setInterval(() => {
+      setWaitingIndex((prev) => (prev + 1) % WAITING_PLACEHOLDERS.length);
+    }, WAITING_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [disabled]);
+
+  const placeholder = disabled
+    ? (WAITING_PLACEHOLDERS[waitingIndex] ?? IDLE_PLACEHOLDER)
+    : IDLE_PLACEHOLDER;
 
   const canSend = text.trim().length > 0 && !disabled;
 
@@ -68,7 +104,7 @@ export default function Composer({
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Describe what you want to create..."
+        placeholder={placeholder}
         rows={3}
         disabled={disabled}
         onKeyDown={(e) => {
