@@ -31,9 +31,22 @@ export default function Sidebar() {
     queryKey: ["settings"],
     queryFn: getSettings,
   });
+  // Match HomeView's systems tab so a freshly extracted design system
+  // (P4.1 creates rows in `draft`) can be picked for a brand-new project.
+  // Shares the react-query cache key with HomeView so both views dedupe
+  // into a single fetch while the user navigates between them.
   const systemsQuery = useQuery({
-    queryKey: ["design-systems", "published"],
-    queryFn: () => listDesignSystems("published"),
+    queryKey: ["design-systems", "all"],
+    queryFn: async () => {
+      const [draft, review, published] = await Promise.all([
+        listDesignSystems("draft"),
+        listDesignSystems("review"),
+        listDesignSystems("published"),
+      ]);
+      return [...draft, ...review, ...published].sort(
+        (a, b) => b.updated_at - a.updated_at,
+      );
+    },
   });
 
   const settings = settingsQuery.data ?? FALLBACK_SETTINGS;

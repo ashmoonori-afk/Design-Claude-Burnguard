@@ -132,6 +132,11 @@ export default function NewProjectPanel({
                 <option key={s.id} value={s.id}>
                   {s.name}
                   {s.is_template ? " (Template)" : ""}
+                  {s.status === "draft"
+                    ? " (Draft)"
+                    : s.status === "review"
+                      ? " (Review)"
+                      : ""}
                 </option>
               ))
             ) : (
