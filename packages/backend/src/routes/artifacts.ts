@@ -12,6 +12,7 @@ import type {
 } from "@bg/shared";
 import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles, resolveDrawFile, resolveProjectFile } from "../services/files";
 import { enqueueProjectExport } from "../services/exports";
+import { noteEmittedFileChange } from "../services/file-change-broker";
 import { FilePatchError, patchHtmlNode } from "../services/file-patch";
 import { getExportJob, listProjectExports } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
@@ -184,6 +185,11 @@ artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
       attributes: validatedAttributes,
       styles: validatedStyles,
     });
+    // Record our own write before the fs watcher catches it (~120ms
+    // debounce later). Without this note, every Tweaks / Edit PATCH
+    // produces a duplicate `file.changed` event in chat because the
+    // watcher path treats our disk write as an external edit.
+    noteEmittedFileChange(projectId, relPath);
     await indexProjectFiles(projectId);
     return c.json(
       ok({

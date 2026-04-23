@@ -14,6 +14,7 @@ import TweaksLayer, { type TweaksTarget } from "./TweaksLayer";
 import {
   buildSandboxedArtifactSrcDoc,
   requestFrameActiveSlide,
+  requestFrameSetActiveSlide,
 } from "./frame-bridge";
 import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
@@ -125,7 +126,26 @@ export default function Canvas({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const lastKnownSlideIdxRef = useRef<number | null>(null);
+  const restoreTargetSlideIdxRef = useRef<number | null>(null);
+  const restoringSlideRef = useRef(false);
   const [frameSrcDoc, setFrameSrcDoc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeSlideIdx != null) {
+      lastKnownSlideIdxRef.current = activeSlideIdx;
+    }
+  }, [activeSlideIdx]);
+
+  useEffect(() => {
+    if (!src) {
+      restoreTargetSlideIdxRef.current = null;
+      restoringSlideRef.current = false;
+      return;
+    }
+    restoreTargetSlideIdxRef.current = lastKnownSlideIdxRef.current;
+    restoringSlideRef.current = restoreTargetSlideIdxRef.current != null;
+  }, [frameKey, src]);
 
   useEffect(() => {
     if (!src) {
@@ -166,16 +186,53 @@ export default function Canvas({
     let alive = true;
     const tick = async () => {
       if (!alive) return;
-      onActiveSlideChange(await requestFrameActiveSlide(iframeRef.current));
+      const next = await requestFrameActiveSlide(iframeRef.current);
+      if (!alive) return;
+      if (restoringSlideRef.current) {
+        const target = restoreTargetSlideIdxRef.current;
+        if (target == null || next === target) {
+          restoringSlideRef.current = false;
+          restoreTargetSlideIdxRef.current = null;
+          onActiveSlideChange(next);
+        }
+        return;
+      }
+      onActiveSlideChange(next);
     };
     void tick();
     const id = window.setInterval(tick, 200);
     return () => {
       alive = false;
       window.clearInterval(id);
-      onActiveSlideChange(null);
     };
   }, [frameKey, onActiveSlideChange, src]);
+
+  useEffect(() => {
+    const restoreIdx = restoreTargetSlideIdxRef.current;
+    if (!src || frameSrcDoc === null || restoreIdx == null) {
+      return;
+    }
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const restore = () => {
+      if (cancelled) return;
+      attempts += 1;
+      void requestFrameSetActiveSlide(iframeRef.current, restoreIdx).then(
+        (ok) => {
+          if (cancelled || ok || attempts >= 10) return;
+          window.setTimeout(restore, 80);
+        },
+      );
+    };
+
+    const timer = window.setTimeout(restore, 40);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [frameKey, frameSrcDoc, src]);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-muted/40">

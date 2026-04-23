@@ -30,6 +30,20 @@ const FONT_WEIGHTS: Array<{ value: string; label: string }> = [
 ];
 
 const TRANSPARENT_RE = /^rgba?\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)$/i;
+const SIZE_RULES: Record<
+  TweaksStyleKey,
+  { min: number; max: number; allowNegative: boolean }
+> = {
+  "font-size": { min: 8, max: 240, allowNegative: false },
+  "font-weight": { min: 100, max: 900, allowNegative: false },
+  color: { min: 0, max: 0, allowNegative: false },
+  "line-height": { min: 8, max: 320, allowNegative: false },
+  "letter-spacing": { min: -8, max: 24, allowNegative: true },
+  "background-color": { min: 0, max: 0, allowNegative: false },
+  padding: { min: 0, max: 320, allowNegative: false },
+  margin: { min: -320, max: 320, allowNegative: true },
+  "border-radius": { min: 0, max: 320, allowNegative: false },
+};
 
 /**
  * Right-side inspector for Tweaks mode. Replaces the earlier generic text
@@ -178,13 +192,23 @@ function SizeRow({
       if (inline) onApply({ [styleKey]: null });
       return;
     }
-    if (!/^-?\d*\.?\d+$/.test(trimmed)) {
-      // Reject non-numeric input; revert to the last valid numeric.
+    const parsed = parseDraftLength(trimmed);
+    if (parsed === null) {
       setDraft(numericFromLength(inline));
       return;
     }
-    const next = `${trimmed}px`;
+    const rule = SIZE_RULES[styleKey];
+    if ((!rule.allowNegative && parsed < 0) || !Number.isFinite(parsed)) {
+      setDraft(numericFromLength(inline));
+      return;
+    }
+    const clamped = clamp(parsed, rule.min, rule.max);
+    const normalized = formatLengthNumber(clamped);
+    const next = `${normalized}px`;
     if (next === inline) return;
+    if (normalized !== trimmed) {
+      setDraft(normalized);
+    }
     onApply({ [styleKey]: next });
   };
 
@@ -518,4 +542,19 @@ function numericSidesFrom(raw: string): Sides {
     bottom: numericFromLength(parsed.bottom),
     left: numericFromLength(parsed.left),
   };
+}
+
+function parseDraftLength(value: string): number | null {
+  const match = value.trim().match(/^(-?\d*\.?\d+)(?:px)?$/i);
+  if (!match) return null;
+  const parsed = Number.parseFloat(match[1] ?? "");
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatLengthNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(value);
 }

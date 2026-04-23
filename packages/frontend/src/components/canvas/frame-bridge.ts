@@ -34,7 +34,8 @@ type BridgeAction =
   | "hit-bg"
   | "rect-selector"
   | "rect-bg"
-  | "active-slide";
+  | "active-slide"
+  | "set-active-slide";
 
 interface BridgeRequest {
   __bgFrameBridge: true;
@@ -146,6 +147,15 @@ export async function requestFrameActiveSlide(
   iframe: HTMLIFrameElement | null,
 ): Promise<number | null> {
   return (await requestFrameBridge(iframe, "active-slide")) as number | null;
+}
+
+export async function requestFrameSetActiveSlide(
+  iframe: HTMLIFrameElement | null,
+  slideIndex: number,
+): Promise<boolean> {
+  return (await requestFrameBridge(iframe, "set-active-slide", {
+    slideIndex,
+  })) as boolean;
 }
 
 async function requestFrameBridge(
@@ -352,6 +362,32 @@ const BRIDGE_SCRIPT = String.raw`(function () {
       } else {
         var active = document.querySelector("[data-slide][data-active]");
         response = active ? Array.prototype.indexOf.call(slides, active) : 0;
+      }
+    } else if (data.action === "set-active-slide") {
+      var targetIndex = Math.max(0, Number(payload.slideIndex) || 0);
+      var slideList = document.querySelectorAll("[data-slide]");
+      if (!slideList || slideList.length === 0) {
+        response = false;
+      } else {
+        var clamped = Math.min(slideList.length - 1, targetIndex);
+        var nextHash = "#slide-" + (clamped + 1);
+        try {
+          if (location.hash !== nextHash) {
+            history.replaceState(null, "", nextHash);
+            window.dispatchEvent(new HashChangeEvent("hashchange"));
+          } else {
+            var activeNode = document.querySelector("[data-slide][data-active]");
+            if (!activeNode || Array.prototype.indexOf.call(slideList, activeNode) !== clamped) {
+              for (var i = 0; i < slideList.length; i++) {
+                if (i === clamped) slideList[i].setAttribute("data-active", "");
+                else slideList[i].removeAttribute("data-active");
+              }
+            }
+          }
+          response = true;
+        } catch (e) {
+          response = false;
+        }
       }
     }
 
