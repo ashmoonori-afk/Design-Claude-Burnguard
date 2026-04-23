@@ -213,7 +213,7 @@ def extract_pptx(file_path: Path):
     return manifest
 
 
-def extract_pdf_fonts(page):
+def extract_pdf_fonts(page, page_index, warnings):
     fonts = []
     try:
         resources = page.get("/Resources")
@@ -229,9 +229,15 @@ def extract_pdf_fonts(page):
                 base = compact_spaces(base)
                 if base:
                     fonts.append(base)
-            except Exception:
+            except Exception as exc:
+                warnings.append(
+                    f"Failed to resolve a font reference on page {page_index}: {exc}"
+                )
                 continue
-    except Exception:
+    except Exception as exc:
+        warnings.append(
+            f"Failed to inspect font resources on page {page_index}: {exc}"
+        )
         return fonts
     return fonts
 
@@ -251,6 +257,7 @@ def extract_pdf(file_path: Path):
     bodies = []
     misc_lines = []
     pages = []
+    warnings = []
 
     for index, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
@@ -275,21 +282,26 @@ def extract_pdf(file_path: Path):
         for line in lines[1:5]:
             bodies.append(line)
         misc_lines.extend(lines[:8])
-        fonts.extend(extract_pdf_fonts(page))
+        fonts.extend(extract_pdf_fonts(page, index, warnings))
 
     metadata_title = ""
     try:
         metadata_title = compact_spaces(getattr(reader.metadata, "title", "") or "")
-    except Exception:
+    except Exception as exc:
+        warnings.append(f"Failed to read PDF metadata title: {exc}")
         metadata_title = ""
 
     manifest["brand_name"] = metadata_title or infer_brand_name(file_path, headings)
     manifest["page_count"] = len(pages)
     manifest["fonts"] = dedupe(fonts, 8)
-    manifest["notes"] = [
+    base_notes = [
         "PDF text was compressed into short page summaries for token efficiency.",
         "Color and layout extraction from PDF is intentionally conservative in this first pass.",
     ]
+    # Cap warnings so a corrupt PDF with per-page failures doesn't blow
+    # up the notes array — the first 5 traces are enough to pick a
+    # failure mode apart.
+    manifest["notes"] = base_notes + dedupe(warnings, 5)
     manifest["headings"] = headings
     manifest["bodies"] = bodies
     manifest["misc_lines"] = misc_lines
