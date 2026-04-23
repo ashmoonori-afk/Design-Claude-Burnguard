@@ -308,9 +308,15 @@ function SystemsSection({
   onUploadFileChange: (value: File | null) => void;
   onImport: () => void;
 }) {
+  // Match the backend MAX_UPLOAD_BYTES guard in design-system-extract.ts
+  // so the user sees the size ceiling client-side instead of getting
+  // "invalid_upload" back after the multipart round-trip.
+  const MAX_UPLOAD_BYTES = 48_000_000;
+  const uploadTooLarge =
+    importMode === "upload" && uploadFile !== null && uploadFile.size > MAX_UPLOAD_BYTES;
   const canImport =
     importMode === "upload"
-      ? uploadFile !== null && !isPending
+      ? uploadFile !== null && !uploadTooLarge && !isPending
       : sourceUrl.trim().length > 0 && !isPending;
 
   return (
@@ -446,9 +452,18 @@ function SystemsSection({
                     className="mt-1.5 block h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent/10 file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-accent"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Supported: `.pptx`, `.pdf`
-                    {uploadFile ? ` · Selected: ${uploadFile.name}` : ""}
+                    Supported: `.pptx`, `.pdf` · Max 48 MB
+                    {uploadFile
+                      ? ` · Selected: ${uploadFile.name} (${formatBytes(uploadFile.size)})`
+                      : ""}
                   </p>
+                  {uploadTooLarge && uploadFile ? (
+                    <p className="mt-1 text-xs text-destructive">
+                      {uploadFile.name} is {formatBytes(uploadFile.size)} — the
+                      backend accepts up to 48 MB. Export a trimmed version or
+                      split the deck into multiple uploads.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="rounded-md border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
@@ -545,4 +560,18 @@ function CardSection({
       ))}
     </CardGrid>
   );
+}
+
+/**
+ * Format a byte count as a human-readable "MB" / "KB" string. Rounds
+ * to one decimal place for MB so a 47.3 MB file reads precisely next
+ * to the 48 MB ceiling.
+ */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const mb = bytes / 1_000_000;
+  if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  const kb = bytes / 1_000;
+  if (kb >= 1) return `${kb.toFixed(0)} KB`;
+  return `${bytes} B`;
 }
