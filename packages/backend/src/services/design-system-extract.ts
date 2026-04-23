@@ -21,7 +21,8 @@ import type {
   DesignSystemSourceType,
 } from "@bg/shared";
 import { createDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
-import { resolveRepoRoot, systemsDir } from "../lib/paths";
+import { systemsDir } from "../lib/paths";
+import { UPLOAD_EXTRACTOR_PY } from "./upload-extractor-py";
 
 const PREVIEW_FILE_IDS = [
   "brand-logos",
@@ -902,56 +903,66 @@ export async function runPythonUploadExtractor(input: {
   sourcePath: string;
   manifestPath: string;
 }) {
-  const scriptPath = path.join(
-    resolveRepoRoot(),
-    "packages",
-    "backend",
-    "src",
-    "services",
-    "design-system-upload-extract.py",
-  );
-  const candidates =
-    process.platform === "win32"
-      ? [
-          ["py", "-3"],
-          ["python"],
-        ]
-      : [
-          ["python3"],
-          ["python"],
-        ];
+  // Write the embedded Python source to a per-call tmp dir so the
+  // script path resolves cleanly in dev AND inside a `bun build
+  // --compile` binary (where `resolveRepoRoot()` has no source tree
+  // to point at). Self-contained so multiple callers — including the
+  // chat-attachment pipeline that runs extractions in parallel — don't
+  // race on a shared scratch location.
+  const scriptDir = await mkdtemp(path.join(tmpdir(), "burnguard-ds-py-"));
+  try {
+    const scriptPath = path.join(scriptDir, "extract.py");
+    await writeFile(scriptPath, UPLOAD_EXTRACTOR_PY, "utf8");
+    const candidates =
+      process.platform === "win32"
+        ? [
+            ["py", "-3"],
+            ["python"],
+          ]
+        : [
+            ["python3"],
+            ["python"],
+          ];
 
-  let lastFailure = "Python executable was not found";
-  for (const prefix of candidates) {
-    try {
-      const proc = Bun.spawn({
-        cmd: [...prefix, scriptPath, "--input", input.sourcePath, "--output", input.manifestPath],
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]);
-      if (exitCode === 0) {
-        return;
+    let lastFailure = "Python executable was not found";
+    for (const prefix of candidates) {
+      try {
+        const proc = Bun.spawn({
+          cmd: [
+            ...prefix,
+            scriptPath,
+            "--input",
+            input.sourcePath,
+            "--output",
+            input.manifestPath,
+          ],
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [stdout, stderr, exitCode] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        if (exitCode === 0) {
+          return;
+        }
+        lastFailure = [stderr.trim(), stdout.trim()]
+          .filter(Boolean)
+          .join("\n")
+          .trim() || `Python extractor exited with code ${exitCode}`;
+        // The command existed but the extractor failed; don't mask it
+        // with later fallbacks.
+        break;
+      } catch (error) {
+        lastFailure = error instanceof Error ? error.message : String(error);
       }
-      lastFailure = [stderr.trim(), stdout.trim()]
-        .filter(Boolean)
-        .join("\n")
-        .trim() || `Python extractor exited with code ${exitCode}`;
-      // The command existed but the extractor failed; don't mask it with later fallbacks.
-      break;
-    } catch (error) {
-      lastFailure = error instanceof Error ? error.message : String(error);
     }
-  }
 
-  throw new DesignSystemExtractError(
-    "upload_extract_failed",
-    lastFailure,
-  );
+    throw new DesignSystemExtractError("upload_extract_failed", lastFailure);
+  } finally {
+    await rm(scriptDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 export async function readUploadManifest(manifestPath: string): Promise<UploadManifest> {

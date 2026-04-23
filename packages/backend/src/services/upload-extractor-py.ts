@@ -1,4 +1,25 @@
-#!/usr/bin/env python3
+/**
+ * Python-based upload extractor for the P4.2 DS ingestion flow.
+ *
+ * The entire Python source lives here as a `String.raw` template so
+ * `bun build --compile` bundles it into the single binary — the same
+ * pattern `runtime/deck-stage.ts` uses for the deck runtime JS. At
+ * runtime, `runPythonUploadExtractor` in `design-system-extract.ts`
+ * writes this string to a temp file next to the upload and spawns
+ * `python[3] script.py --input ... --output ...`. No separate `.py`
+ * file needs to ship with the bundle.
+ *
+ * Notes for editors:
+ *   - Keep the source free of backticks and `${` — both terminate /
+ *     interpolate the template literal. The one original backticked
+ *     error message was rewritten with single quotes for this reason.
+ *   - `String.raw` preserves backslashes verbatim, so Python regex
+ *     patterns (`\b`, `\d`, `\s`, …) keep their original semantics
+ *     without further escaping.
+ *   - Everything else is a byte-for-byte copy of the original
+ *     `design-system-upload-extract.py` source.
+ */
+export const UPLOAD_EXTRACTOR_PY = String.raw`#!/usr/bin/env python3
 import argparse
 import json
 import re
@@ -270,7 +291,7 @@ def extract_pdf(file_path: Path):
         from pypdf import PdfReader
     except Exception as exc:
         raise RuntimeError(
-            "PDF upload requires the Python package `pypdf`. Install it with `py -3 -m pip install pypdf` or `python -m pip install pypdf`."
+            "PDF upload requires the Python package 'pypdf'. Install it with 'py -3 -m pip install pypdf' or 'python -m pip install pypdf'."
         ) from exc
 
     manifest = empty_manifest("pdf", file_path)
@@ -351,3 +372,4 @@ if __name__ == "__main__":
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
+`;
