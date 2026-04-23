@@ -68,8 +68,17 @@ export default function HomeView() {
     enabled: activeTab === "examples",
   });
   const systemsQuery = useQuery({
-    queryKey: ["design-systems", "published"],
-    queryFn: () => listDesignSystems("published"),
+    queryKey: ["design-systems", "all"],
+    queryFn: async () => {
+      const [draft, review, published] = await Promise.all([
+        listDesignSystems("draft"),
+        listDesignSystems("review"),
+        listDesignSystems("published"),
+      ]);
+      return [...draft, ...review, ...published].sort(
+        (a, b) => b.updated_at - a.updated_at,
+      );
+    },
     enabled: activeTab === "systems",
   });
   const detectionQuery = useQuery({
@@ -273,9 +282,11 @@ function SystemsSection({
   return (
     <div className="space-y-4">
       <div className="max-w-3xl rounded-xl border border-border bg-card/70 px-4 py-3 text-sm leading-6 text-muted-foreground">
-        Published systems appear here. Use the <span className="font-medium text-foreground">+</span>{" "}
-        tile to import a new design system from a git repository or website URL.
-        BurnGuard will scaffold the same canonical output shape as the bundled sample.
+        Design systems across draft, review, and published states appear here.
+        Use the <span className="font-medium text-foreground">+</span> tile to
+        import a new design system from a git repository or website URL.
+        BurnGuard will scaffold the same canonical output shape as the bundled
+        sample.
       </div>
 
       <CardGrid>
