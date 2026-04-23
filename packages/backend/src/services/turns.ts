@@ -11,6 +11,7 @@ import {
 import { getSessionInfo } from "../db/seed";
 import { broker } from "./broker";
 import { buildSessionContext } from "./context";
+import { noteEmittedFileChange } from "./file-change-broker";
 import { writePreTurnSnapshot, writeTurnCheckpoint } from "./checkpoints";
 import { indexProjectFiles } from "./files";
 import { appendSessionTrace } from "./trace";
@@ -270,6 +271,15 @@ async function runUserTurnInternal(
             output: event.output,
             cached: event.cached ?? 0,
           });
+        }
+        // Record adapter-emitted file.changed in the dedupe cache so
+        // the fs watcher suppresses its own echo of the CLI's write
+        // instead of firing a duplicate event ~100ms later.
+        if (event.type === "file.changed") {
+          noteEmittedFileChange(
+            sessionContext.project.project_id,
+            event.path,
+          );
         }
       },
       onStderr: async (line) => {
