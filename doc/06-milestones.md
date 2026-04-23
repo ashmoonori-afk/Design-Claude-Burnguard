@@ -2,13 +2,17 @@
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-23):** Phase 3 **Milestone A
-> (Productivity modes) code-complete**. Phase 1 / M2.B / M2.C still
-> waiting on the manual smoke-test pass at
-> `doc/07-manual-smoke-test.md`. P3 latest commits: `b609101` (P3.3
-> Present), `905d0ec` (P3.2 Draw), `a1cf1f9` (P3.1 Tweaks).
-> `bun test`: 31/31 pass. **Resume at P3.4 (Handoff export)** for
-> Milestone 3.B.
+> **Next-session pickup (2026-04-23):** Phase 3 **Milestone A + B
+> fully shipped; Milestone C 3/4 shipped**. Phase 1 / M2.B / M2.C
+> still waiting on the manual smoke-test pass at
+> `doc/07-manual-smoke-test.md`. P3 latest commits: `8ff541f`
+> (review fixes — full handoff bundle + Tweaks Escape revert),
+> `9c26d7c` (P3.10 macOS build), `cea4a53` (P3.9 watcher
+> file.changed), `c7e4f09` / `5cae730` / `fabc070` (P3.8 polish:
+> version + dead buttons + brand palette), `860fc1e` (P3.7 turn
+> rollback), `ff27231` (P3.6 tool-decision channel). `bun test`:
+> 63/63 pass. **Resume at P3.11 (Linux build)** to close Milestone
+> 3.C; P3.10 Mac bundle awaits hands-on Mac verification tonight.
 
 ## 1. Current Stage
 
@@ -127,17 +131,20 @@ High-level focus (see §7 for the concrete commit-sized sprint plan):
 
 ### Phase 3 - Power user features
 
-Status: **Milestone A shipped; M3.B and M3.C not started**
+Status: **Milestones A + B shipped; M3.C 3/4 shipped (Linux build only remaining)**
 
 Planned focus (see §8 for the commit-sized sprint plan):
 - ✅ real tweaks panel (P3.1 `a1cf1f9`)
 - ✅ draw mode (P3.2 `905d0ec`)
 - ✅ present mode (P3.3 `b609101`)
-- 🔲 handoff export + structured Codex parser + tool-decision round-trip
-- 🔲 turn rollback UI
-- 🔲 light UI polish pass (spacing / empty states / a11y / keyboard shortcuts)
-- 🔲 macOS + Linux builds
-- 🔲 watcher-driven `file.changed`
+- ✅ handoff export (P3.4 `92b7a64`, + review fix `8ff541f`)
+- ✅ structured Codex parser (P3.5 `29431aa`)
+- ✅ tool-decision channel to adapter (P3.6 `ff27231`)
+- ✅ turn rollback UI (P3.7 `860fc1e`)
+- ✅ light polish — brand palette, dead buttons, version 0.3.0 (P3.8 `fabc070` / `5cae730` / `c7e4f09`)
+- ✅ watcher-driven `file.changed` (P3.9 `cea4a53`)
+- ✅ macOS build — .app + optional dmg (P3.10 `9c26d7c`; Mac verification pending)
+- 🔲 Linux build (P3.11)
 
 ### Phase 4 - Design system ingestion and platform polish
 
@@ -217,22 +224,22 @@ Broken into 11 commit-sized slices across four milestones. Same rules as
 | **P3.2** | ✅ | **Draw mode (SVG overlay sketching)** — `905d0ec`. DrawLayer is a forwardRef'd SVG layer exposing `undo / redo / clear`. Pen / rect / arrow tools; tiny drags (< 4px / < 2 points) are discarded. Shapes serialize as real SVG children wrapped in `<g data-shape data-payload>` so the round-trip survives without a bespoke parser and the .svg renders standalone too. DrawPanel: tool selector, 5-color swatch, 3 stroke widths, undo / redo / clear buttons. Persistence via new `GET/PUT /api/projects/:id/draws/*` backed by `resolveDrawFile()` → `<project>/.meta/draws/<rel>.svg`. `.meta/` is already in IGNORED_DIRS, so exports + the file watcher skip annotations. On tab change: GET + deserialize + seed layer via `resetKey`. On every commit: serialize current shapes → PUT. Cmd/Ctrl+Z / Shift+Z routed through the layer ref while `mode === "draw"`. | `frontend/src/components/canvas/DrawLayer.tsx` (new), `frontend/src/components/modes/DrawPanel.tsx` (new), `frontend/src/api/draws.ts` (new), `backend/src/routes/artifacts.ts`, `backend/src/services/files.ts`, `frontend/src/views/ProjectView.tsx` | Sketch over a slide → navigate away and back → sketch still there |
 | **P3.3** | ✅ | **Present mode** — `b609101`. PresentOverlay mounts a `position: fixed` z-9999 wrapper with its own iframe pointing at the deck's `/fs/` URL plus `?present=1`. deck-stage already handles that param by setting `body[data-presenter]`, which the slide-deck template CSS uses to reveal `.deck-notes`. Browser fullscreen is requested on mount; a `fullscreenchange` listener dismisses the overlay when the user exits via Esc / F11 so they never end up stuck in a dim non-fullscreen duplicate. Top-right Exit button, top-left elapsed-time chip (mm:ss, 500ms tick). ProjectTopBar's Play button gains `onPresent` + `canPresent`; enabled only when `project.type === "slide_deck"` AND the active tab resolves to a canvasSrc. Arrow / space / Home / End / F / Esc all continue to flow into deck-stage inside the overlay iframe. | `frontend/src/components/present/PresentOverlay.tsx` (new), `frontend/src/components/project/ProjectTopBar.tsx`, `frontend/src/views/ProjectView.tsx` | Click Present → deck fullscreens without nav → arrows advance → Esc returns |
 
-### Milestone 3.B — Distribution & CLI fidelity 🔲
+### Milestone 3.B — Distribution & CLI fidelity ✅
 
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
-| **P3.4** | 🔲 | **Handoff export** — zip bundling entrypoint + design-tokens CSS + a `spec.json` with one entry per `[data-bg-node-id]` (tag, text, computed styles, bounding rect). Target reader: a developer reconstructing the design in another framework. | `backend/src/services/export-handoff.ts` (new), extends `services/exports.ts` format matrix, `frontend/src/components/export/ExportMenu.tsx` | Open zip → `spec.json` + assets → developer rebuilds page in React from spec alone |
-| **P3.5** | 🔲 | **Structured Codex parser** — When Codex ships a structured stream, write a parser that maps to the same `NormalizedEvent` contract as Claude Code (tool.started/finished, file.changed, usage.delta, status.idle reasons). | `backend/src/adapters/codex/parser.ts` (new), `backend/src/adapters/codex/index.ts` refactor, `backend/tests/codex-parser.test.ts` (new) | A Codex turn emits tool.started + tool.finished events visible in the chat — parity with Claude Code adapter |
-| **P3.6** | 🔲 | **Tool-decision round-trip to CLI** — Today Deny interrupts; Allow only records. When Claude Code actually emits `tool.permission_required`, wire the user's Allow/Deny back into the CLI's stdin so the turn resumes. | `backend/src/adapters/claude-code/index.ts` (+ decision channel), `backend/src/services/turns.ts` (route user.tool_decision into adapter) | Allow → CLI proceeds on the gated tool; Deny → CLI cleanly skips and continues |
-| **P3.7** | 🔲 | **Turn rollback UI** — Checkpoints already persist in `<project>/.meta/checkpoints/<turnId>/`. Add a "Revert to turn N" action on each assistant message that restores the project file tree from that checkpoint. | `backend/src/routes/session.ts` (+POST /checkpoints/:turnId/restore), `backend/src/services/checkpoints.ts` (+restore), `frontend/src/components/chat/MessageStream.tsx` | Bad turn → click revert → files return to pre-turn state → continue from there |
+| **P3.4** | ✅ | **Handoff export** — `92b7a64` + `8ff541f` (review fix). zip bundles the full project tree under `source/` (minus `.meta` + `.attachments`) so every asset the HTML references — images, fonts, CSS, JS — ships. `spec.json` at the bundle root lists one entry per `[data-bg-node-id]` with tag, text, parent_bg_id, slide-local rect, and a fixed 18-key style subset; decks split into one page per slide. `tokens/` carries the linked design system's tokens CSS when available. README.txt documents the layout. Chromium fallback chain (bundled → chrome → msedge) matches PDF / PPTX. | `backend/src/services/export-handoff.ts` (new + bundle copy helper), extends `services/exports.ts`, `backend/tests/export-handoff.test.ts` (+ copyProjectIntoBundle tests), `frontend/src/components/export/ExportMenu.tsx` | Open zip → `source/<entrypoint>` renders in a browser with assets intact; `spec.json` gives a reader enough to reconstruct in React. |
+| **P3.5** | ✅ | **Structured Codex parser** — `29431aa`. `parseCodexLine(line, ctx)` pure helper maps JSON lines with a `type` tag into `NormalizedEvent`s: tool_start / tool_end / file_change / usage / done / text / message / thinking / error, each accepting snake_case and dot.case variants. Unknown JSON / missing type / malformed JSON / plain text all fall through to `chat.delta` so raw-mode is preserved byte-for-byte until Codex actually emits structured lines. Tool correlation across start/end via a `toolNames` Map in the context. | `backend/src/adapters/codex/parser.ts` (new), `adapters/codex/index.ts` refactor, `backend/tests/codex-parser.test.ts` (14 cases) | Codex-emitted `{"type":"tool_start"}` produces tool.started + tool.finished events in chat — parity with Claude Code adapter. Raw-mode fallback preserved. |
+| **P3.6** | ✅ | **Tool-decision round-trip channel** — `ff27231`. `AdapterRunInput.onDecision` registers a handler that receives `user.tool_decision` payloads. `submitToolDecisionToTurn(sessionId, decision)` returns `"delivered" / "queued" / "no_active_turn"`; queued decisions drain into the handler on register, a throwing handler requeues. Claude Code + Codex adapters both register and log decisions today — real stdin forwarding awaits a CLI-mode upgrade (Claude Code's `--input-format stream-json`). Deny continues to hard-abort as a safety fallback. | `backend/src/adapters/types.ts` (+ DecisionHandler, onDecision), `services/turns.ts` (queue / drain / submitToolDecisionToTurn), adapters register handlers, `routes/session.ts` routes decisions through the channel, `backend/tests/tool-decision-channel.test.ts` | Server-side channel delivers decisions; functional round-trip lands when an adapter upgrades its CLI mode. |
+| **P3.7** | ✅ | **Turn rollback UI** — `860fc1e`. `writePreTurnSnapshot` now takes a full-file snapshot (excluding `.meta` + `.attachments`) to `<project>/.meta/checkpoints/snapshots/<turnId>/` before the adapter runs. `restoreFromSnapshot` wipes non-reserved top-level entries then copies the snapshot back. `POST /api/projects/:id/checkpoints/:turnId/restore` is 409 while a turn is running. `UserMessage` bubble gains a hover-in revert button (native confirm → mutation → refetch files/artifacts + bump iframe refreshTick). | `services/checkpoints.ts` (+snapshot/restore/hasSnapshot), `services/turns.ts` calls snapshot, `routes/session.ts` (+restore route), `api/checkpoints.ts` (new), `components/chat/blocks/UserMessage.tsx` (+revert button), `MessageStream.tsx` / `ChatPane.tsx` / `ProjectView.tsx` thread the mutation, `backend/tests/checkpoints.test.ts` | Send a bad turn → click revert on the user bubble → files roll back to pre-turn state, iframe reloads. |
 
-### Milestone 3.C — Platform & polish 🔲
+### Milestone 3.C — Platform & polish 🟡
 
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
-| **P3.8** | 🔲 | **UI polish pass (light)** — No behavioural changes; tightens visual consistency across the app. <br/> **Scope:** (a) spacing/typography token sweep (standardize px → token references in Tailwind config + component classes); (b) empty states for HomeView "no projects", DesignFilesView "no files", MessageStream "no events" with friendly copy + subtle illustration/icon; (c) keyboard shortcut overlay (`?` or Cmd/Ctrl+/) that lists the existing shortcuts (deck nav, interrupt, switch mode); (d) focus rings + ARIA labels across Dialog, DropdownMenu, Tabs, buttons; (e) toast styling & motion consistency; (f) hover/active states aligned across Buttons + DropdownMenuItem + Canvas mode buttons. <br/> **Out of scope:** dark mode real implementation, layout changes, new widgets. | `frontend/src/components/ui/*`, `frontend/src/views/HomeView.tsx`, `frontend/src/views/DesignFilesView.tsx`, `frontend/src/components/chat/MessageStream.tsx`, `frontend/src/components/keyboard/ShortcutsOverlay.tsx` (new), `frontend/tailwind.config.ts` | Side-by-side before/after screenshot shows tightened spacing + readable empty states; `?` opens the shortcuts overlay; tab navigation reaches every control |
-| **P3.9** | 🔲 | **Watcher-driven `file.changed`** — Today the chat's `file.changed` stream is adapter-driven (parsed from Claude Code's tool_result). Supplement with real fs events so external-editor edits and any future adapter work out of the box. | `backend/src/services/watchers.ts` (promote fs events into broker), `backend/src/services/turns.ts` (dedupe against adapter events by path+mtime) | Edit a deck file in VS Code while the app is open → chat shows file.changed within 1s without a CLI turn |
-| **P3.10** | 🔲 | **macOS build** — `bun build --target=bun-darwin-arm64` + `.icns` icon + dmg packaging script. Frontend serves from the same bundle. | `scripts/build-mac.ts` (new), assets/icon.icns, `package.json` scripts | `bun run build:mac` produces a dmg that mounts and runs on Apple Silicon |
+| **P3.8** | ✅ | **Light polish — scope redefined** per user: palette + dead buttons + version management, explicitly not a11y sweep. <br/> Landed as `fabc070` (palette) + `5cae730` (dead buttons) + `c7e4f09` (version bump). <br/> **Palette:** `src/index.css` now exposes a raw `--color-white / --color-grey-{50..900} / --color-black / --color-blue-{50..900} / --color-green-500 / --color-red-500 / --color-orange-500 / --color-yellow-{100,500}` palette. Semantic tokens stored as RGB triples so Tailwind alpha modifiers keep working (`bg-accent/10`). Mapping: background/card/popover=white, foreground=grey-900, muted=grey-50, muted-foreground=grey-500, border=grey-100, accent=blue-500, destructive=red-500. `tailwind.config.ts` switches to `rgb(var(--xxx) / <alpha-value>)` + exposes the raw palette under `grey-*` and `brand-*` scales. <br/> **Dead buttons removed:** ProjectTopBar Pencil rename affordance + Share (no backend), CanvasTopBar 75% zoom dropdown (no handler). <br/> **Version:** 0.0.1-phase0 → 0.3.0 across root + all packages + `APP_VERSION`. | `frontend/src/index.css`, `frontend/tailwind.config.ts`, `frontend/src/components/project/ProjectTopBar.tsx`, `frontend/src/components/canvas/CanvasTopBar.tsx`, `package.json` (× 4), `shared/src/app.ts` | Palette centralized; no button in the UI is a dead link; version number is single-source-of-truth and bumped to 0.3.0. |
+| **P3.9** | ✅ | **Watcher-driven `file.changed`** — `cea4a53`. FS watcher publishes real `file.changed` events to the session broker whenever a project file is edited / created / deleted outside of a CLI turn (e.g. a VS Code save). `file-change-broker.ts` dedupes against adapter-emitted events by (projectId, path) within a 2s window, so an adapter write doesn't produce a duplicate when the watcher catches its own write. Watcher events carry `turnId: "external"` as a sentinel. `.meta/` and `.attachments/` top-level paths are skipped. | `services/file-change-broker.ts` (new — dedupe cache + publish helper), `services/watchers.ts` (emit + debounce + session cache), `services/turns.ts` (notes adapter events into dedupe cache), `backend/tests/file-change-broker.test.ts` | Save a deck file in VS Code → chat shows `file.changed` within 1s, canvas reloads. |
+| **P3.10** | ✅ | **macOS build** — `9c26d7c`. `scripts/build-mac.ts` cross-compiles `bun-darwin-arm64` and assembles a real `.app` bundle (Info.plist with APP_VERSION, minimum macOS 11, staged frontend inside `Contents/MacOS/`, icon slot for `assets/icon.icns` when present). `--dmg` path calls `hdiutil create -format UDZO` on macOS only. `package.json` gains `build:mac` + `build:mac:dmg`. Fixed `--external electron` on both mac + windows compile scripts (playwright-core's optional electron loader was failing the bun compile). | `scripts/build-mac.ts` (new), `scripts/build-binary.ts` (+ external electron), `package.json` scripts, README build section | `bun run build:mac` produces a runnable `.app` bundle; on macOS, `build:mac:dmg` produces a working `.dmg`. Mac-side hands-on verification pending. |
 | **P3.11** | 🔲 | **Linux build** — AppImage via `bun-linux-x64`. Falls back to a plain tarball if AppImage tooling isn't available. | `scripts/build-linux.ts` (new), `package.json` scripts | `bun run build:linux` produces an AppImage that runs on Ubuntu 22.04+ |
 
 ### Ground rules for Phase 3

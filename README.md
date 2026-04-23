@@ -6,13 +6,18 @@
 
 ## 한눈에 보기
 
-- 대상: Windows 10/11 (Bun 기반 백엔드, React + Vite 프론트)
+- 대상: Windows 10/11, macOS (Apple Silicon) 크로스 컴파일 지원. Bun 기반
+  백엔드, React + Vite 프론트.
 - 실행 방식: 로컬 웹앱 + 로컬 CLI 연동
-- 현재 단계: **Phase 2 코드 완결 / 매뉴얼 스모크 테스트 대기**
-  - Phase 1 sign-off 항목 1–4 코드 완료, 5번(Windows 스모크 테스트)만 남음
-  - Phase 2 Milestone A (슬라이드 덱 기반) + B (Comment / Edit / Permission gate) + C
-    (PDF / PPTX / Settings / Tutorial) 모두 merge
-  - `bun test` 23/23 green; chromium 의존 셀은 `BG_EXPORT_SMOKE=1`로 opt-in
+- 현재 단계: **Phase 3 Milestone A + B 완료, M3.C 3/4 shipped**
+  - Phase 1 sign-off 1–4 코드 완료, 5번(수동 스모크) 대기
+  - Phase 2 A/B/C 전부 merge, 수동 스모크 대기
+  - Phase 3 A: Tweaks / Draw / Present 모두 merge
+  - Phase 3 B: Handoff export / Structured Codex parser / Tool-decision 채널 /
+    Turn rollback UI 모두 merge
+  - Phase 3 C: 브랜드 팔레트 + 데드 버튼 제거 + 버전 0.3.0 / watcher 기반
+    `file.changed` / macOS .app + dmg 빌드 완료. **P3.11 Linux 빌드만 남음**
+  - `bun test` 63/63 green; chromium 의존 셀은 `BG_EXPORT_SMOKE=1`로 opt-in
 - 현재 체크리스트: [`doc/07-manual-smoke-test.md`](./doc/07-manual-smoke-test.md)
 
 ## 지금 되는 것
@@ -23,29 +28,38 @@
 - 첨부파일 업로드
 - 슬라이드 덱 runtime (키보드 / 스와이프 / hover 네비게이션)
 - 캔버스 렌더링 + iframe 기반 실제 DOM selector + computed style 패널
+- **Tweaks 모드** — 9개 CSS 속성 직접 편집 (font-size / color / padding 등)
+  → inline style PATCH → Cmd/Ctrl+Z 언두
+- **Draw 모드** — pen / rect / arrow 스케치 오버레이, 파일별 SVG로 `.meta/draws/`
+  에 저장
+- **Present 모드** — 덱 풀스크린 재생 + 스피커 노트 + 타이머, Esc/F11 복귀
 - Comment 모드 — 핀 드롭 / 노트 / resolve / 슬라이드별 스코프 / 미해결은 다음 턴
   프롬프트에 자동 포함
 - Edit 모드 — `[data-bg-node-id]` 요소 호버 → 클릭 → 텍스트 / 속성 편집 → 단일
   노드 PATCH (다른 DOM 보존)
 - Permission gate UI — `tool.permission_required` 수신 시 Radix Dialog; Deny 시 turn
-  정상 중단
+  정상 중단 + 어댑터 채널로 결정 전달 (P3.6)
+- **Turn rollback** — 매 턴 시작 전 스냅샷 자동 저장. 사용자 메시지 hover → revert
+  버튼 한 번으로 턴 직전 상태 복원
 - Export
   - `html_zip` — 오프라인 렌더 그대로
   - `pdf` — Playwright 헤드리스 + A4 landscape (deck only)
   - `pptx` — pptxgenjs로 편집 가능한 텍스트 박스 (deck only)
+  - `handoff` — 프로젝트 전체 + `spec.json` (data-bg-node-id별 geometry/styles)
+    zip, 다른 프레임워크에서 재구성 가능
 - Settings 패널 — 기본 backend, display name, **"Install Chromium"** 버튼 (npx 실행
   + 라이브 로그 tail)
-- 파일 인덱싱 / watcher 기반 auto reload
+- 파일 인덱싱 + **watcher 기반 `file.changed` 방송** — VS Code 같은 외부
+  에디터 저장도 채팅 스트림 + 캔버스 리로드에 반영
+- Windows 실행 파일 + macOS .app/.dmg 빌드
 
 ## 아직 없는 것
 
-- `handoff` export (Phase 3)
-- `tweaks` / `draw` 모드 실 동작 (Phase 3)
-- Codex 구조화된 tool / file 이벤트 파싱 (Phase 1은 raw-mode로 ship 확정, 후속
-  작업으로 유보)
+- Linux AppImage 빌드 (P3.11 — 본격 작업 대기)
 - Playwright 기반 E2E UI 테스트 (백엔드 유닛 / export 스모크는 있음)
-- macOS / Linux 빌드 (Phase 3)
-- 자동 업데이트, SmartScreen 서명 (Phase 4)
+- Codex가 실제 structured stream을 emit하기 시작할 때 기능 활성화될
+  tool-decision 라운드트립 (채널은 P3.6에서 구축 완료)
+- 자동 업데이트, SmartScreen / Developer ID 서명, DS 자동 추출 (Phase 4)
 
 ## 설계 의도
 
@@ -248,7 +262,7 @@ BurnGuard/
 
 ## 현재 한 줄 요약
 
-BurnGuard Design은 **로컬 CLI를 이용해 Claude Design 비슷한 생성형 디자인
-워크플로우를 재현하는 Windows 앱**이고, 현재는 **Phase 2 전체 슬라이스가 code-
-complete 상태이며 매뉴얼 스모크 테스트 통과만이 Phase 1 / M2.B / M2.C 공식
-종료를 가로막고 있음**.
+BurnGuard Design은 **로컬 CLI로 Claude Design 비슷한 생성형 디자인
+워크플로우를 재현하는 Windows + macOS 앱**이고, Phase 3 Milestone A + B가
+완전 종료되었으며 M3.C는 Linux 빌드(P3.11)만 남음. Phase 1 / M2.B / M2.C의
+공식 ✅ flip은 `doc/07-manual-smoke-test.md` 수동 통과를 기다리는 중.
