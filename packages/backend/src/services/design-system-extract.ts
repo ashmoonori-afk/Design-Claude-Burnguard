@@ -22,6 +22,7 @@ import type {
 } from "@bg/shared";
 import { createDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
 import { systemsDir } from "../lib/paths";
+import { detectComponentSamples } from "./upload-component-detect";
 import { UPLOAD_EXTRACTOR_PY } from "./upload-extractor-py";
 
 const PREVIEW_FILE_IDS = [
@@ -150,7 +151,14 @@ export interface UploadManifest {
   radii: string[];
   shadows: string[];
   notes: string[];
-  component_samples: SourceAnalysis["componentSamples"];
+  /**
+   * Slice 4 (P4.2 follow-up): Python emits raw text lines now instead
+   * of pre-classified component buckets. `detectComponentSamples` on
+   * the TS side does the locale-aware classification.
+   */
+  headings: string[];
+  bodies: string[];
+  misc_lines: string[];
   pages: UploadManifestPage[];
 }
 
@@ -816,7 +824,11 @@ async function ingestUploadSource(input: {
     ],
     homepageHtml: null,
     fetchedPageCount: manifest.page_count,
-    componentSamples: normalizeComponentSamples(manifest.component_samples),
+    componentSamples: detectComponentSamples(
+      manifest.headings,
+      manifest.bodies,
+      manifest.misc_lines,
+    ),
     artifactCopies: [
       {
         absolutePath: input.sourcePath,
@@ -1018,7 +1030,9 @@ export async function readUploadManifest(manifestPath: string): Promise<UploadMa
     radii: normalizeUploadStringList(manifest.radii, 12),
     shadows: normalizeUploadStringList(manifest.shadows, 12),
     notes: normalizeUploadStringList(manifest.notes, 16),
-    component_samples: normalizeComponentSamples(manifest.component_samples),
+    headings: normalizeUploadStringList(manifest.headings, 32),
+    bodies: normalizeUploadStringList(manifest.bodies, 32),
+    misc_lines: normalizeUploadStringList(manifest.misc_lines, 64),
     pages: normalizeUploadPages(manifest.pages),
   };
 }
@@ -1036,21 +1050,6 @@ function normalizeUploadStringList(value: unknown, limit: number): string[] {
     if (out.length >= limit) break;
   }
   return out;
-}
-
-function normalizeComponentSamples(
-  value: unknown,
-): SourceAnalysis["componentSamples"] {
-  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
-  return {
-    buttons: normalizeUploadStringList(record.buttons, 6),
-    cards: normalizeUploadStringList(record.cards, 6),
-    forms: normalizeUploadStringList(record.forms, 6),
-    tables: normalizeUploadStringList(record.tables, 6),
-    badges: normalizeUploadStringList(record.badges, 6),
-    headings: normalizeUploadStringList(record.headings, 6),
-    body: normalizeUploadStringList(record.body, 6),
-  };
 }
 
 function normalizeUploadPages(value: unknown): UploadManifestPage[] {

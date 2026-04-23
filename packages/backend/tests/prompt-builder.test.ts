@@ -133,15 +133,9 @@ describe("buildPrompt", () => {
           radii: [],
           shadows: [],
           notes: ["Token-optimized upload summary generated via Python extractor."],
-          component_samples: {
-            buttons: ["Get started"],
-            cards: [],
-            forms: [],
-            tables: [],
-            badges: [],
-            headings: ["Quarterly Review"],
-            body: ["Revenue expanded 22% year over year."],
-          },
+          headings: ["Quarterly Review"],
+          bodies: ["Revenue expanded 22% year over year."],
+          misc_lines: ["Get started", "Revenue expanded 22% year over year."],
           pages: [
             {
               index: 1,

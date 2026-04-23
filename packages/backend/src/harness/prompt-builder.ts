@@ -2,7 +2,10 @@ import { readFile } from "node:fs/promises";
 import type { UserEvent } from "@bg/shared";
 import type { buildSessionContext } from "../services/context";
 import { attachmentSummaryPath } from "../services/attachments";
-import type { UploadManifest } from "../services/design-system-extract";
+import {
+  readUploadManifest,
+  type UploadManifest,
+} from "../services/design-system-extract";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
 
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
@@ -195,13 +198,11 @@ async function readOptional(filePath: string): Promise<string | null> {
 }
 
 async function readAttachmentSummary(filePath: string): Promise<UploadManifest | null> {
-  const raw = await readOptional(attachmentSummaryPath(filePath));
-  if (!raw) {
-    return null;
-  }
-
+  // Route through the canonical normalizer so defensive defaults
+  // (empty arrays for missing headings / bodies / misc_lines) are
+  // consistent with how the extract route materializes manifests.
   try {
-    return JSON.parse(raw) as UploadManifest;
+    return await readUploadManifest(attachmentSummaryPath(filePath));
   } catch {
     return null;
   }
@@ -217,15 +218,16 @@ function renderAttachmentSummary(summary: UploadManifest): string[] {
   if (summary.colors.length > 0) {
     lines.push(`colors: ${summary.colors.slice(0, 6).join(", ")}`);
   }
-  if (summary.component_samples.headings.length > 0) {
-    lines.push(
-      `headings: ${summary.component_samples.headings.slice(0, 3).join(" | ")}`,
-    );
+  // Post-Slice 4 (P4.2 follow-up): the manifest carries raw headings /
+  // bodies / misc_lines instead of pre-classified component buckets.
+  // `detectComponentSamples` still runs at extract time for the canonical
+  // DS folder — for the prompt we only need the heading + body lines
+  // themselves, already deduped by `normalizeUploadStringList`.
+  if (summary.headings.length > 0) {
+    lines.push(`headings: ${summary.headings.slice(0, 3).join(" | ")}`);
   }
-  if (summary.component_samples.body.length > 0) {
-    lines.push(
-      `body samples: ${summary.component_samples.body.slice(0, 2).join(" | ")}`,
-    );
+  if (summary.bodies.length > 0) {
+    lines.push(`body samples: ${summary.bodies.slice(0, 2).join(" | ")}`);
   }
   if (summary.pages.length > 0) {
     lines.push("page summaries:");

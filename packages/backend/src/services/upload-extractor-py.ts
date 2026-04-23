@@ -34,19 +34,6 @@ NS = {
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
 }
 
-CTA_RE = re.compile(
-    r"^(get|start|learn|try|view|read|download|contact|continue|book|open|next)\b",
-    re.IGNORECASE,
-)
-FORM_RE = re.compile(
-    r"\b(email|name|phone|password|search|company|title|message|address)\b",
-    re.IGNORECASE,
-)
-BADGE_RE = re.compile(
-    r"\b(draft|beta|live|new|published|approved|pending)\b",
-    re.IGNORECASE,
-)
-
 
 def compact_spaces(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
@@ -97,45 +84,10 @@ def empty_manifest(kind: str, file_path: Path):
         "radii": [],
         "shadows": [],
         "notes": [],
-        "component_samples": {
-            "buttons": [],
-            "cards": [],
-            "forms": [],
-            "tables": [],
-            "badges": [],
-            "headings": [],
-            "body": [],
-        },
+        "headings": [],
+        "bodies": [],
+        "misc_lines": [],
         "pages": [],
-    }
-
-
-def build_component_samples(headings, bodies, misc_lines):
-    buttons = []
-    forms = []
-    badges = []
-    cards = []
-    tables = []
-    for line in misc_lines:
-        lowered = line.lower()
-        if CTA_RE.search(line):
-            buttons.append(line)
-        if FORM_RE.search(line):
-            forms.append(line)
-        if BADGE_RE.search(line):
-            badges.append(line)
-        if "|" in line or "\t" in line or re.search(r"\bq[1-4]\b", lowered):
-            tables.append(line)
-        if 8 <= len(line) <= 72:
-            cards.append(line)
-    return {
-        "buttons": dedupe(buttons, 6),
-        "cards": dedupe(cards, 6),
-        "forms": dedupe(forms, 6),
-        "tables": dedupe(tables, 6),
-        "badges": dedupe(badges, 6),
-        "headings": dedupe(headings, 6),
-        "body": dedupe(bodies, 6),
     }
 
 
@@ -254,11 +206,9 @@ def extract_pptx(file_path: Path):
             "Full deck text was compressed into short slide summaries for token efficiency.",
             "PPTX theme fonts and colors were extracted from OOXML where available.",
         ]
-        manifest["component_samples"] = build_component_samples(
-            heading_candidates,
-            body_candidates,
-            misc_lines,
-        )
+        manifest["headings"] = heading_candidates
+        manifest["bodies"] = body_candidates
+        manifest["misc_lines"] = misc_lines
         manifest["pages"] = slide_pages
     return manifest
 
@@ -340,7 +290,9 @@ def extract_pdf(file_path: Path):
         "PDF text was compressed into short page summaries for token efficiency.",
         "Color and layout extraction from PDF is intentionally conservative in this first pass.",
     ]
-    manifest["component_samples"] = build_component_samples(headings, bodies, misc_lines)
+    manifest["headings"] = headings
+    manifest["bodies"] = bodies
+    manifest["misc_lines"] = misc_lines
     manifest["pages"] = pages
     return manifest
 
