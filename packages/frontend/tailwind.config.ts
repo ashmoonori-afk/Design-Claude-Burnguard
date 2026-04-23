@@ -11,34 +11,67 @@ export default {
     },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        // Semantic tokens — resolved through CSS variables in `src/index.css`.
+        // Using `rgb(var(--xxx) / <alpha-value>)` keeps Tailwind's alpha
+        // modifier (`bg-accent/10`, `border-border/60`) working against
+        // plain hex values defined in the raw palette.
+        border: "rgb(var(--border) / <alpha-value>)",
+        input: "rgb(var(--input) / <alpha-value>)",
+        ring: "rgb(var(--ring) / <alpha-value>)",
+        background: "rgb(var(--background) / <alpha-value>)",
+        foreground: "rgb(var(--foreground) / <alpha-value>)",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "rgb(var(--primary) / <alpha-value>)",
+          foreground: "rgb(var(--primary-foreground) / <alpha-value>)",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "rgb(var(--secondary) / <alpha-value>)",
+          foreground: "rgb(var(--secondary-foreground) / <alpha-value>)",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "rgb(var(--muted) / <alpha-value>)",
+          foreground: "rgb(var(--muted-foreground) / <alpha-value>)",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "rgb(var(--accent) / <alpha-value>)",
+          foreground: "rgb(var(--accent-foreground) / <alpha-value>)",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: "rgb(var(--destructive) / <alpha-value>)",
+          foreground: "rgb(var(--destructive-foreground) / <alpha-value>)",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "rgb(var(--card) / <alpha-value>)",
+          foreground: "rgb(var(--card-foreground) / <alpha-value>)",
+        },
+        // Raw brand palette — mirrors the CSS custom properties in
+        // `src/index.css`. Use these (e.g. `text-brand-500`) when a
+        // component explicitly wants a brand colour outside the
+        // semantic slots.
+        grey: {
+          50: "var(--color-grey-50)",
+          100: "var(--color-grey-100)",
+          150: "var(--color-grey-150)",
+          200: "var(--color-grey-200)",
+          300: "var(--color-grey-300)",
+          400: "var(--color-grey-400)",
+          500: "var(--color-grey-500)",
+          600: "var(--color-grey-600)",
+          700: "var(--color-grey-700)",
+          800: "var(--color-grey-800)",
+          900: "var(--color-grey-900)",
+        },
+        brand: {
+          50: "var(--color-blue-50)",
+          100: "var(--color-blue-100)",
+          200: "var(--color-blue-200)",
+          300: "var(--color-blue-300)",
+          400: "var(--color-blue-400)",
+          500: "var(--color-blue-500)",
+          600: "var(--color-blue-600)",
+          700: "var(--color-blue-700)",
+          800: "var(--color-blue-800)",
+          900: "var(--color-blue-900)",
         },
       },
       borderRadius: {

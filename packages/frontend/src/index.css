@@ -4,34 +4,68 @@
 
 @layer base {
   :root {
-    /* Base palette (warm off-white) */
-    --background: 48 22% 97%;             /* ~#FAFAF7 */
-    --foreground: 206 32% 16%;            /* #1C2B36 */
+    /* Raw palette — canonical hex values. Components should prefer
+       semantic tokens below, but exposing the raw scale lets design-
+       system references (and future dark mode) pick from the same well. */
 
-    --card: 0 0% 100%;
-    --card-foreground: 206 32% 16%;
+    /* Grey */
+    --color-white: #ffffff;
+    --color-grey-50: #f1f3f5;
+    --color-grey-100: #dce4ea;
+    --color-grey-150: #e2e7ec;
+    --color-grey-200: #bbc5cc;
+    --color-grey-300: #a6aeb2;
+    --color-grey-400: #9fa8ad;
+    --color-grey-500: #757b80;
+    --color-grey-600: #5e646c;
+    --color-grey-700: #464a4d;
+    --color-grey-800: #2f3133;
+    --color-grey-900: #17191a;
+    --color-black: #111111;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 206 32% 16%;
+    /* Blue (brand) */
+    --color-blue-50: #ecf4ff;
+    --color-blue-100: #ddebff;
+    --color-blue-200: #bcd8ff;
+    --color-blue-300: #6d95ff;
+    --color-blue-400: #4062ff;
+    --color-blue-500: #004fff;
+    --color-blue-600: #2455d9;
+    --color-blue-700: #0335e2;
+    --color-blue-800: #002ad6;
+    --color-blue-900: #0014c4;
 
-    --primary: 206 32% 16%;
-    --primary-foreground: 0 0% 100%;
+    /* Accents */
+    --color-green-500: #00ce78;
+    --color-red-500: #ff524c;
+    --color-orange-500: #ff7659;
+    --color-yellow-100: #fff5e4;
+    --color-yellow-500: #fca63d;
 
-    --secondary: 40 25% 95%;
-    --secondary-foreground: 206 32% 16%;
+    /* Semantic tokens — stored as RGB triples so Tailwind's
+       `bg-accent/10` alpha modifier keeps working (tailwind emits
+       `rgb(var(--accent) / <alpha-value>)`). Keep each semantic
+       aligned with a raw palette entry so updates stay one-step. */
 
-    --muted: 40 20% 93%;
-    --muted-foreground: 208 19% 41%;      /* ~#5B7282 */
-
-    --accent: 15 70% 59%;                 /* ~#E06B4C */
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 74% 46%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 32 25% 89%;                 /* ~#E8E3DB */
-    --input: 32 25% 89%;
-    --ring: 15 70% 59%;
+    --background: 255 255 255;       /* white */
+    --foreground: 23 25 26;          /* grey-900 */
+    --card: 255 255 255;             /* white */
+    --card-foreground: 23 25 26;     /* grey-900 */
+    --popover: 255 255 255;          /* white */
+    --popover-foreground: 23 25 26;  /* grey-900 */
+    --primary: 23 25 26;             /* grey-900 */
+    --primary-foreground: 255 255 255;
+    --secondary: 241 243 245;        /* grey-50 */
+    --secondary-foreground: 23 25 26;
+    --muted: 241 243 245;            /* grey-50 */
+    --muted-foreground: 117 123 128; /* grey-500 */
+    --accent: 0 79 255;              /* blue-500 (brand) */
+    --accent-foreground: 255 255 255;
+    --destructive: 255 82 76;        /* red-500 */
+    --destructive-foreground: 255 255 255;
+    --border: 220 228 234;           /* grey-100 */
+    --input: 220 228 234;            /* grey-100 */
+    --ring: 0 79 255;                /* blue-500 */
 
     --radius: 0.5rem;
     color-scheme: light;
