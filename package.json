@@ -9,6 +9,8 @@
     "dev:frontend": "bun run --cwd packages/frontend dev",
     "build:frontend": "bun run --cwd packages/frontend build",
     "build:backend": "bun run scripts/build-binary.ts",
+    "build:mac": "bun run build:frontend && bun run scripts/build-mac.ts",
+    "build:mac:dmg": "bun run build:frontend && bun run scripts/build-mac.ts -- --dmg",
     "build": "bun run build:frontend && bun run build:backend",
     "typecheck": "tsc --build",
     "clean": "rm -rf packages/*/dist dist"

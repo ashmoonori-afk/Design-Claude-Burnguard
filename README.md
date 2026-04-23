@@ -131,17 +131,29 @@ Windows 실행 파일 빌드:
 bun run build:backend
 ```
 
-전체 빌드:
+전체 빌드 (Windows):
 
 ```powershell
 bun run build
 ```
 
+macOS (Apple Silicon) 빌드 — 크로스 컴파일은 Windows / Linux 에서도 가능:
+
+```powershell
+bun run build:mac          # .app 번들만
+bun run build:mac:dmg      # .dmg까지 (macOS 전용)
+```
+
 생성 결과:
 
 ```text
-dist/burnguard-design.exe
+dist/burnguard-design.exe             # Windows
+dist/mac/BurnGuard Design.app/        # macOS app bundle
+dist/burnguard-design-0.3.0.dmg       # macOS dmg (macOS 빌드 시)
 ```
+
+> macOS 바이너리는 크로스 컴파일 상태로는 Gatekeeper에 걸립니다. 첫 실행 전에
+> `xattr -dr com.apple.quarantine "BurnGuard Design.app"` 한 번 실행.
 
 ## 설정 파일 / 데이터 위치
 

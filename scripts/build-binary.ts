@@ -35,10 +35,14 @@ async function main() {
   console.log(`[build] target: bun-windows-x64`);
 
   const start = Date.now();
+  // --external electron: playwright-core imports electron in an
+  // optional loader we never hit (we only drive headless chromium).
+  // Without the flag bun fails to resolve the module at compile.
   await $`bun build ${ENTRY} \
     --compile \
     --target=bun-windows-x64 \
     --minify \
+    --external electron \
     --outfile ${OUT}`.cwd(ROOT);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
