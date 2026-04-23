@@ -240,6 +240,47 @@ export async function createDesignSystemRecord(input: {
   return await getDesignSystemDetail(input.id);
 }
 
+export async function updateDesignSystemRecord(
+  id: string,
+  patch: {
+    name?: string;
+    description?: string | null;
+    status?: DesignSystemSummary["status"];
+  },
+): Promise<DesignSystemDetail | null> {
+  const db = getDb();
+  const set: Record<string, unknown> = { updatedAt: Date.now() };
+  if (patch.name !== undefined) set.name = patch.name;
+  if (patch.description !== undefined) set.description = patch.description;
+  if (patch.status !== undefined) set.status = patch.status;
+  await db
+    .update(designSystemsTable)
+    .set(set)
+    .where(eq(designSystemsTable.id, id));
+  return await getDesignSystemDetail(id);
+}
+
+export async function deleteDesignSystemRecord(id: string): Promise<void> {
+  const db = getDb();
+  await db.delete(designSystemsTable).where(eq(designSystemsTable.id, id));
+}
+
+export async function listActiveProjectsForDesignSystem(
+  designSystemId: string,
+): Promise<Array<{ id: string; name: string }>> {
+  const db = getDb();
+  const rows = await db
+    .select({ id: projectsTable.id, name: projectsTable.name })
+    .from(projectsTable)
+    .where(
+      and(
+        eq(projectsTable.designSystemId, designSystemId),
+        isNull(projectsTable.archivedAt),
+      ),
+    );
+  return rows.map((row) => ({ id: row.id, name: row.name }));
+}
+
 export async function createProjectRecord(input: {
   name: string;
   type: ProjectSummary["type"];

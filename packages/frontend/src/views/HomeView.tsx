@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { extractDesignSystem, uploadDesignSystem } from "@/api/design-system";
+import {
+  deleteDesignSystem,
+  extractDesignSystem,
+  uploadDesignSystem,
+} from "@/api/design-system";
+import { ApiError } from "@/api/client";
 import {
   deleteProject,
   detectBackends,
@@ -16,6 +21,7 @@ import {
   type CardViewModel,
 } from "@/components/home/mappers";
 import ProjectCard from "@/components/home/ProjectCard";
+import DeleteDesignSystemDialog from "@/components/home/DeleteDesignSystemDialog";
 import DeleteProjectDialog from "@/components/home/DeleteProjectDialog";
 import CliMissingModal from "@/components/errors/CliMissingModal";
 import { Button } from "@/components/ui/button";
@@ -43,6 +49,18 @@ export default function HomeView() {
     id: string;
     name: string;
   } | null>(null);
+  const [deleteSystemTarget, setDeleteSystemTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deleteSystemBlocker, setDeleteSystemBlocker] = useState<
+    | { reason: "is_template" }
+    | {
+        reason: "has_active_projects";
+        projects: Array<{ id: string; name: string }>;
+      }
+    | null
+  >(null);
   const [systemImportOpen, setSystemImportOpen] = useState(false);
   const [systemImportMode, setSystemImportMode] =
     useState<SystemImportMode>("url");
@@ -98,6 +116,40 @@ export default function HomeView() {
       setDeleteTarget(null);
     },
     onError: (err) => {
+      pushToast({
+        title: "Delete failed",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
+  const deleteSystemMutation = useMutation({
+    mutationFn: (id: string) => deleteDesignSystem(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["design-systems"] });
+      pushToast({ title: "Design system deleted", tone: "success" });
+      setDeleteSystemTarget(null);
+      setDeleteSystemBlocker(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        const details = err.details as
+          | { reason?: string; project_refs?: Array<{ id: string; name: string }> }
+          | null
+          | undefined;
+        if (details?.reason === "is_template") {
+          setDeleteSystemBlocker({ reason: "is_template" });
+          return;
+        }
+        if (details?.reason === "has_active_projects") {
+          setDeleteSystemBlocker({
+            reason: "has_active_projects",
+            projects: details.project_refs ?? [],
+          });
+          return;
+        }
+      }
       pushToast({
         title: "Delete failed",
         body: err instanceof Error ? err.message : String(err),
@@ -244,6 +296,10 @@ export default function HomeView() {
                 onDraftNameChange={setSystemDraftName}
                 onUploadFileChange={setSystemUploadFile}
                 onImport={() => importSystemMutation.mutate()}
+                onSystemDelete={(card) => {
+                  setDeleteSystemBlocker(null);
+                  setDeleteSystemTarget({ id: card.id, name: card.name });
+                }}
               />
             </TabsContent>
           </div>
@@ -269,6 +325,24 @@ export default function HomeView() {
         }}
         isPending={deleteMutation.isPending}
       />
+
+      <DeleteDesignSystemDialog
+        open={deleteSystemTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteSystemMutation.isPending) {
+            setDeleteSystemTarget(null);
+            setDeleteSystemBlocker(null);
+          }
+        }}
+        systemName={deleteSystemTarget?.name ?? ""}
+        blocker={deleteSystemBlocker}
+        onConfirm={() => {
+          if (deleteSystemTarget) {
+            deleteSystemMutation.mutate(deleteSystemTarget.id);
+          }
+        }}
+        isPending={deleteSystemMutation.isPending}
+      />
     </>
   );
 }
@@ -290,6 +364,7 @@ function SystemsSection({
   onDraftNameChange,
   onUploadFileChange,
   onImport,
+  onSystemDelete,
 }: {
   cards: CardViewModel[];
   importOpen: boolean;
@@ -307,6 +382,7 @@ function SystemsSection({
   onDraftNameChange: (value: string) => void;
   onUploadFileChange: (value: File | null) => void;
   onImport: () => void;
+  onSystemDelete: (card: CardViewModel) => void;
 }) {
   // Match the backend MAX_UPLOAD_BYTES guard in design-system-extract.ts
   // so the user sees the size ceiling client-side instead of getting
@@ -357,7 +433,11 @@ function SystemsSection({
         </button>
 
         {cards.map((card) => (
-          <ProjectCard key={card.id} {...card} />
+          <ProjectCard
+            key={card.id}
+            {...card}
+            onDelete={() => onSystemDelete(card)}
+          />
         ))}
       </CardGrid>
 

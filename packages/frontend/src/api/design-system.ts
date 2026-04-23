@@ -3,7 +3,9 @@ import type {
   CreateDesignSystemExtractionResponse,
   CreateDesignSystemUploadRequest,
   CreateDesignSystemUploadResponse,
+  DeleteDesignSystemResponse,
   DesignSystemDetail,
+  UpdateDesignSystemRequest,
 } from "@bg/shared";
 import { apiFetch } from "./client";
 
@@ -45,4 +47,22 @@ export async function uploadDesignSystem(
       body: form,
     },
   );
+}
+
+export async function updateDesignSystem(
+  id: string,
+  patch: UpdateDesignSystemRequest,
+): Promise<DesignSystemDetail> {
+  return apiFetch<DesignSystemDetail>(`/api/design-systems/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteDesignSystem(
+  id: string,
+): Promise<DeleteDesignSystemResponse> {
+  return apiFetch<DeleteDesignSystemResponse>(`/api/design-systems/${id}`, {
+    method: "DELETE",
+  });
 }

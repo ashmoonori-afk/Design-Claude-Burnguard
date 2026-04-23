@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DesignSystemDetail } from "@bg/shared";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Pencil } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { getDesignSystem } from "@/api/design-system";
+import { getDesignSystem, updateDesignSystem } from "@/api/design-system";
 import SystemPreviewGrid from "@/components/systems/SystemPreviewGrid";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useUIStore } from "@/state/uiStore";
 
 export default function DesignSystemView({
   systemIdOverride,
@@ -13,8 +17,42 @@ export default function DesignSystemView({
 } = {}) {
   const { id: paramId } = useParams();
   const id = systemIdOverride ?? paramId;
+  const queryClient = useQueryClient();
+  const pushToast = useUIStore((s) => s.pushToast);
   const [system, setSystem] = useState<DesignSystemDetail | null>(null);
   const [extractionNotes, setExtractionNotes] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftStatus, setDraftStatus] = useState<DesignSystemDetail["status"]>(
+    "draft",
+  );
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("missing id");
+      const trimmedName = draftName.trim();
+      if (!trimmedName) throw new Error("Name cannot be empty.");
+      return await updateDesignSystem(id, {
+        name: trimmedName,
+        description: draftDescription.trim() ? draftDescription.trim() : null,
+        status: draftStatus,
+      });
+    },
+    onSuccess: async (updated) => {
+      setSystem(updated);
+      setEditing(false);
+      pushToast({ title: "Design system updated", tone: "success" });
+      await queryClient.invalidateQueries({ queryKey: ["design-systems"] });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Could not update design system",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -64,16 +102,113 @@ export default function DesignSystemView({
     <div className="flex-1 overflow-y-auto">
       <div className="px-8 py-8">
         <div className="mx-auto max-w-4xl rounded-2xl border border-border bg-card p-8 shadow-sm">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Design system
+          <div className="flex items-start justify-between gap-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Design system
+            </div>
+            {!editing ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  setDraftName(system.name);
+                  setDraftDescription(system.description ?? "");
+                  setDraftStatus(system.status);
+                  setEditing(true);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit details
+              </Button>
+            ) : null}
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
-            {system.name}
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-            {system.description ??
-              "Bundled local design system. Files are available to sessions as project context."}
-          </p>
+
+          {!editing ? (
+            <>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+                {system.name}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+                {system.description ??
+                  "Bundled local design system. Files are available to sessions as project context."}
+              </p>
+            </>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="ds-name"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Name
+                </label>
+                <Input
+                  id="ds-name"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  disabled={updateMutation.isPending}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="ds-description"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Description
+                </label>
+                <textarea
+                  id="ds-description"
+                  value={draftDescription}
+                  onChange={(e) => setDraftDescription(e.target.value)}
+                  rows={3}
+                  disabled={updateMutation.isPending}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="ds-status"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Status
+                </label>
+                <select
+                  id="ds-status"
+                  value={draftStatus}
+                  onChange={(e) =>
+                    setDraftStatus(
+                      e.target.value as DesignSystemDetail["status"],
+                    )
+                  }
+                  disabled={updateMutation.isPending}
+                  className="flex h-9 w-full max-w-[200px] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
+                >
+                  <option value="draft">Draft</option>
+                  <option value="review">Review</option>
+                  <option value="published">Published</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  variant="cta"
+                  onClick={() => updateMutation.mutate()}
+                  disabled={
+                    updateMutation.isPending || !draftName.trim()
+                  }
+                >
+                  {updateMutation.isPending ? "Saving…" : "Save changes"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setEditing(false)}
+                  disabled={updateMutation.isPending}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
 
           {system.status === "draft" ? (
             <DraftValidationCard system={system} notes={extractionNotes} />

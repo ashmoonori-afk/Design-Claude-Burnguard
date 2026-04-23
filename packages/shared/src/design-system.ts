@@ -51,3 +51,30 @@ export interface CreateDesignSystemExtractionResponse {
 
 export type CreateDesignSystemUploadResponse =
   CreateDesignSystemExtractionResponse;
+
+/**
+ * PATCH /api/design-systems/:id — partial update. All fields optional,
+ * but at least one must be supplied; sending `description: null`
+ * clears the description text.
+ */
+export interface UpdateDesignSystemRequest {
+  name?: string;
+  description?: string | null;
+  status?: DesignSystemDetail["status"];
+}
+
+/**
+ * DELETE /api/design-systems/:id — returns the deleted id on success.
+ * Refusal cases (template row, referenced by active projects) surface
+ * as 409 API errors instead, with `project_refs` in the error details
+ * so the UI can list the blockers.
+ */
+export interface DeleteDesignSystemResponse {
+  id: string;
+  deleted: true;
+}
+
+export interface DeleteDesignSystemBlockedDetail {
+  reason: "is_template" | "has_active_projects";
+  project_refs?: Array<{ id: string; name: string }>;
+}
