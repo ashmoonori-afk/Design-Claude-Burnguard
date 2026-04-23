@@ -126,6 +126,11 @@ Prerequisites:
 - At least one CLI available on `PATH`
   - `claude`
   - `codex`
+- Python 3.10+ on `PATH` (optional — only needed for PDF / PPTX
+  design-system uploads). See
+  [`packages/backend/requirements.txt`](packages/backend/requirements.txt)
+  for the Python dependency list, or install it from Settings →
+  "Python for uploads" → Install pypdf.
 
 Install and verify:
 

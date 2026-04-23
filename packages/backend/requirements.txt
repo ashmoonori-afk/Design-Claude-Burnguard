@@ -1,0 +1,9 @@
+# Python dependencies used by the backend service layer.
+# Only the design-system upload extractor shells out to Python today
+# (packages/backend/src/services/upload-extractor-py.ts embeds the
+# script; `runPythonUploadExtractor` spawns `python script.py`).
+# Install with `python -m pip install --user -r requirements.txt`, or
+# from inside the app via Settings → "Python for uploads" → Install
+# pypdf.
+
+pypdf>=4.0,<5.0
