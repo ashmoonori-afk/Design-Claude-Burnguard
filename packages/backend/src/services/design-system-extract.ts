@@ -1,6 +1,5 @@
 import {
   copyFile,
-  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -17,11 +16,12 @@ import { parse } from "node-html-parser";
 import type {
   CreateDesignSystemExtractionRequest,
   CreateDesignSystemExtractionResponse,
+  CreateDesignSystemUploadRequest,
   DesignSystemDetail,
   DesignSystemSourceType,
 } from "@bg/shared";
 import { createDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
-import { cacheDir, systemsDir } from "../lib/paths";
+import { resolveRepoRoot, systemsDir } from "../lib/paths";
 
 const PREVIEW_FILE_IDS = [
   "brand-logos",
@@ -74,6 +74,8 @@ const MAX_CSS_BYTES = 700_000;
 const MAX_LOGO_BYTES = 2_500_000;
 const MAX_TOTAL_DOWNLOAD_BYTES = 8_000_000;
 const MAX_FETCH_REDIRECTS = 5;
+const MAX_UPLOAD_BYTES = 48_000_000;
+const MAX_UPLOAD_UI_KIT_PAGES = 8;
 const BLOCKED_IMPORT_HOSTS = new Set([
   "localhost",
   "127.0.0.1",
@@ -84,7 +86,21 @@ const BLOCKED_IMPORT_HOSTS = new Set([
   "169.254.169.254",
 ]);
 
-type SupportedExtractionSource = Extract<DesignSystemSourceType, "github" | "website">;
+const SUPPORTED_UPLOAD_EXTENSIONS = new Map([
+  [".pdf", "pdf"],
+  [".pptx", "pptx"],
+] as const);
+
+type SupportedExtractionSource = Extract<
+  DesignSystemSourceType,
+  "github" | "website" | "upload"
+>;
+type SupportedUploadKind = "pdf" | "pptx";
+
+interface SourceArtifact {
+  absolutePath: string;
+  relPath: string;
+}
 
 interface SourceAnalysis {
   brandName: string;
@@ -111,14 +127,40 @@ interface SourceAnalysis {
     headings: string[];
     body: string[];
   };
+  artifactCopies: SourceArtifact[];
+}
+
+export interface UploadManifestPage {
+  index: number;
+  title: string;
+  summary: string;
+  text_excerpt: string;
+}
+
+export interface UploadManifest {
+  kind: SupportedUploadKind;
+  brand_name?: string;
+  page_count: number;
+  fonts: string[];
+  colors: string[];
+  font_sizes: string[];
+  font_weights: string[];
+  spacing_values: string[];
+  radii: string[];
+  shadows: string[];
+  notes: string[];
+  component_samples: SourceAnalysis["componentSamples"];
+  pages: UploadManifestPage[];
 }
 
 export class DesignSystemExtractError extends Error {
   constructor(
     readonly code:
       | "invalid_source_url"
+      | "invalid_upload"
       | "unsupported_source_type"
       | "git_clone_failed"
+      | "upload_extract_failed"
       | "website_fetch_failed"
       | "system_id_conflict",
     message: string,
@@ -204,6 +246,104 @@ export async function extractDesignSystemFromSource(
   }
 }
 
+export async function extractDesignSystemFromUpload(input: {
+  file: File;
+  body?: CreateDesignSystemUploadRequest;
+}): Promise<CreateDesignSystemExtractionResponse> {
+  const uploadName = input.file.name?.trim();
+  if (!uploadName) {
+    throw new DesignSystemExtractError(
+      "invalid_upload",
+      "Uploaded file must have a filename",
+    );
+  }
+  if (input.file.size <= 0) {
+    throw new DesignSystemExtractError(
+      "invalid_upload",
+      "Uploaded file is empty",
+    );
+  }
+  if (input.file.size > MAX_UPLOAD_BYTES) {
+    throw new DesignSystemExtractError(
+      "invalid_upload",
+      `Upload exceeds ${MAX_UPLOAD_BYTES} bytes`,
+    );
+  }
+
+  const uploadKind = inferUploadKind(uploadName, input.file.type);
+  if (!uploadKind) {
+    throw new DesignSystemExtractError(
+      "invalid_upload",
+      "Only .pptx and .pdf design system uploads are supported",
+    );
+  }
+
+  const tmpRoot = await mkdtemp(path.join(tmpdir(), "burnguard-ds-upload-"));
+  try {
+    const ingestDir = path.join(tmpRoot, "ingest");
+    await mkdir(ingestDir, { recursive: true });
+    const sourceFileName = safeFileName(uploadName);
+    const sourcePath = path.join(ingestDir, sourceFileName);
+    await writeFile(sourcePath, Buffer.from(await input.file.arrayBuffer()));
+
+    const analysis = await ingestUploadSource({
+      ingestDir,
+      sourcePath,
+      sourceFileName,
+      uploadKind,
+      preferredName: input.body?.name,
+    });
+
+    const brandName = input.body?.name?.trim() || analysis.brandName;
+    const systemId = await allocateSystemId(
+      input.body?.system_id ?? slugify(brandName),
+    );
+    const systemDir = path.join(systemsDir, systemId);
+    const sourceUrl = `upload://${sourceFileName}`;
+
+    const generatedFiles = await writeCanonicalDesignSystem({
+      systemDir,
+      systemId,
+      brandName,
+      sourceType: "upload",
+      sourceUrl,
+      analysis,
+    });
+
+    const created = await createDesignSystemRecord({
+      id: systemId,
+      name: brandName,
+      description: `Upload extraction scaffold from ${uploadName}`,
+      status: "draft",
+      sourceType: "upload",
+      sourceUri: uploadName,
+      dirPath: systemDir,
+      skillMdPath: path.join(systemDir, "SKILL.md"),
+      tokensCssPath: path.join(systemDir, "colors_and_type.css"),
+      readmeMdPath: path.join(systemDir, "README.md"),
+      thumbnailPath: null,
+    });
+    if (!created) {
+      throw new Error("createDesignSystemRecord returned null");
+    }
+
+    return {
+      system: created satisfies DesignSystemDetail,
+      extraction: {
+        inferred_source_type: "upload",
+        brand_name: brandName,
+        generated_files: generatedFiles,
+        copied_logo_count: analysis.logoFiles.length,
+        detected_css_var_count: analysis.cssVars.size,
+        detected_font_family_count: analysis.fontFamilies.length,
+        notes: analysis.notes,
+      },
+    };
+  } finally {
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+}
+
 export function inferSourceType(sourceUrl: string): SupportedExtractionSource {
   const trimmed = sourceUrl.trim();
   if (
@@ -237,6 +377,28 @@ export function inferSourceType(sourceUrl: string): SupportedExtractionSource {
     "invalid_source_url",
     `Could not infer extraction source from "${sourceUrl}"`,
   );
+}
+
+export function inferUploadKind(
+  fileName: string,
+  contentType?: string | null,
+): SupportedUploadKind | null {
+  const ext = path.extname(fileName).toLowerCase();
+  const fromExtension = SUPPORTED_UPLOAD_EXTENSIONS.get(
+    ext as ".pdf" | ".pptx",
+  );
+  if (fromExtension) return fromExtension;
+
+  const normalized = (contentType ?? "").toLowerCase();
+  if (normalized.includes("application/pdf")) return "pdf";
+  if (
+    normalized.includes(
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    )
+  ) {
+    return "pptx";
+  }
+  return null;
 }
 
 export function extractCssCustomProperties(content: string): Map<string, string> {
@@ -589,6 +751,81 @@ async function ingestWebsiteSource(
     homepageHtml: html,
     fetchedPageCount: pageHtmlByUrl.size,
     componentSamples,
+    artifactCopies: [],
+  };
+}
+
+async function ingestUploadSource(input: {
+  ingestDir: string;
+  sourcePath: string;
+  sourceFileName: string;
+  uploadKind: SupportedUploadKind;
+  preferredName?: string;
+}): Promise<SourceAnalysis> {
+  const manifestPath = path.join(input.ingestDir, "upload-manifest.json");
+  await runPythonUploadExtractor({
+    sourcePath: input.sourcePath,
+    manifestPath,
+  });
+
+  const manifest = await readUploadManifest(manifestPath);
+  if (manifest.kind !== input.uploadKind) {
+    throw new DesignSystemExtractError(
+      "upload_extract_failed",
+      `Upload parser returned ${manifest.kind} for a ${input.uploadKind} file`,
+    );
+  }
+
+  const uiKitDir = path.join(input.ingestDir, "ui-kit");
+  const uiKitFiles = await buildUploadUiKitFiles({
+    uiKitDir,
+    brandName:
+      input.preferredName?.trim() ||
+      manifest.brand_name?.trim() ||
+      humanizeSlug(path.basename(input.sourceFileName, path.extname(input.sourceFileName))),
+    pages: manifest.pages,
+  });
+
+  const notes = [
+    `Token-optimized ${manifest.kind.toUpperCase()} upload summary generated via Python extractor.`,
+    `Parsed ${manifest.page_count} page(s)/slide(s) from upload.`,
+    ...manifest.notes,
+  ];
+
+  return {
+    brandName:
+      input.preferredName?.trim() ||
+      manifest.brand_name?.trim() ||
+      humanizeSlug(path.basename(input.sourceFileName, path.extname(input.sourceFileName))),
+    cssVars: new Map<string, string>(),
+    fontFamilies: normalizeUploadStringList(manifest.fonts, 8),
+    colors: normalizeUploadStringList(manifest.colors, 24),
+    fontSizes: normalizeUploadStringList(manifest.font_sizes, 16),
+    fontWeights: normalizeUploadStringList(manifest.font_weights, 12),
+    spacingValues: normalizeUploadStringList(manifest.spacing_values, 24),
+    radii: normalizeUploadStringList(manifest.radii, 12),
+    shadows: normalizeUploadStringList(manifest.shadows, 12),
+    notes,
+    logoFiles: [],
+    uiKitFiles,
+    rawFiles: [
+      `uploads/${safeFileName(input.sourceFileName)}`,
+      "uploads/upload-manifest.json",
+      ...uiKitFiles.map((file) => `ui_kits/website/${safeFileName(file.fileName)}`),
+    ],
+    homepageHtml: null,
+    fetchedPageCount: manifest.page_count,
+    componentSamples: normalizeComponentSamples(manifest.component_samples),
+    artifactCopies: [
+      {
+        absolutePath: input.sourcePath,
+        relPath: path.join("uploads", safeFileName(input.sourceFileName)),
+      },
+      {
+        absolutePath: manifestPath,
+        relPath: path.join("uploads", "upload-manifest.json"),
+      },
+    ],
   };
 }
 
@@ -657,7 +894,283 @@ async function analyzeLocalTree(
       headings: [],
       body: [],
     },
+    artifactCopies: [],
   };
+}
+
+export async function runPythonUploadExtractor(input: {
+  sourcePath: string;
+  manifestPath: string;
+}) {
+  const scriptPath = path.join(
+    resolveRepoRoot(),
+    "packages",
+    "backend",
+    "src",
+    "services",
+    "design-system-upload-extract.py",
+  );
+  const candidates =
+    process.platform === "win32"
+      ? [
+          ["py", "-3"],
+          ["python"],
+        ]
+      : [
+          ["python3"],
+          ["python"],
+        ];
+
+  let lastFailure = "Python executable was not found";
+  for (const prefix of candidates) {
+    try {
+      const proc = Bun.spawn({
+        cmd: [...prefix, scriptPath, "--input", input.sourcePath, "--output", input.manifestPath],
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode === 0) {
+        return;
+      }
+      lastFailure = [stderr.trim(), stdout.trim()]
+        .filter(Boolean)
+        .join("\n")
+        .trim() || `Python extractor exited with code ${exitCode}`;
+      // The command existed but the extractor failed; don't mask it with later fallbacks.
+      break;
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  throw new DesignSystemExtractError(
+    "upload_extract_failed",
+    lastFailure,
+  );
+}
+
+export async function readUploadManifest(manifestPath: string): Promise<UploadManifest> {
+  const raw = await readFile(manifestPath, "utf8").catch(() => null);
+  if (!raw) {
+    throw new DesignSystemExtractError(
+      "upload_extract_failed",
+      "Python upload extractor did not produce a manifest",
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new DesignSystemExtractError(
+      "upload_extract_failed",
+      "Upload manifest was not valid JSON",
+    );
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new DesignSystemExtractError(
+      "upload_extract_failed",
+      "Upload manifest had an invalid shape",
+    );
+  }
+
+  const manifest = parsed as Partial<UploadManifest>;
+  if (
+    manifest.kind !== "pdf" &&
+    manifest.kind !== "pptx"
+  ) {
+    throw new DesignSystemExtractError(
+      "upload_extract_failed",
+      "Upload manifest is missing a supported kind",
+    );
+  }
+
+  return {
+    kind: manifest.kind,
+    brand_name:
+      typeof manifest.brand_name === "string" ? manifest.brand_name : undefined,
+    page_count:
+      typeof manifest.page_count === "number" && Number.isFinite(manifest.page_count)
+        ? Math.max(0, Math.trunc(manifest.page_count))
+        : 0,
+    fonts: normalizeUploadStringList(manifest.fonts, 8),
+    colors: normalizeUploadStringList(manifest.colors, 24),
+    font_sizes: normalizeUploadStringList(manifest.font_sizes, 16),
+    font_weights: normalizeUploadStringList(manifest.font_weights, 12),
+    spacing_values: normalizeUploadStringList(manifest.spacing_values, 24),
+    radii: normalizeUploadStringList(manifest.radii, 12),
+    shadows: normalizeUploadStringList(manifest.shadows, 12),
+    notes: normalizeUploadStringList(manifest.notes, 16),
+    component_samples: normalizeComponentSamples(manifest.component_samples),
+    pages: normalizeUploadPages(manifest.pages),
+  };
+}
+
+function normalizeUploadStringList(value: unknown, limit: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const normalized = entry.replace(/\s+/g, " ").trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function normalizeComponentSamples(
+  value: unknown,
+): SourceAnalysis["componentSamples"] {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    buttons: normalizeUploadStringList(record.buttons, 6),
+    cards: normalizeUploadStringList(record.cards, 6),
+    forms: normalizeUploadStringList(record.forms, 6),
+    tables: normalizeUploadStringList(record.tables, 6),
+    badges: normalizeUploadStringList(record.badges, 6),
+    headings: normalizeUploadStringList(record.headings, 6),
+    body: normalizeUploadStringList(record.body, 6),
+  };
+}
+
+function normalizeUploadPages(value: unknown): UploadManifestPage[] {
+  if (!Array.isArray(value)) return [];
+  const out: UploadManifestPage[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const page = entry as Record<string, unknown>;
+    out.push({
+      index:
+        typeof page.index === "number" && Number.isFinite(page.index)
+          ? Math.max(1, Math.trunc(page.index))
+          : out.length + 1,
+      title: typeof page.title === "string" ? page.title.trim() : "",
+      summary: typeof page.summary === "string" ? page.summary.trim() : "",
+      text_excerpt:
+        typeof page.text_excerpt === "string" ? page.text_excerpt.trim() : "",
+    });
+    if (out.length >= MAX_UPLOAD_UI_KIT_PAGES) break;
+  }
+  return out;
+}
+
+async function buildUploadUiKitFiles(input: {
+  uiKitDir: string;
+  brandName: string;
+  pages: UploadManifestPage[];
+}) {
+  await mkdir(input.uiKitDir, { recursive: true });
+  const files: Array<{ absolutePath: string; fileName: string }> = [];
+  const pages =
+    input.pages.length > 0
+      ? input.pages.slice(0, MAX_UPLOAD_UI_KIT_PAGES)
+      : [
+          {
+            index: 1,
+            title: `${input.brandName} upload`,
+            summary: "No structured page previews were recovered from the upload.",
+            text_excerpt:
+              "The canonical draft was still created, but this upload needs manual review.",
+          },
+        ];
+
+  for (const page of pages) {
+    const fileName = `page-${page.index}.html`;
+    const absolutePath = path.join(input.uiKitDir, fileName);
+    await writeFile(
+      absolutePath,
+      buildUploadPageHtml(input.brandName, page),
+      "utf8",
+    );
+    files.push({ absolutePath, fileName });
+  }
+
+  return files;
+}
+
+function buildUploadPageHtml(brandName: string, page: UploadManifestPage): string {
+  const title = escapeHtml(page.title || `Page ${page.index}`);
+  const summary = escapeHtml(page.summary || "Token-optimized upload summary");
+  const excerpt = escapeHtml(page.text_excerpt || "No compact excerpt was available.");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(brandName)} upload preview</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --fg: #111827;
+      --muted: #6b7280;
+      --border: rgba(17, 24, 39, 0.12);
+      --accent: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(37,99,235,0.14), transparent 34%),
+        var(--bg);
+      color: var(--fg);
+      padding: 24px;
+    }
+    .card {
+      max-width: 960px;
+      margin: 0 auto;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--card);
+      padding: 28px;
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+    }
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    h1 {
+      margin: 10px 0 8px;
+      font-size: 32px;
+      line-height: 1.1;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .excerpt {
+      margin-top: 22px;
+      white-space: pre-wrap;
+      border-top: 1px solid var(--border);
+      padding-top: 18px;
+      color: var(--fg);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="eyebrow">Upload preview · Page ${page.index}</div>
+    <h1>${title}</h1>
+    <p>${summary}</p>
+    <p class="excerpt">${excerpt}</p>
+  </div>
+</body>
+</html>`;
 }
 
 async function writeCanonicalDesignSystem(input: {
@@ -753,6 +1266,14 @@ async function writeCanonicalDesignSystem(input: {
     );
   }
 
+  for (const artifact of input.analysis.artifactCopies) {
+    const normalizedRelPath = artifact.relPath.replaceAll("\\", "/");
+    const dest = path.join(input.systemDir, normalizedRelPath);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await copyFile(artifact.absolutePath, dest);
+    generated.add(toSystemRelPath(input.systemDir, dest));
+  }
+
   for (const fileId of PREVIEW_FILE_IDS) {
     await writeText(
       path.join(previewDir, `${fileId}.html`),
@@ -770,7 +1291,7 @@ async function writeCanonicalDesignSystem(input: {
       input.systemDir,
     );
   } else {
-    for (const file of input.analysis.uiKitFiles.slice(0, 8)) {
+    for (const file of input.analysis.uiKitFiles.slice(0, MAX_UPLOAD_UI_KIT_PAGES)) {
       const dest = path.join(uiKitDir, safeFileName(file.fileName));
       await copyFile(file.absolutePath, dest);
       generated.add(toSystemRelPath(input.systemDir, dest));

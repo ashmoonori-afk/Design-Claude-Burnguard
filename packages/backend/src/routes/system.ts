@@ -4,6 +4,7 @@ import type {
   ApiSuccess,
   CreateDesignSystemExtractionRequest,
   CreateDesignSystemExtractionResponse,
+  CreateDesignSystemUploadResponse,
   DesignSystemDetail,
 } from "@bg/shared";
 import { getDesignSystemDetail } from "../db/seed";
@@ -11,6 +12,7 @@ import {
   contentTypeForDesignSystemFile,
   DesignSystemExtractError,
   extractDesignSystemFromSource,
+  extractDesignSystemFromUpload,
   resolveDesignSystemFile,
 } from "../services/design-system-extract";
 
@@ -46,6 +48,49 @@ systemRoutes.post("/api/design-systems/extract", async (c) => {
     return c.json(
       fail(
         "design_system_extract_failed",
+        err instanceof Error ? err.message : String(err),
+      ),
+      500,
+    );
+  }
+});
+
+systemRoutes.post("/api/design-systems/upload", async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  if (!form) {
+    return c.json(
+      fail("invalid_body", "Expected a multipart/form-data request body"),
+      400,
+    );
+  }
+
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return c.json(
+      fail("invalid_upload", "Expected a .pptx or .pdf file in the `file` field"),
+      400,
+    );
+  }
+
+  const name = form.get("name");
+  const systemId = form.get("system_id");
+
+  try {
+    const result = await extractDesignSystemFromUpload({
+      file,
+      body: {
+        name: typeof name === "string" ? name : undefined,
+        system_id: typeof systemId === "string" ? systemId : undefined,
+      },
+    });
+    return c.json(ok(result satisfies CreateDesignSystemUploadResponse), 201);
+  } catch (err) {
+    if (err instanceof DesignSystemExtractError) {
+      return c.json(fail(err.code, err.message), 400);
+    }
+    return c.json(
+      fail(
+        "design_system_upload_failed",
         err instanceof Error ? err.message : String(err),
       ),
       500,

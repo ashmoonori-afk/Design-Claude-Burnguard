@@ -5,6 +5,7 @@ import {
   extractCssStyleSignals,
   extractHtmlComponentSamples,
   inferSourceType,
+  inferUploadKind,
   isUnsafeImportHostname,
 } from "../src/services/design-system-extract";
 
@@ -18,6 +19,24 @@ describe("inferSourceType", () => {
   test("treats regular web pages as website source", () => {
     expect(inferSourceType("https://brand.example.com")).toBe("website");
     expect(inferSourceType("https://example.com/design")).toBe("website");
+  });
+});
+
+describe("inferUploadKind", () => {
+  test("detects supported upload kinds by file extension", () => {
+    expect(inferUploadKind("brand-deck.pptx")).toBe("pptx");
+    expect(inferUploadKind("tokens.pdf")).toBe("pdf");
+  });
+
+  test("falls back to content type when extension is ambiguous", () => {
+    expect(inferUploadKind("upload.bin", "application/pdf")).toBe("pdf");
+    expect(
+      inferUploadKind(
+        "upload.bin",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ),
+    ).toBe("pptx");
+    expect(inferUploadKind("upload.bin", "application/octet-stream")).toBeNull();
   });
 });
 

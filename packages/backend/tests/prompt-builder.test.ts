@@ -1,5 +1,9 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import { buildPrompt } from "../src/harness/prompt-builder";
+import { attachmentSummaryPath } from "../src/services/attachments";
 
 type BuildContext = Parameters<typeof buildPrompt>[0];
 
@@ -18,6 +22,7 @@ function makeContext(
       ...overrides,
     },
     files: [],
+    attachments: [],
     designSystem: null,
     openComments: [],
     ...extra,
@@ -107,5 +112,78 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("## Attachments");
     expect(prompt).toContain("- /tmp/a.png");
     expect(prompt).toContain("- /tmp/b.png");
+  });
+
+  test("inlines compact summaries for pptx/pdf attachments when a sidecar exists", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "bg-prompt-attachment-"));
+    try {
+      const filePath = path.join(tempDir, "deck.pptx");
+      await writeFile(filePath, "");
+      await writeFile(
+        attachmentSummaryPath(filePath),
+        JSON.stringify({
+          kind: "pptx",
+          brand_name: "Quarterly Review",
+          page_count: 3,
+          fonts: ["Inter"],
+          colors: ["#112233", "#445566"],
+          font_sizes: ["24pt"],
+          font_weights: ["700"],
+          spacing_values: [],
+          radii: [],
+          shadows: [],
+          notes: ["Token-optimized upload summary generated via Python extractor."],
+          component_samples: {
+            buttons: ["Get started"],
+            cards: [],
+            forms: [],
+            tables: [],
+            badges: [],
+            headings: ["Quarterly Review"],
+            body: ["Revenue expanded 22% year over year."],
+          },
+          pages: [
+            {
+              index: 1,
+              title: "Quarterly Review",
+              summary: "Revenue expanded 22% year over year.",
+              text_excerpt: "Quarterly Review\nRevenue expanded 22% year over year.",
+            },
+          ],
+        }),
+        "utf8",
+      );
+
+      const prompt = await buildPrompt(
+        makeContext({}, {
+          attachments: [
+            {
+              id: "a1",
+              session_id: "s1",
+              turn_id: null,
+              file_path: filePath,
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              original_name: "deck.pptx",
+              size_bytes: 1024,
+              sha256: null,
+              created_at: Date.now(),
+            },
+          ],
+        }),
+        {
+          type: "user.message",
+          text: "Use this attachment as source material.",
+          attachments: [filePath],
+        },
+      );
+
+      expect(prompt).toContain("summary: PPTX · 3 page(s) · brand=Quarterly Review");
+      expect(prompt).toContain("colors: #112233, #445566");
+      expect(prompt).toContain("page 1: Quarterly Review -> Revenue expanded 22% year over year.");
+      expect(prompt).toContain("use this compact summary first for planning");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

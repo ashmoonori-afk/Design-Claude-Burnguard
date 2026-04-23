@@ -26,8 +26,16 @@ export interface CreateDesignSystemExtractionRequest {
   system_id?: string;
 }
 
+export interface CreateDesignSystemUploadRequest {
+  name?: string;
+  system_id?: string;
+}
+
 export interface DesignSystemExtractionSummary {
-  inferred_source_type: Extract<DesignSystemSourceType, "github" | "website">;
+  inferred_source_type: Extract<
+    DesignSystemSourceType,
+    "github" | "website" | "upload"
+  >;
   brand_name: string;
   generated_files: string[];
   copied_logo_count: number;
@@ -40,3 +48,6 @@ export interface CreateDesignSystemExtractionResponse {
   system: DesignSystemDetail;
   extraction: DesignSystemExtractionSummary;
 }
+
+export type CreateDesignSystemUploadResponse =
+  CreateDesignSystemExtractionResponse;

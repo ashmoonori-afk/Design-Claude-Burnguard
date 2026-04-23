@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ulid } from "ulid";
 import { insertAttachment } from "../db/attachments";
 import { getSessionProject } from "../db/events";
+import {
+  inferUploadKind,
+  runPythonUploadExtractor,
+} from "./design-system-extract";
 
 const MAX_ATTACHMENT_COUNT = 8;
 const MAX_ATTACHMENT_BYTES_PER_FILE = 10 * 1024 * 1024;
@@ -43,6 +47,23 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
     const sha256 = createHash("sha256").update(buffer).digest("hex");
 
     await writeFile(absolutePath, buffer);
+    const uploadKind = inferUploadKind(file.name || storedName, file.type);
+    if (uploadKind) {
+      const manifestPath = attachmentSummaryPath(absolutePath);
+      try {
+        await runPythonUploadExtractor({
+          sourcePath: absolutePath,
+          manifestPath,
+        });
+      } catch (error) {
+        await rm(absolutePath, { force: true }).catch(() => {});
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `attachment_extract_failed:${file.name || storedName}:${message}`,
+        );
+      }
+    }
+
     await insertAttachment({
       sessionId,
       filePath: absolutePath,
@@ -59,4 +80,8 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
 
 function sanitize(value: string) {
   return value.replace(/[^\w.-]+/g, "_");
+}
+
+export function attachmentSummaryPath(filePath: string) {
+  return `${filePath}.summary.json`;
 }

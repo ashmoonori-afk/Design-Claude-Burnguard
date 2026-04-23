@@ -30,9 +30,14 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const headers = new Headers(init?.headers ?? {});
+  if (!(init?.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
   const res = await fetch(path, {
     credentials: "same-origin",
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers,
     ...init,
   });
 

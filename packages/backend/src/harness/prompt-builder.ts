@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import type { UserEvent } from "@bg/shared";
 import type { buildSessionContext } from "../services/context";
+import { attachmentSummaryPath } from "../services/attachments";
+import type { UploadManifest } from "../services/design-system-extract";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
 
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
@@ -9,6 +11,7 @@ const MAX_FILES_LISTED = 60;
 const MAX_SKILL_CHARS = 4000;
 const MAX_TOKENS_CSS_LINES = 150;
 const MAX_README_LINES = 120;
+const MAX_ATTACHMENT_PAGES = 4;
 
 /**
  * Builds the prompt text piped into the LLM CLI's stdin.
@@ -107,8 +110,26 @@ export async function buildPrompt(
   // Attachments
   if (userEvent.attachments && userEvent.attachments.length > 0) {
     lines.push("## Attachments");
+    const selected = context.attachments.filter((attachment) =>
+      userEvent.attachments?.includes(attachment.file_path),
+    );
+    for (const attachment of selected) {
+      lines.push(
+        `- ${attachment.original_name} (${attachment.mime_type}, ${attachment.size_bytes}B)`,
+      );
+      lines.push(`  path: ${attachment.file_path}`);
+      const summary = await readAttachmentSummary(attachment.file_path);
+      if (summary) {
+        const summaryLines = renderAttachmentSummary(summary);
+        for (const summaryLine of summaryLines) {
+          lines.push(`  ${summaryLine}`);
+        }
+      }
+    }
     for (const p of userEvent.attachments) {
-      lines.push(`- ${p}`);
+      if (!selected.some((attachment) => attachment.file_path === p)) {
+        lines.push(`- ${p}`);
+      }
     }
     lines.push("");
   }
@@ -171,6 +192,56 @@ async function readOptional(filePath: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function readAttachmentSummary(filePath: string): Promise<UploadManifest | null> {
+  const raw = await readOptional(attachmentSummaryPath(filePath));
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as UploadManifest;
+  } catch {
+    return null;
+  }
+}
+
+function renderAttachmentSummary(summary: UploadManifest): string[] {
+  const lines = [
+    `summary: ${summary.kind.toUpperCase()} · ${summary.page_count} page(s) · brand=${summary.brand_name ?? "unknown"}`,
+  ];
+  if (summary.fonts.length > 0) {
+    lines.push(`fonts: ${summary.fonts.slice(0, 4).join(", ")}`);
+  }
+  if (summary.colors.length > 0) {
+    lines.push(`colors: ${summary.colors.slice(0, 6).join(", ")}`);
+  }
+  if (summary.component_samples.headings.length > 0) {
+    lines.push(
+      `headings: ${summary.component_samples.headings.slice(0, 3).join(" | ")}`,
+    );
+  }
+  if (summary.component_samples.body.length > 0) {
+    lines.push(
+      `body samples: ${summary.component_samples.body.slice(0, 2).join(" | ")}`,
+    );
+  }
+  if (summary.pages.length > 0) {
+    lines.push("page summaries:");
+    for (const page of summary.pages.slice(0, MAX_ATTACHMENT_PAGES)) {
+      lines.push(
+        `- page ${page.index}: ${page.title} -> ${page.summary || page.text_excerpt}`,
+      );
+    }
+  }
+  if (summary.notes.length > 0) {
+    lines.push(`notes: ${summary.notes.slice(0, 2).join(" | ")}`);
+  }
+  lines.push(
+    "instruction: use this compact summary first for planning; read the original attachment file only if you need exact wording or deeper structure.",
+  );
+  return lines;
 }
 
 function parseSlideDeckOptions(optionsJson: string | null): {

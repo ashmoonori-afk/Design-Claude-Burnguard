@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { extractDesignSystem } from "@/api/design-system";
+import { extractDesignSystem, uploadDesignSystem } from "@/api/design-system";
 import {
   deleteProject,
   detectBackends,
@@ -29,6 +29,7 @@ import {
 import { useUIStore } from "@/state/uiStore";
 
 type HomeTab = "recent" | "mine" | "examples" | "systems";
+type SystemImportMode = "url" | "upload";
 
 export default function HomeView() {
   const navigate = useNavigate();
@@ -43,11 +44,14 @@ export default function HomeView() {
     name: string;
   } | null>(null);
   const [systemImportOpen, setSystemImportOpen] = useState(false);
+  const [systemImportMode, setSystemImportMode] =
+    useState<SystemImportMode>("url");
   const [systemSourceUrl, setSystemSourceUrl] = useState("");
   const [systemSourceType, setSystemSourceType] = useState<
     "auto" | "github" | "website"
   >("auto");
   const [systemDraftName, setSystemDraftName] = useState("");
+  const [systemUploadFile, setSystemUploadFile] = useState<File | null>(null);
   const [systemImportError, setSystemImportError] = useState<string | null>(
     null,
   );
@@ -103,21 +107,36 @@ export default function HomeView() {
   });
 
   const importSystemMutation = useMutation({
-    mutationFn: () =>
-      extractDesignSystem({
+    mutationFn: async () => {
+      if (systemImportMode === "upload") {
+        if (!systemUploadFile) {
+          throw new Error("Choose a .pptx or .pdf file to upload.");
+        }
+        return await uploadDesignSystem(systemUploadFile, {
+          name: systemDraftName.trim() || undefined,
+        });
+      }
+
+      return await extractDesignSystem({
         source_url: systemSourceUrl.trim(),
         source_type:
           systemSourceType === "auto" ? undefined : systemSourceType,
         name: systemDraftName.trim() || undefined,
-      }),
+      });
+    },
     onSuccess: async (created) => {
       setSystemImportError(null);
       setSystemSourceUrl("");
       setSystemDraftName("");
+      setSystemUploadFile(null);
+      setSystemImportMode("url");
       setSystemImportOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["design-systems"] });
       pushToast({
-        title: "Design system imported",
+        title:
+          systemImportMode === "upload"
+            ? "Design file imported"
+            : "Design system imported",
         body: `${created.system.name} was created as a draft.`,
         tone: "success",
       });
@@ -208,18 +227,22 @@ export default function HomeView() {
               <SystemsSection
                 cards={systemCards}
                 importOpen={systemImportOpen}
+                importMode={systemImportMode}
                 sourceUrl={systemSourceUrl}
                 sourceType={systemSourceType}
                 draftName={systemDraftName}
+                uploadFile={systemUploadFile}
                 importError={systemImportError}
                 isPending={importSystemMutation.isPending}
                 onToggleImport={() => {
                   setSystemImportOpen((prev) => !prev);
                   setSystemImportError(null);
                 }}
+                onImportModeChange={setSystemImportMode}
                 onSourceUrlChange={setSystemSourceUrl}
                 onSourceTypeChange={setSystemSourceType}
                 onDraftNameChange={setSystemDraftName}
+                onUploadFileChange={setSystemUploadFile}
                 onImport={() => importSystemMutation.mutate()}
               />
             </TabsContent>
@@ -253,40 +276,52 @@ export default function HomeView() {
 function SystemsSection({
   cards,
   importOpen,
+  importMode,
   sourceUrl,
   sourceType,
   draftName,
+  uploadFile,
   importError,
   isPending,
   onToggleImport,
+  onImportModeChange,
   onSourceUrlChange,
   onSourceTypeChange,
   onDraftNameChange,
+  onUploadFileChange,
   onImport,
 }: {
   cards: CardViewModel[];
   importOpen: boolean;
+  importMode: SystemImportMode;
   sourceUrl: string;
   sourceType: "auto" | "github" | "website";
   draftName: string;
+  uploadFile: File | null;
   importError: string | null;
   isPending: boolean;
   onToggleImport: () => void;
+  onImportModeChange: (value: SystemImportMode) => void;
   onSourceUrlChange: (value: string) => void;
   onSourceTypeChange: (value: "auto" | "github" | "website") => void;
   onDraftNameChange: (value: string) => void;
+  onUploadFileChange: (value: File | null) => void;
   onImport: () => void;
 }) {
-  const canImport = sourceUrl.trim().length > 0 && !isPending;
+  const canImport =
+    importMode === "upload"
+      ? uploadFile !== null && !isPending
+      : sourceUrl.trim().length > 0 && !isPending;
 
   return (
     <div className="space-y-4">
       <div className="max-w-3xl rounded-xl border border-border bg-card/70 px-4 py-3 text-sm leading-6 text-muted-foreground">
         Design systems across draft, review, and published states appear here.
         Use the <span className="font-medium text-foreground">+</span> tile to
-        import a new design system from a git repository or website URL.
-        BurnGuard will scaffold the same canonical output shape as the bundled
-        sample.
+        import a new design system from a git repository, website URL, or an
+        uploaded `.pptx` / `.pdf`. BurnGuard scaffolds the same canonical
+        output shape as the bundled sample, and uploads go through a compact
+        Python summarizer so the downstream prompt payload stays token-light.
       </div>
 
       <CardGrid>
@@ -310,7 +345,7 @@ function SystemsSection({
               Import design system
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              Git URL or website URL to draft
+              Git URL, website URL, or PPT/PDF upload
             </div>
           </div>
         </button>
@@ -326,44 +361,110 @@ function SystemsSection({
             Import design system
           </div>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Paste a source URL and BurnGuard will generate a draft design-system
-            directory with `README.md`, `SKILL.md`, `colors_and_type.css`,
-            `preview/`, `ui_kits/`, and `uploads/`.
+            BurnGuard can ingest a repository or live website directly, or
+            accept a `.pptx` / `.pdf` upload. Uploaded files go through a
+            Python extraction pass that keeps only token-relevant signals and
+            compact page summaries before generating the canonical draft bundle.
           </p>
 
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-            <div className="md:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">
-                Source URL
-              </label>
-              <Input
-                value={sourceUrl}
-                onChange={(e) => onSourceUrlChange(e.target.value)}
-                placeholder="https://github.com/acme/design-system"
-                disabled={isPending}
-                className="mt-1.5"
-              />
-            </div>
+          <div className="mt-4 inline-flex rounded-lg border border-border bg-background p-1">
+            <button
+              type="button"
+              onClick={() => onImportModeChange("url")}
+              disabled={isPending}
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                importMode === "url"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              URL import
+            </button>
+            <button
+              type="button"
+              onClick={() => onImportModeChange("upload")}
+              disabled={isPending}
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                importMode === "upload"
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Upload file
+            </button>
+          </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Source type
-              </label>
-              <select
-                value={sourceType}
-                onChange={(e) =>
-                  onSourceTypeChange(
-                    e.target.value as "auto" | "github" | "website",
-                  )
-                }
-                disabled={isPending}
-                className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
-              >
-                <option value="auto">Auto-detect</option>
-                <option value="github">Git repository</option>
-                <option value="website">Website</option>
-              </select>
-            </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {importMode === "url" ? (
+              <>
+                <div className="md:col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Source URL
+                  </label>
+                  <Input
+                    value={sourceUrl}
+                    onChange={(e) => onSourceUrlChange(e.target.value)}
+                    placeholder="https://github.com/acme/design-system"
+                    disabled={isPending}
+                    className="mt-1.5"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Source type
+                  </label>
+                  <select
+                    value={sourceType}
+                    onChange={(e) =>
+                      onSourceTypeChange(
+                        e.target.value as "auto" | "github" | "website",
+                      )
+                    }
+                    disabled={isPending}
+                    className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
+                  >
+                    <option value="auto">Auto-detect</option>
+                    <option value="github">Git repository</option>
+                    <option value="website">Website</option>
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="md:col-span-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Upload file
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pptx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    disabled={isPending}
+                    onChange={(e) =>
+                      onUploadFileChange(e.currentTarget.files?.[0] ?? null)
+                    }
+                    className="mt-1.5 block h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent/10 file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-accent"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Supported: `.pptx`, `.pdf`
+                    {uploadFile ? ` · Selected: ${uploadFile.name}` : ""}
+                  </p>
+                </div>
+
+                <div className="rounded-md border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+                  Python pass:
+                  <div className="mt-1 font-mono text-[11px] text-foreground">
+                    fonts / colors
+                    <br />
+                    headings / body
+                    <br />
+                    page summaries
+                    <br />
+                    upload-manifest.json
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">
@@ -398,7 +499,13 @@ function SystemsSection({
 
           <div className="mt-4 flex items-center gap-3">
             <Button variant="cta" disabled={!canImport} onClick={onImport}>
-              {isPending ? "Importing..." : "Import design system"}
+              {isPending
+                ? importMode === "upload"
+                  ? "Uploading..."
+                  : "Importing..."
+                : importMode === "upload"
+                  ? "Upload design file"
+                  : "Import design system"}
             </Button>
             <Button variant="outline" disabled={isPending} onClick={onToggleImport}>
               Cancel
