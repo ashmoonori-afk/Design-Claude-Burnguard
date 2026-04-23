@@ -1,5 +1,10 @@
 export const APP_NAME = "BurnGuard Design";
-export const APP_VERSION = "0.0.1-phase0";
+
+// Single source of truth for the displayed app version.
+// When cutting a release, bump this in lockstep with the root
+// `package.json` and every `packages/<name>/package.json`. These
+// should always agree — verified manually at release time.
+export const APP_VERSION = "0.3.0";
 
 export type BackendId = "claude-code" | "codex";
 export type ProjectType =
