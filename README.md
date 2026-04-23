@@ -15,17 +15,138 @@ Current release: `0.3.1`
 - Still open: **P3.11 Linux build**, Phase 4 remaining slices (file upload extract, Figma sync, auto-update, signing)
 - Validation status: `bun test` 67/67 green, `npm run typecheck` green (backend + frontend)
 
-## What It Does
+## Feature Tour
 
-- Creates local projects for `prototype`, `slide_deck`, `from_template`, and `other`
-- Detects local `claude` and `codex` CLIs and lets you switch backend per session
-- Streams normalized chat/tool/file/status events into the app UI
-- Renders the current artifact in a live iframe canvas
-- Supports comments, inline edit mode, tweaks mode, draw mode, and present mode
-- Tweaks inspector has typed controls — numeric `px` inputs for sizes, a brand-palette color picker, and 4-side padding / margin / border-radius shorthand composer
-- Supports interrupt, rollback, and export workflows
-- Exports `html_zip`, `pdf`, `pptx`, and `handoff`
-- **Auto-extracts a draft design system from any github repo URL or live website URL** — clone / fetch → parse tokens + fonts + logos → scaffold the canonical BurnGuard folder under `~/.burnguard/data/systems/<id>/` with 16 preview cards
+> Screenshots are being added incrementally. Each slot below reserves a
+> path under `doc/screenshots/` — see `doc/screenshots/README.md` for the
+> filename + size conventions. Drop a PNG at the documented path and the
+> `<img>` tags pick it up automatically on the next render.
+
+### Home & workspace
+
+<p align="center">
+  <img src="doc/screenshots/home.png" alt="Home view showing Recent / Mine / Examples / Systems tabs" width="720">
+</p>
+
+Four tabs: **Recent** (recently opened), **Mine** (projects you created),
+**Examples** (seeded tutorials), **Systems** (design systems, including the
+auto-extract import form). Project cards show the thumbnail, backend
+indicator, last-activity timestamp, and a delete affordance.
+
+### Create-project sidebar
+
+<p align="center">
+  <img src="doc/screenshots/new-project.png" alt="Sidebar with Prototype / Slide deck / From template / Other tabs and a design-system picker" width="360">
+</p>
+
+Type switcher for `Prototype` / `Slide deck` / `From template` / `Other`. The
+design-system dropdown lists every DS (Draft / Review / Published, sorted
+by most recent activity) so a just-imported system shows up immediately with
+its status suffix.
+
+### Chat pane
+
+<p align="center">
+  <img src="doc/screenshots/chat.png" alt="Chat pane streaming events with a cc|cx backend toggle and a Revert affordance on a user bubble" width="720">
+</p>
+
+Normalized event stream: user messages, chat deltas, tool starts / ends,
+file changes, usage deltas, session status. A compact `cc | cx` toggle
+on the tab header switches between Claude Code and Codex for the next
+idle turn. Each user bubble gets a hover-visible **Revert** button that
+restores the pre-turn snapshot (`services/checkpoints.ts`). A permission
+modal appears mid-turn whenever an adapter emits
+`tool.permission_required`.
+
+### Canvas & interaction modes
+
+<p align="center">
+  <img src="doc/screenshots/canvas.png" alt="Canvas iframe with mode toggle bar and right-side inspector" width="720">
+</p>
+
+Live iframe of the current project artifact. Five one-at-a-time modes:
+
+- **Select** — hover highlights any element; click reveals the computed
+  `font-family / font-size / color / padding / ...` in the right panel.
+- **Comment** — click drops a pin anchored to slide index + normalized
+  percentage. Unresolved pins append to the next CLI prompt under
+  `## Open comments`.
+- **Edit** — hover-selects `[data-bg-node-id]` elements; edit text and
+  attributes in the inspector; Save PATCHes the HTML on disk and the
+  iframe auto-reloads.
+- **Tweaks** — structured CSS controls (shipped in P3.12):
+  <p align="center">
+    <img src="doc/screenshots/canvas-tweaks.png" alt="Tweaks inspector showing px numeric inputs, brand palette color picker, and 4-side padding composer" width="540">
+  </p>
+  Numeric `px` inputs for `font-size / line-height / letter-spacing`,
+  a popover color picker backed by the brand palette (+ hex fallback)
+  for `color / background-color`, 4-side compact inputs for
+  `padding / margin / border-radius` that recompose the shortest CSS
+  shorthand on commit, and a dropdown for `font-weight`.
+- **Draw** — SVG overlay with pen / rect / arrow tools and 5-color
+  swatches. Persists to `.meta/draws/<file>.svg`; Cmd/Ctrl+Z for
+  undo / redo.
+
+A **Present** button (visible when the active tab is a slide deck) flips
+into fullscreen playback with arrow-key / space navigation and speaker
+notes (`?present=1` → `body[data-presenter]`).
+
+### Design systems
+
+<p align="center">
+  <img src="doc/screenshots/design-system.png" alt="Design system detail with validation card and 16 preview cards across brand / color / typography / components" width="720">
+</p>
+
+Each DS ships 16 preview cards: Brand (logos / icons), Colors
+(brand / neutrals / ramps / semantic / charts), Typography
+(display / headings / body), Foundations (spacing, radii + shadows),
+Components (buttons / cards / forms / badges + table). A validation
+card on the detail view surfaces extraction caveats (missing tokens,
+substituted fonts, logo count).
+
+### Design system auto-extract (P4.1)
+
+<p align="center">
+  <img src="doc/screenshots/ds-import.png" alt="Import form on Home / Systems tab with source URL, type selector, and optional name" width="540">
+</p>
+
+`POST /api/design-systems/extract` clones a shallow git repo or fetches
+a live homepage + same-origin CSS, parses CSS custom properties, font
+families, and logo-like assets, then scaffolds a canonical BurnGuard
+system under `~/.burnguard/data/systems/<id>/` (README.md / SKILL.md /
+`colors_and_type.css` / `fonts/` / `assets/logos/` / `preview/*.html` ×
+16 / `ui_kits/website/` / `uploads/`). The new row lands as Draft so
+you can review it before promoting to Published.
+
+### Exports
+
+<p align="center">
+  <img src="doc/screenshots/export-menu.png" alt="Export dropdown showing html_zip, pdf, pptx, and handoff options" width="320">
+</p>
+
+Four formats:
+
+- **`html_zip`** — self-contained offline snapshot of the project tree.
+- **`pdf`** — Playwright-rendered deck with zero nav-bar artifacts and
+  per-slide page breaks.
+- **`pptx`** — per-slide editable text boxes (not flattened screenshots)
+  via `pptxgenjs`; bold / italic / alignment / font-family preserved.
+- **`handoff`** — developer bundle (`source/` tree + `spec.json` token
+  index + `tokens/` CSS + README).
+
+PDF and PPTX both need Chromium; install it from Settings with one
+click (backed by `npx playwright install chromium`).
+
+### Settings & backend switch
+
+<p align="center">
+  <img src="doc/screenshots/settings.png" alt="Settings modal with Chromium install status, log tail, and backend default" width="640">
+</p>
+
+- Live Chromium install status (grey / amber-pulsing / green) with a
+  reinstall button and a polled 12-line tail of the install log.
+- Per-session backend toggle reappears on the chat pane and PATCHes
+  `/api/sessions/:id/backend` so the next idle turn uses the new CLI.
 
 ## Remaining Work Compared To The Claude Design Goal
 
