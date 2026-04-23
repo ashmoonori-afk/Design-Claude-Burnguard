@@ -206,3 +206,13 @@ When you finish, update `doc/06-milestones.md`:
 - File any failure under a new `## Known gaps` heading in this doc
   with the item number, expected vs actual, and a link to a commit or
   issue.
+
+## Known gaps
+
+- **1.3 Interrupt (Phase 1)** — 2026-04-23 smoke run could not verify
+  the interrupt control because every test turn completed too quickly
+  to click the button mid-stream. Needs a retry with a deliberately
+  long prompt (e.g. `rewrite every slide with a 500-word rationale`)
+  to keep the turn running for ~30s+. Until re-verified, Phase 1
+  sign-off stands at 4/5 — §3 row 5 in `doc/06-milestones.md` remains
+  un-flipped.
