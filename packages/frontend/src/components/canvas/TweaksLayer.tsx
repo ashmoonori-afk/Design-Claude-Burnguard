@@ -106,9 +106,11 @@ export default function TweaksLayer({
       return;
     }
     try {
+      // See SelectorOverlay.tsx — cross-realm `instanceof HTMLElement`
+      // is always false for iframe nodes. Null-check instead.
       const el = doc.elementFromPoint(relX, relY);
-      const target = el instanceof HTMLElement ? el.closest("[data-bg-node-id]") : null;
-      if (!(target instanceof HTMLElement)) {
+      const target = el ? el.closest("[data-bg-node-id]") : null;
+      if (!target) {
         setHoverRect(null);
         return;
       }
@@ -128,22 +130,20 @@ export default function TweaksLayer({
     const relY = e.clientY - overlayRect.top;
     const doc = readDoc(iframeRef.current);
     const view = readView(iframeRef.current);
-    if (!doc) return;
+    if (!doc || !view) return;
 
     const el = doc.elementFromPoint(relX, relY);
-    const target = el instanceof HTMLElement ? el.closest("[data-bg-node-id]") : null;
-    if (!(target instanceof HTMLElement)) {
+    const target = el ? el.closest("[data-bg-node-id]") : null;
+    if (!target) {
       onSelect(null);
       return;
     }
 
     const bg_id = target.getAttribute("data-bg-node-id") ?? "";
     const computed: Partial<Record<TweaksStyleKey, string>> = {};
-    if (view) {
-      const style = view.getComputedStyle(target);
-      for (const key of TWEAKS_STYLE_KEYS) {
-        computed[key] = style.getPropertyValue(key).trim();
-      }
+    const style = view.getComputedStyle(target);
+    for (const key of TWEAKS_STYLE_KEYS) {
+      computed[key] = style.getPropertyValue(key).trim();
     }
     const inline = parseInlineStyle(target.getAttribute("style") ?? "");
     onSelect({

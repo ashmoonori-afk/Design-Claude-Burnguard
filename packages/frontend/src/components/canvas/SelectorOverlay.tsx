@@ -94,8 +94,13 @@ export default function SelectorOverlay({
     const doc = readDoc(iframeRef.current);
     if (!doc) return null;
     try {
+      // `instanceof HTMLElement` with the parent window's constructor is
+      // always false for iframe nodes (each same-origin frame has its own
+      // realm). Just null-check — `elementFromPoint` returns Element|null
+      // and downstream only uses Element APIs (getBoundingClientRect,
+      // getAttribute, closest, getComputedStyle).
       const el = doc.elementFromPoint(relX, relY);
-      return el instanceof HTMLElement ? el : null;
+      return (el ?? null) as HTMLElement | null;
     } catch {
       return null;
     }

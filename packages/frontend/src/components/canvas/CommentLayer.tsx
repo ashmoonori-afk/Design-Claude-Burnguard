@@ -57,11 +57,13 @@ export default function CommentLayer({
 
     let node_selector = "body";
     let slide_index: number | null = null;
-    const iframeDoc = iframeRef.current?.contentDocument;
+    const iframeDoc = iframeRef.current?.contentDocument ?? null;
     if (iframeDoc) {
       try {
+        // See SelectorOverlay.tsx — cross-realm `instanceof HTMLElement` is
+        // always false for iframe nodes. Null-check instead.
         const el = iframeDoc.elementFromPoint(relX, relY);
-        if (el instanceof HTMLElement) {
+        if (el) {
           const slide = el.closest("[data-slide]");
           if (slide) {
             const all = Array.from(iframeDoc.querySelectorAll("[data-slide]"));

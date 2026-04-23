@@ -75,9 +75,11 @@ export default function EditLayer({
       return;
     }
     try {
+      // See SelectorOverlay.tsx — cross-realm `instanceof HTMLElement`
+      // is always false for iframe nodes. Null-check instead.
       const el = doc.elementFromPoint(relX, relY);
-      const target = el instanceof HTMLElement ? el.closest("[data-bg-node-id]") : null;
-      if (!(target instanceof HTMLElement)) {
+      const target = el ? el.closest("[data-bg-node-id]") : null;
+      if (!target) {
         setHoverRect(null);
         return;
       }
@@ -99,8 +101,8 @@ export default function EditLayer({
     if (!doc) return;
 
     const el = doc.elementFromPoint(relX, relY);
-    const target = el instanceof HTMLElement ? el.closest("[data-bg-node-id]") : null;
-    if (!(target instanceof HTMLElement)) {
+    const target = el ? el.closest("[data-bg-node-id]") : null;
+    if (!target) {
       onSelect(null);
       return;
     }
