@@ -6,14 +6,14 @@
 
 BurnGuard Design is a local-first AI design workspace that wraps already-installed `claude` and `codex` CLIs into a chat + canvas workflow. It is built for generating, editing, reviewing, and exporting prototypes and slide decks without moving your project files into a hosted SaaS.
 
-Current release: `0.3.1`
+Current release: `0.4.0`
 
 ## Status
 
-- Current stage: **Phase 3 mostly shipped; Phase 4 started**
-- Shipped: Phase 1, Phase 2 A/B/C, Phase 3 A/B, most of Phase 3 C, and **P4.1 DS auto-extract**
-- Still open: **P3.11 Linux build**, Phase 4 remaining slices (file upload extract, Figma sync, auto-update, signing)
-- Validation status: `bun test` 67/67 green, `npm run typecheck` green (backend + frontend)
+- Current stage: **Phase 3 shipped in practice; Phase 4 actively underway**
+- Shipped: Phase 1, Phase 2 A/B/C, Phase 3 A/B/C except Linux packaging, plus **P4.1 DS auto-extract** and the first half of **P4.2 upload ingest**
+- Still open: **P3.11 Linux build**, **P4.3 Figma sync**, full browser E2E automation, **P4.5 signing/notarization**, and **P5.1 Windows/macOS managed auto-update**
+- Validation status: `bun test` 101/101 green, `npm run typecheck` green (backend + frontend)
 
 ## Feature Tour
 
@@ -76,7 +76,7 @@ Components (buttons / cards / forms / badges + table). A validation
 card on the detail view surfaces extraction caveats (missing tokens,
 substituted fonts, logo count).
 
-### Design system auto-extract (P4.1)
+### Design system ingest (P4.1 shipped, P4.2 underway)
 
 `POST /api/design-systems/extract` clones a shallow git repo or fetches
 a live homepage + same-origin CSS, parses CSS custom properties, font
@@ -85,6 +85,14 @@ system under `~/.burnguard/data/systems/<id>/` (README.md / SKILL.md /
 `colors_and_type.css` / `fonts/` / `assets/logos/` / `preview/*.html` ×
 16 / `ui_kits/website/` / `uploads/`). The new row lands as Draft so
 you can review it before promoting to Published.
+
+`POST /api/design-systems/upload` now accepts `.pptx` and `.pdf`
+sources. Those uploads go through a Python-backed compact manifest
+extractor so BurnGuard keeps the review payload token-light while still
+capturing brand colors, fonts, headings, body samples, and per-page /
+per-slide summaries. The same summary path is also used for chat
+attachments, so a PPT or PDF reference can feed prototype or slide-deck
+generation without dumping the whole document into the prompt.
 
 ### Exports
 
@@ -111,7 +119,7 @@ click (backed by `npx playwright install chromium`).
 ## Remaining Work Compared To The Claude Design Goal
 
 - Linux packaging and release path (P3.11)
-- Uploaded-file DS extract (PDF / PPTX / Figma export) + Figma REST sync (P4.2 / P4.3)
+- Figma REST sync (P4.3)
 - Full browser E2E automation
 - True live tool-decision round-trip once upstream CLI streaming supports it fully
 - Windows/macOS managed auto-update channel (Phase 5 P5.1)

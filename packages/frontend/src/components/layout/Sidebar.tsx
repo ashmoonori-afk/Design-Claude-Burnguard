@@ -18,7 +18,7 @@ const TYPES: Array<{ id: ProjectType; label: string }> = [
 
 const FALLBACK_SETTINGS: SettingsSummary = {
   user: { id: "local", display_name: "You" },
-  app_version: "0.3.1",
+  app_version: "0.4.0",
   default_backend: "claude-code",
   theme: "light",
 };

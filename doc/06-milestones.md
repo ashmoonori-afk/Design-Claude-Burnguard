@@ -1,5 +1,22 @@
 # Milestones and Delivery
 
+> **Latest status (2026-04-23):**
+>
+> - BurnGuard is now best described as **late Phase 3 with Phase 4
+>   actively underway**.
+> - Phase 3 core slices are shipped in practice: present mode, handoff
+>   export, structured Codex parsing, tool-decision channel, rollback
+>   UI, watcher-driven `file.changed`, macOS packaging, and structured
+>   Tweaks controls.
+> - P4.1 is shipped, and P4.2 is already underway in code with
+>   Python-backed PDF/PPTX upload ingest, compact attachment summaries,
+>   Python/pypdf health checks, draft validation notes, and upload smoke
+>   coverage.
+> - `bun test` is currently 101/101 green and `npm run typecheck` is green.
+> - Immediate remaining product priorities: finish P4.2 quality,
+>   implement P4.3 Figma sync, add stronger E2E coverage, then complete
+>   signing and managed auto-update.
+
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
 > **Next-session pickup (2026-04-23, afternoon):** Phase 3 **Milestone
@@ -12,7 +29,8 @@
 > Latest P3 / polish commits: `432521c` (P3.12 Tweaks structured
 > controls — px size inputs + brand color picker + 4-side box),
 > `49892a4` (overlay cross-realm instanceof fix), `eae7ccc` (version
-> 0.3.1 sync). `bun test`: 67/67 pass. **Resume at P3.11 (Linux
+> 0.4.0 baseline later superseded by the current release). `bun test`:
+> 101/101 pass. **Resume at P3.11 (Linux
 > build)** to close Milestone 3.C, or pick up Phase 4 (Figma sync /
 > upload-file DS extract / auto-update / signing). P3.10 Mac bundle
 > still awaits hands-on Mac verification.

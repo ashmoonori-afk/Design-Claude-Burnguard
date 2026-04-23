@@ -13,12 +13,13 @@ import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse } from "node-html-parser";
-import type {
-  CreateDesignSystemExtractionRequest,
-  CreateDesignSystemExtractionResponse,
-  CreateDesignSystemUploadRequest,
-  DesignSystemDetail,
-  DesignSystemSourceType,
+import {
+  APP_VERSION,
+  type CreateDesignSystemExtractionRequest,
+  type CreateDesignSystemExtractionResponse,
+  type CreateDesignSystemUploadRequest,
+  type DesignSystemDetail,
+  type DesignSystemSourceType,
 } from "@bg/shared";
 import { createDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
 import { systemsDir } from "../lib/paths";
@@ -1908,7 +1909,7 @@ async function fetchWebsiteResource(
     await assertSafeImportUrl(current);
     const response = await fetch(current, {
       redirect: "manual",
-      headers: { "user-agent": "BurnGuard/0.3.1 design-system-import" },
+      headers: { "user-agent": `BurnGuard/${APP_VERSION} design-system-import` },
     });
 
     if (response.status >= 300 && response.status < 400) {
