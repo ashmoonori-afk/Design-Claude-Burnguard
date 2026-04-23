@@ -3,6 +3,7 @@ import { Download, RefreshCw } from "lucide-react";
 import type {
   BackendDetectionResult,
   PlaywrightInstallStatus,
+  PythonSettings,
   SettingsSummary,
 } from "@bg/shared";
 import {
@@ -19,7 +20,9 @@ import BackendSelector from "./BackendSelector";
 import { detectBackends, getSettings, patchSettings } from "@/api/home";
 import {
   getPlaywrightInstallStatus,
+  getPythonSettings,
   startPlaywrightInstall,
+  startPypdfInstall,
 } from "@/api/settings";
 import { useUIStore } from "@/state/uiStore";
 
@@ -36,16 +39,23 @@ export default function SettingsModal() {
   const [pw, setPw] = useState<PlaywrightInstallStatus | null>(null);
   const [pwStarting, setPwStarting] = useState(false);
   const pwPollRef = useRef<number | null>(null);
+  const [py, setPy] = useState<PythonSettings | null>(null);
+  const [pyStarting, setPyStarting] = useState(false);
+  const pyPollRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    Promise.all([getSettings(), detectBackends(), getPlaywrightInstallStatus()]).then(
-      ([s, d, p]) => {
-        setSettings(s);
-        setDetection(d);
-        setPw(p);
-      },
-    );
+    Promise.all([
+      getSettings(),
+      detectBackends(),
+      getPlaywrightInstallStatus(),
+      getPythonSettings().catch(() => null),
+    ]).then(([s, d, p, py0]) => {
+      setSettings(s);
+      setDetection(d);
+      setPw(p);
+      if (py0) setPy(py0);
+    });
   }, [open]);
 
   // Poll Playwright status while an install is running so the tail updates
@@ -87,6 +97,48 @@ export default function SettingsModal() {
       });
     } finally {
       setPwStarting(false);
+    }
+  }
+
+  // Mirror of the Playwright polling loop — refreshes the Python status
+  // while pip install is running so the tail updates live.
+  useEffect(() => {
+    if (!open || py?.install.state !== "installing") {
+      if (pyPollRef.current != null) {
+        window.clearInterval(pyPollRef.current);
+        pyPollRef.current = null;
+      }
+      return;
+    }
+    if (pyPollRef.current != null) return;
+    pyPollRef.current = window.setInterval(async () => {
+      try {
+        setPy(await getPythonSettings());
+      } catch {
+        // ignore — next tick retries.
+      }
+    }, 1500);
+    return () => {
+      if (pyPollRef.current != null) {
+        window.clearInterval(pyPollRef.current);
+        pyPollRef.current = null;
+      }
+    };
+  }, [open, py?.install.state]);
+
+  async function handleInstallPypdf() {
+    setPyStarting(true);
+    try {
+      const next = await startPypdfInstall();
+      setPy(next);
+    } catch (err) {
+      pushToast({
+        title: "Could not start pypdf install",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    } finally {
+      setPyStarting(false);
     }
   }
 
@@ -221,6 +273,76 @@ export default function SettingsModal() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
+                Python for uploads
+              </label>
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-2">
+                  <PyStateDot py={py} />
+                  <span className="text-xs">{pyLabel(py)}</span>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      title="Refresh"
+                      onClick={async () => {
+                        try {
+                          setPy(await getPythonSettings());
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={handleInstallPypdf}
+                      disabled={
+                        pyStarting ||
+                        py?.install.state === "installing" ||
+                        py?.health.python.found === false
+                      }
+                      title={
+                        py?.health.python.found === false
+                          ? "Install Python 3.10+ first"
+                          : undefined
+                      }
+                    >
+                      <Download className="h-3 w-3" />
+                      {py?.install.state === "installing"
+                        ? "Installing…"
+                        : py?.health.pypdf.found
+                          ? "Reinstall pypdf"
+                          : "Install pypdf"}
+                    </Button>
+                  </div>
+                </div>
+                {py?.install.tail && py.install.tail.length > 0 && (
+                  <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-background px-2 py-1.5 font-mono text-[10px] leading-tight text-muted-foreground">
+                    {py.install.tail.slice(-12).join("\n")}
+                  </pre>
+                )}
+                {py?.install.error && py.install.state === "error" && (
+                  <p className="mt-2 text-[10px] leading-relaxed text-destructive">
+                    {py.install.error}
+                  </p>
+                )}
+                <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                  PDF / PPTX design-system uploads shell out to Python with{" "}
+                  <code className="font-mono">pypdf</code>. Install runs{" "}
+                  <code className="font-mono">
+                    python -m pip install --user pypdf
+                  </code>{" "}
+                  — small download, first run only.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
                 Theme
               </label>
               <div className="flex gap-2">
@@ -283,4 +405,39 @@ function pwLabel(status: PlaywrightInstallStatus | null): string {
     default:
       return "Not installed (or status unknown).";
   }
+}
+
+function PyStateDot({ py }: { py: PythonSettings | null }) {
+  // Collapse the compound (python + pypdf + install) state into the
+  // same three colours the Chromium row uses so the two cards read
+  // the same at a glance.
+  let color = "bg-muted-foreground/40";
+  if (py) {
+    if (py.install.state === "installing") {
+      color = "bg-amber-500 animate-pulse";
+    } else if (!py.health.python.found) {
+      color = "bg-red-500";
+    } else if (py.health.pypdf.found) {
+      color = "bg-emerald-500";
+    } else if (py.install.state === "error") {
+      color = "bg-red-500";
+    } else {
+      color = "bg-muted-foreground/40";
+    }
+  }
+  return <span className={`inline-block h-2 w-2 rounded-full ${color}`} />;
+}
+
+function pyLabel(py: PythonSettings | null): string {
+  if (!py) return "Loading…";
+  if (py.install.state === "installing") return "Installing pypdf…";
+  if (!py.health.python.found) {
+    return "Python runtime not found — install Python 3.10+.";
+  }
+  if (py.health.pypdf.found) {
+    const ver = py.health.pypdf.version ? ` ${py.health.pypdf.version}` : "";
+    return `Ready — pypdf${ver} (${py.health.python.version ?? "Python"}).`;
+  }
+  if (py.install.state === "error") return "Last pypdf install failed.";
+  return "pypdf not installed yet.";
 }
