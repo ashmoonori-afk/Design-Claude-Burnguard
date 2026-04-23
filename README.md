@@ -145,3 +145,12 @@ That means:
 ## Docs
 
 See [doc/README.md](doc/README.md) for the fuller documentation set.
+
+## License
+
+BurnGuard Design is released under the
+[Apache License 2.0](LICENSE). You may use, modify, and distribute
+the software commercially or privately, provided that you preserve
+copyright notices, state any changes you make, and include a copy of
+the licence in your distribution. The project is provided "as is"
+without warranty — see the licence text for the full terms.
