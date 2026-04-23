@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Home, Share2, Play, Pencil } from "lucide-react";
+import { Home, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 import type { ProjectDetail } from "@bg/shared";
@@ -26,12 +26,13 @@ export default function ProjectTopBar({
         >
           <Home className="h-4 w-4" />
         </Link>
-        <div className="flex items-center gap-2 min-w-0">
-          <input
-            defaultValue={project.name}
-            className="bg-transparent text-sm font-medium focus:outline-none w-[180px] truncate"
-          />
-          <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
+        <div className="flex items-center min-w-0">
+          <div
+            className="text-sm font-medium w-[180px] truncate"
+            title={project.name}
+          >
+            {project.name}
+          </div>
         </div>
       </div>
       <div className="flex-1 min-w-0 overflow-x-auto">{tabsSlot}</div>
@@ -51,9 +52,6 @@ export default function ProjectTopBar({
           <Play className="h-3.5 w-3.5" /> Present
         </Button>
         <ExportMenu projectId={project.id} projectType={project.type} />
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Share2 className="h-3.5 w-3.5" /> Share
-        </Button>
       </div>
     </header>
   );

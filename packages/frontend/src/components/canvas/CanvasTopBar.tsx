@@ -1,4 +1,4 @@
-import { RefreshCw, ChevronDown } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CanvasMode } from "@/components/modes/types";
 import { Button } from "@/components/ui/button";
@@ -55,13 +55,6 @@ export default function CanvasTopBar({
       </div>
 
       <div className="flex items-center gap-1">
-        <button
-          className="inline-flex items-center gap-1 px-2 h-7 rounded text-xs text-muted-foreground hover:text-foreground"
-          title="Zoom"
-        >
-          75%
-          <ChevronDown className="h-3 w-3" />
-        </button>
         <Button
           variant="ghost"
           size="icon"
