@@ -122,7 +122,7 @@ export const mockBackendDetection: BackendDetectionResult = {
 
 export const mockSettings: SettingsSummary = {
   user: { id: "local", display_name: "You" },
-  app_version: "0.0.1-phase0",
+  app_version: "0.3.1",
   default_backend: "claude-code",
   theme: "light",
 };
