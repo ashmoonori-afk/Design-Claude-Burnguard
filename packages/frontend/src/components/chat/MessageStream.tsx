@@ -136,16 +136,17 @@ function buildGroups(events: NormalizedEvent[]): Group[] {
           finished: finishedById.get(ev.toolCallId) ?? null,
         });
         break;
-      case "file.changed":
-        flushText();
-        groups.push({ kind: "file", ev });
-        break;
       case "status.error":
         flushText();
         groups.push({ kind: "error", ev });
         break;
       default:
-        // tolerated: tool.finished, tool.permission_required, status.*, usage.*
+        // tolerated: tool.finished, tool.permission_required, status.*,
+        // usage.*, file.changed. file.changed still fires in the backend
+        // so ProjectView can refresh the iframe + re-index, but we no
+        // longer render it as a chat block — every Tweaks / Edit PATCH
+        // produced a "deck.html" line that spammed the stream without
+        // adding user value.
         break;
     }
   }

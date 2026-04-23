@@ -41,8 +41,22 @@ export function renderSlideDeck(
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Segoe UI Variable Text", sans-serif;
-      background: #0b0d12;
+      background:
+        radial-gradient(circle at top right, rgba(224, 107, 76, 0.16), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(26, 35, 48, 0.12), transparent 28%),
+        linear-gradient(180deg, #f6f1e8 0%, #efe6d8 100%);
       color: #18232d;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(24, 35, 45, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(24, 35, 45, 0.05) 1px, transparent 1px);
+      background-size: 32px 32px;
+      opacity: 0.45;
     }
 
     /* Before deck-stage.js boots every slide is visible stacked; after boot,
@@ -64,6 +78,7 @@ export function renderSlideDeck(
       display: grid;
       place-items: center;
       border-bottom: 1px solid #e7dece;
+      box-shadow: 0 24px 60px rgba(24, 35, 45, 0.14);
     }
     .deck-slide > .deck-body {
       max-width: 920px;
