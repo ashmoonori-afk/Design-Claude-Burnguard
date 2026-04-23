@@ -10,15 +10,13 @@
   백엔드, React + Vite 프론트.
 - 실행 방식: 로컬 웹앱 + 로컬 CLI 연동
 - 현재 단계: **Phase 3 Milestone A + B 완료, M3.C 3/4 shipped**
-  - Phase 1 sign-off 1–4 코드 완료, 5번(수동 스모크) 대기
-  - Phase 2 A/B/C 전부 merge, 수동 스모크 대기
+  - Phase 1 / Phase 2 A·B·C 코드 완료
   - Phase 3 A: Tweaks / Draw / Present 모두 merge
   - Phase 3 B: Handoff export / Structured Codex parser / Tool-decision 채널 /
     Turn rollback UI 모두 merge
   - Phase 3 C: 브랜드 팔레트 + 데드 버튼 제거 + 버전 0.3.0 / watcher 기반
     `file.changed` / macOS .app + dmg 빌드 완료. **P3.11 Linux 빌드만 남음**
   - `bun test` 63/63 green; chromium 의존 셀은 `BG_EXPORT_SMOKE=1`로 opt-in
-- 현재 체크리스트: [`doc/07-manual-smoke-test.md`](./doc/07-manual-smoke-test.md)
 
 ## 지금 되는 것
 
@@ -216,22 +214,11 @@ BurnGuard는 별도의 `keyfile`, `secrets.json`, API key 입력 UI를 요구하
 
 ## 검증 상태
 
-### 자동
-
-- `bun test` 23/23 pass — `prompt-builder`, `file-patch`, `export-pdf` CSS,
-  `export-pptx` writer, 튜토리얼 HTML sanity
+- `bun test` 63/63 pass — `prompt-builder`, `file-patch`, export CSS / writer,
+  튜토리얼 HTML sanity, Codex parser, tool-decision 채널, checkpoint round-trip,
+  watcher dedupe, handoff bundle copy
 - `BG_EXPORT_SMOKE=1 bun test` — 실제 Chromium으로 deck → PDF / PPTX 렌더까지
 - 3개 패키지(`@bg/shared`, `@bg/backend`, `@bg/frontend`) `tsc --noEmit` green
-
-### 수동 (Phase 1 / M2.B / M2.C 종결 블로커)
-
-[`doc/07-manual-smoke-test.md`](./doc/07-manual-smoke-test.md)에 20+ 체크 항목:
-
-- Phase 1 루프: create → turn → selector → interrupt → html_zip → Codex raw-mode
-- Milestone 2.B: Comment 슬라이드 스코프 / Edit disk 반영 / Permission gate
-  synthesize 플로우
-- Milestone 2.C: PDF 페이지 매트릭스 / PPTX 편집 가능 텍스트 / Chromium 설치
-  플로우 / Backend 세션 스위치 / Tutorial seed + 2×3 export matrix
 
 ## 문서
 
@@ -243,14 +230,12 @@ BurnGuard는 별도의 `keyfile`, `secrets.json`, API key 입력 UI를 요구하
 2. [doc/01-architecture.md](./doc/01-architecture.md)
 3. [doc/03-backend-adapters.md](./doc/03-backend-adapters.md)
 4. [doc/06-milestones.md](./doc/06-milestones.md) — 현재 슬라이스별 완료 상태
-5. [doc/07-manual-smoke-test.md](./doc/07-manual-smoke-test.md) — 키보드로 돌리는
-   체크리스트
 
 ## 저장소 구조
 
 ```text
 BurnGuard/
-  doc/                     제품 / 아키텍처 / 마일스톤 / 스모크 테스트 문서
+  doc/                     제품 / 아키텍처 / 마일스톤 문서
   devplan/                 실행 계획 및 메모
   design system sample/    샘플 디자인 시스템 (Goldman-Sachs 스타일)
   packages/
@@ -264,5 +249,4 @@ BurnGuard/
 
 BurnGuard Design은 **로컬 CLI로 Claude Design 비슷한 생성형 디자인
 워크플로우를 재현하는 Windows + macOS 앱**이고, Phase 3 Milestone A + B가
-완전 종료되었으며 M3.C는 Linux 빌드(P3.11)만 남음. Phase 1 / M2.B / M2.C의
-공식 ✅ flip은 `doc/07-manual-smoke-test.md` 수동 통과를 기다리는 중.
+완전 종료되었으며 M3.C는 Linux 빌드(P3.11)만 남음.
