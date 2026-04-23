@@ -97,9 +97,10 @@ async function runExport(jobId: string) {
         );
         const bundleDir = path.join(stagingDir, `${project.id}-handoff`);
         await mkdir(bundleDir, { recursive: true });
-        const stagedArtifact = path.join(projectStageDir, project.entrypoint);
         await renderHandoffBundle({
-          stagedArtifactPath: stagedArtifact,
+          // Full project mirror — renderHandoffBundle copies it into
+          // bundleDir/source/ so images/CSS/JS/fonts ship too.
+          stagedProjectDir: projectStageDir,
           stagingDir: bundleDir,
           entrypoint: project.entrypoint,
           tokensSrcPath: tokens.srcPath,

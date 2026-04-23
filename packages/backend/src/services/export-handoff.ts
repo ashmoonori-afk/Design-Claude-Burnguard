@@ -1,7 +1,41 @@
-import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type LaunchOptions } from "playwright-core";
+
+const HANDOFF_EXCLUDED_TOP_LEVEL = new Set([".meta", ".attachments"]);
+
+/**
+ * Recursively copies a staged project directory into the handoff
+ * bundle's `source/` folder, skipping reserved top-level entries
+ * (`.meta/`, `.attachments/`) so checkpoint snapshots and user
+ * uploads don't leak into the handoff zip. Exposed so tests can
+ * exercise the exclusion rule without a browser in the loop.
+ */
+export async function copyProjectIntoBundle(
+  stagedProjectDir: string,
+  bundleSourceDir: string,
+): Promise<{ copied: string[]; skipped: string[] }> {
+  await mkdir(bundleSourceDir, { recursive: true });
+  const copied: string[] = [];
+  const skipped: string[] = [];
+  const entries = await readdir(stagedProjectDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (HANDOFF_EXCLUDED_TOP_LEVEL.has(entry.name)) {
+      skipped.push(entry.name);
+      continue;
+    }
+    const src = path.join(stagedProjectDir, entry.name);
+    const dest = path.join(bundleSourceDir, entry.name);
+    if (entry.isDirectory()) {
+      await cp(src, dest, { recursive: true });
+    } else if (entry.isFile()) {
+      await copyFile(src, dest);
+    }
+    copied.push(entry.name);
+  }
+  return { copied, skipped };
+}
 
 export class HandoffExportError extends Error {
   readonly code:
@@ -192,12 +226,16 @@ export const EXTRACT_HANDOFF_FN = `() => {
 }`;
 
 /**
- * Renders a project's handoff zip. `stagedArtifactPath` is the on-disk
- * HTML we navigate to (file://), `stagingDir` is the temp dir we'll
- * populate with the final bundle contents before the caller zips it.
+ * Renders a project's handoff zip. Copies the entire staged project
+ * tree into `<stagingDir>/source/` (minus `.meta` + `.attachments`)
+ * so every asset the HTML references — images, fonts, CSS, JS —
+ * ships in the bundle. Chromium then renders from that source dir
+ * to extract the spec. `stagedProjectDir` must be a full project
+ * mirror; the caller (services/exports.ts) stages one via `cp` of
+ * the project's `dir_path`.
  */
 export async function renderHandoffBundle(input: {
-  stagedArtifactPath: string;
+  stagedProjectDir: string;
   stagingDir: string;
   entrypoint: string;
   tokensSrcPath: string | null;
@@ -206,13 +244,41 @@ export async function renderHandoffBundle(input: {
   project: HandoffSpec["project"];
   isDeck: boolean;
 }): Promise<void> {
+  // Stage the bundle layout before loading the browser so even a
+  // render failure still leaves the source tree inspectable on disk:
+  //   <stagingDir>/
+  //     source/<entire project tree, minus .meta + .attachments>
+  //     spec.json
+  //     tokens/<tokens file>  (when a design system is linked)
+  //     README.txt
+  await mkdir(input.stagingDir, { recursive: true });
+  const bundleSourceDir = path.join(input.stagingDir, "source");
+  await copyProjectIntoBundle(input.stagedProjectDir, bundleSourceDir);
+
+  const bundledEntrypoint = path.join(bundleSourceDir, input.entrypoint);
+  try {
+    const info = await stat(bundledEntrypoint);
+    if (!info.isFile()) {
+      throw new HandoffExportError(
+        "render_failed",
+        `Bundle entrypoint missing at ${bundledEntrypoint}`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof HandoffExportError) throw err;
+    throw new HandoffExportError(
+      "render_failed",
+      `Bundle entrypoint could not be stat'd: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   const browser = await launchChromium();
   try {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 },
     });
     const page = await context.newPage();
-    const fileUrl = pathToFileURL(input.stagedArtifactPath).toString();
+    const fileUrl = pathToFileURL(bundledEntrypoint).toString();
     const url = input.isDeck ? `${fileUrl}?print=1` : fileUrl;
 
     try {
@@ -269,17 +335,8 @@ export async function renderHandoffBundle(input: {
       },
     });
 
-    // Lay out the bundle root:
-    //   <stagingDir>/
-    //     <entrypoint>
-    //     spec.json
-    //     tokens/<tokens file>    (only if a design system is linked)
-    //     README.txt
-    await mkdir(input.stagingDir, { recursive: true });
-    const entrypointDest = path.join(input.stagingDir, input.entrypoint);
-    await mkdir(path.dirname(entrypointDest), { recursive: true });
-    await copyFile(input.stagedArtifactPath, entrypointDest);
-
+    // Source tree already copied pre-render. Write the spec + tokens
+    // + README alongside it now that the browser extract succeeded.
     await writeFile(
       path.join(input.stagingDir, "spec.json"),
       JSON.stringify(spec, null, 2),
@@ -309,7 +366,10 @@ BurnGuard Handoff bundle
 ========================
 
 Layout:
-  <entrypoint>      The source HTML artifact as seen on screen.
+  source/           Full project tree as shipped — entrypoint HTML
+                    plus every CSS / JS / image / font the HTML
+                    references. Open source/<entrypoint> in a
+                    browser to see the original artifact.
   spec.json         Machine-readable description: one entry per
                     [data-bg-node-id] with computed styles + rect.
                     Deck artifacts are split per slide.
@@ -322,9 +382,13 @@ spec.json top level:
 Each page has: slide_index, title, rect, nodes[]
 Each node has: bg_id, tag, parent_bg_id, text, rect (page-local), styles
 
+The spec's \`project.entrypoint\` is a path relative to source/ so
+readers can resolve it consistently with the on-disk layout.
+
 This bundle is framework-agnostic. A reader can reconstruct the
 layout by absolute-positioning each node at its rect with the
-listed styles — the rect is relative to the page's own rect.
+listed styles — the rect is relative to the page's own rect —
+using the assets under source/ for images / fonts / etc.
 `;
 
 async function launchChromium(): Promise<Browser> {

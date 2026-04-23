@@ -112,6 +112,7 @@ export default function TweaksPanel({
                 label={key}
                 placeholder={target.computed[key] ?? ""}
                 value={drafts[key] ?? ""}
+                committed={target.inline[key] ?? ""}
                 saving={saving}
                 onChange={(v) => setDrafts((prev) => ({ ...prev, [key]: v }))}
                 onCommit={(v) => commit(key, v)}
@@ -133,6 +134,7 @@ function Row({
   label,
   placeholder,
   value,
+  committed,
   saving,
   onChange,
   onCommit,
@@ -140,6 +142,8 @@ function Row({
   label: string;
   placeholder: string;
   value: string;
+  /** Last server-committed inline value — what Escape restores to. */
+  committed: string;
   saving: boolean;
   onChange: (v: string) => void;
   onCommit: (v: string) => void;
@@ -161,7 +165,10 @@ function Row({
           }
           if (e.key === "Escape") {
             e.preventDefault();
-            onChange(value); // noop, restore what was typed before
+            // Restore the draft to the last committed inline value so
+            // the user's in-progress typing is discarded. Blur fires
+            // onCommit(committed); commit() no-ops because next === prev.
+            onChange(committed);
             (e.currentTarget as HTMLInputElement).blur();
           }
         }}

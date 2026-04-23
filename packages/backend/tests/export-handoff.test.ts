@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
   buildHandoffSpec,
+  copyProjectIntoBundle,
   EXTRACT_HANDOFF_FN,
   HANDOFF_STYLE_KEYS,
 } from "../src/services/export-handoff";
@@ -81,6 +92,76 @@ describe("buildHandoffSpec", () => {
     const after = Date.now();
     expect(spec.generated_at).toBeGreaterThanOrEqual(before);
     expect(spec.generated_at).toBeLessThanOrEqual(after);
+  });
+});
+
+describe("copyProjectIntoBundle", () => {
+  test("mirrors the entire project tree into source/, minus .meta and .attachments", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "bg-handoff-copy-"));
+    const staged = path.join(root, "staged");
+    const bundleSource = path.join(root, "bundle", "source");
+    try {
+      mkdirSync(staged, { recursive: true });
+      writeFileSync(path.join(staged, "deck.html"), "<h1/>", "utf8");
+      writeFileSync(path.join(staged, "style.css"), "body{}", "utf8");
+      mkdirSync(path.join(staged, "assets"), { recursive: true });
+      writeFileSync(path.join(staged, "assets", "hero.png"), "PNG", "utf8");
+      mkdirSync(path.join(staged, "fonts"), { recursive: true });
+      writeFileSync(
+        path.join(staged, "fonts", "brand.woff2"),
+        "FONT",
+        "utf8",
+      );
+      mkdirSync(path.join(staged, ".meta", "checkpoints"), { recursive: true });
+      writeFileSync(
+        path.join(staged, ".meta", "checkpoints", "x.json"),
+        "{}",
+        "utf8",
+      );
+      mkdirSync(path.join(staged, ".attachments"), { recursive: true });
+      writeFileSync(
+        path.join(staged, ".attachments", "upload.bin"),
+        "SECRET",
+        "utf8",
+      );
+
+      const result = await copyProjectIntoBundle(staged, bundleSource);
+
+      expect(result.copied.sort()).toEqual(
+        ["assets", "deck.html", "fonts", "style.css"].sort(),
+      );
+      expect(result.skipped.sort()).toEqual([".attachments", ".meta"].sort());
+
+      expect(readFileSync(path.join(bundleSource, "deck.html"), "utf8")).toBe("<h1/>");
+      expect(
+        readFileSync(path.join(bundleSource, "assets", "hero.png"), "utf8"),
+      ).toBe("PNG");
+      expect(
+        readFileSync(path.join(bundleSource, "fonts", "brand.woff2"), "utf8"),
+      ).toBe("FONT");
+
+      // Reserved dirs must not leak into the bundle.
+      const present = readdirSync(bundleSource);
+      expect(present).not.toContain(".meta");
+      expect(present).not.toContain(".attachments");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("works when source has zero entries (empty project)", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "bg-handoff-empty-"));
+    const staged = path.join(root, "staged");
+    const bundleSource = path.join(root, "bundle", "source");
+    try {
+      mkdirSync(staged, { recursive: true });
+      const result = await copyProjectIntoBundle(staged, bundleSource);
+      expect(result.copied).toEqual([]);
+      expect(result.skipped).toEqual([]);
+      expect(readdirSync(bundleSource)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
