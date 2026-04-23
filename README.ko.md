@@ -77,6 +77,7 @@ prototype이나 slide deck 생성 프롬프트에 직접 반영됩니다.
 - Figma REST sync
 - 브라우저 E2E 자동화
 - upstream CLI가 완전히 지원할 때의 true tool-decision round-trip
+- Windows/macOS용 간편 설치 / 실행 패키지: Windows installer (`Setup.exe` / `.msi`), macOS package (`.dmg`, 이후 필요 시 `.pkg`) + first-run bootstrap (P4.6)
 - Windows/macOS managed auto-update
 - Windows SmartScreen / macOS notarization
 

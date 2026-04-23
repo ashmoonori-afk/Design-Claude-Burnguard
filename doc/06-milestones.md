@@ -308,6 +308,8 @@ slice, each ends green, each carries its own DoD.
 | **P4.4** | 🔲 | **Auto-update channel.** Publish signed releases to a static bucket; app checks on launch, offers download + restart; fall back to the current manual download path. | `scripts/release.ts`, `backend/src/services/updater.ts` (new), `shared/src/release.ts` (new), `frontend/src/components/updater/UpdateBanner.tsx` (new) | New release available → in-app banner → one-click download + restart reopens with the new binary |
 | **P4.5** | 🔲 | **Windows SmartScreen signing + macOS notarization.** Wire `signtool.exe` (Windows) + `codesign` + `notarytool` (macOS) into the existing `build:windows` / `build:mac` scripts. Requires an EV code signing cert (Windows) + Apple Developer ID. | `scripts/build-binary.ts` / `scripts/build-mac.ts`, CI workflow, signing secrets | Windows SmartScreen no longer flags the binary on first run; macOS Gatekeeper admits the .app without right-click-open |
 
+| **P4.6** | ?뵴 | **Easy install / launch packages.** Add user-friendly distributables so people can install and open BurnGuard without cloning the repo or touching a terminal. **Windows:** ship a real installer (`Setup.exe` or `.msi`) that places the app in a managed install root, creates shortcuts, and can run first-launch bootstrap checks. **macOS:** ship a user-friendly package (`.dmg` with `.app`, optionally later `.pkg`) with a clear drag-and-drop install path and first-run bootstrap inside the app. Bootstrap scope: verify or guide Chromium / Python prerequisites, create the managed app root, and hand off to the normal app launch. This is separate from auto-update: the goal here is frictionless first install and first launch. | `scripts/build-installer-win.ts` (new), `scripts/build-package-mac.ts` (new or extends `build-mac.ts`), first-run bootstrap hooks, release packaging workflow, docs / first-run copy | A non-technical user can download one package, install or open BurnGuard in one guided flow, and reach the app without manual repo, shell, or dependency setup |
+
 ### Ground rules for Phase 4
 
 1. **One commit per slice.** Same as Phase 2 / 3.
@@ -318,7 +320,7 @@ slice, each ends green, each carries its own DoD.
    enum or adds a column ships with its own `NNNN_*.sql` plus the
    migrate.ts FK toggle pattern that landed in P4.1.
 4. **Merge boundaries:** P4.3 is a natural PR cut (covers all the
-   "ingest a design system" work); P4.5 is the next one (covers all
+   "ingest a design system" work); P4.6 is the next one (covers all
    the "make it publishable" work).
 
 ## 10. Phase 5 Sprint Plan

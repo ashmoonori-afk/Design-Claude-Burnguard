@@ -122,6 +122,7 @@ click (backed by `npx playwright install chromium`).
 - Figma REST sync (P4.3)
 - Full browser E2E automation
 - True live tool-decision round-trip once upstream CLI streaming supports it fully
+- Easy install / launch packages for Windows and macOS: Windows installer (`Setup.exe` / `.msi`) and macOS package (`.dmg` / later optional `.pkg`) with first-run bootstrap (P4.6)
 - Windows/macOS managed auto-update channel (Phase 5 P5.1)
 - Windows SmartScreen / macOS notarization signing (P4.5)
 
