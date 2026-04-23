@@ -22,7 +22,7 @@ export const designSystemsTable = sqliteTable(
     description: text("description"),
     status: text("status", { enum: ["draft", "review", "published"] }).notNull(),
     sourceType: text("source_type", {
-      enum: ["sample", "github", "figma", "upload", "manual"],
+      enum: ["sample", "github", "website", "figma", "upload", "manual"],
     }),
     sourceUri: text("source_uri"),
     isTemplate: integer("is_template", { mode: "boolean" }).notNull().default(false),

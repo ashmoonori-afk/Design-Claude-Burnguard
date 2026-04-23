@@ -51,7 +51,7 @@ export default function PreviewIframe({
         <div>
           <div className="truncate max-w-[180px]">{path}</div>
           <div className="mt-1 text-[9px] text-muted-foreground/70">
-            preview route pending
+            preview unavailable
           </div>
         </div>
       </div>

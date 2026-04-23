@@ -1,6 +1,18 @@
 import { Hono } from "hono";
-import type { ApiErrorBody, ApiSuccess, DesignSystemDetail } from "@bg/shared";
+import type {
+  ApiErrorBody,
+  ApiSuccess,
+  CreateDesignSystemExtractionRequest,
+  CreateDesignSystemExtractionResponse,
+  DesignSystemDetail,
+} from "@bg/shared";
 import { getDesignSystemDetail } from "../db/seed";
+import {
+  contentTypeForDesignSystemFile,
+  DesignSystemExtractError,
+  extractDesignSystemFromSource,
+  resolveDesignSystemFile,
+} from "../services/design-system-extract";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -16,6 +28,31 @@ function fail(
 
 export const systemRoutes = new Hono();
 
+systemRoutes.post("/api/design-systems/extract", async (c) => {
+  const body = await c.req.json<unknown>();
+  if (!body || typeof body !== "object") {
+    return c.json(fail("invalid_body", "Expected a JSON object request body"), 400);
+  }
+
+  try {
+    const result = await extractDesignSystemFromSource(
+      body as CreateDesignSystemExtractionRequest,
+    );
+    return c.json(ok(result satisfies CreateDesignSystemExtractionResponse), 201);
+  } catch (err) {
+    if (err instanceof DesignSystemExtractError) {
+      return c.json(fail(err.code, err.message), 400);
+    }
+    return c.json(
+      fail(
+        "design_system_extract_failed",
+        err instanceof Error ? err.message : String(err),
+      ),
+      500,
+    );
+  }
+});
+
 systemRoutes.get("/api/design-systems/:id", async (c) => {
   const id = c.req.param("id");
   const system = await getDesignSystemDetail(id);
@@ -26,4 +63,29 @@ systemRoutes.get("/api/design-systems/:id", async (c) => {
     );
   }
   return c.json(ok(system satisfies DesignSystemDetail));
+});
+
+systemRoutes.get("/api/design-systems/:id/files/*", async (c) => {
+  const id = c.req.param("id");
+  const prefix = `/api/design-systems/${id}/files/`;
+  const rawPath = new URL(c.req.url).pathname;
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  const absolutePath = await resolveDesignSystemFile(id, relPath);
+  if (!absolutePath) {
+    return c.json(
+      fail("design_system_file_not_found", "Design system file not found", {
+        id,
+        path: relPath,
+      }),
+      404,
+    );
+  }
+  return new Response(Bun.file(absolutePath), {
+    headers: {
+      "Content-Type": contentTypeForDesignSystemFile(relPath),
+      "Cache-Control": "no-cache",
+    },
+  });
 });

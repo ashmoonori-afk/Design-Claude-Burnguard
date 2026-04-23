@@ -87,8 +87,11 @@ export default function SystemPreviewGrid({ systemId }: { systemId: string }) {
         </section>
       ))}
       <p className="text-[11px] text-muted-foreground">
-        Preview content streams from <code className="font-mono">GET /api/design-systems/:id/files/preview/:name</code>.
-        If cards show &ldquo;preview route pending&rdquo;, the backend has not yet implemented the file-serving route.
+        Preview content streams from{" "}
+        <code className="font-mono">
+          GET /api/design-systems/:id/files/preview/:name
+        </code>
+        .
       </p>
     </div>
   );

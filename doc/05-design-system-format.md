@@ -136,7 +136,8 @@ Logo lockups / UI icons / Restrictions
 
 ```
 [Input]
-  ├─ GitHub URL                  → git clone → parse SCSS/CSS/JSON
+  ├─ Git URL / GitHub URL        → git clone → parse SCSS/CSS/JSON
+  ├─ Website URL                 → fetch HTML/CSS → infer tokens + logos + UI kit
   ├─ Figma file URL              → Figma REST (styles + components) → tokens
   ├─ Uploaded PDF/PPTX           → extract images/text → cluster colors (k-means)
   └─ Uploaded assets (logos etc) → sharp color histograms, fontkit metadata
@@ -220,6 +221,15 @@ After which `/goldman-sachs` is invokable from Claude Code CLI. **Two-way intero
    - `tokens.css` with `:root { --... }` declarations
 3. Scan for logo assets: `*/logos/*.{png,svg}`, `**/logo*.{svg,png}`
 4. Emit candidate token bundle
+
+### 12.1b Website extraction
+
+1. Fetch the target HTML
+2. Download same-origin linked stylesheets
+3. Parse inline/style-link CSS variables and font-family declarations
+4. Capture logo-like image candidates
+5. Write the homepage or captured shell into `ui_kits/website/`
+6. Emit the same candidate token bundle shape as the git path
 
 ### 12.2 Figma extraction
 

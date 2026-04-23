@@ -5,6 +5,7 @@ import { ulid } from "ulid";
 import type {
   BackendId,
   DesignSystemDetail,
+  DesignSystemSourceType,
   DesignSystemSummary,
   ProjectDetail,
   ProjectSummary,
@@ -201,6 +202,42 @@ export async function getDesignSystemDetail(systemId: string) {
     .limit(1);
 
   return (rows[0] ?? null) as DesignSystemDetail | null;
+}
+
+export async function createDesignSystemRecord(input: {
+  id: string;
+  name: string;
+  description: string | null;
+  status: DesignSystemSummary["status"];
+  sourceType: DesignSystemSourceType;
+  sourceUri: string | null;
+  isTemplate?: boolean;
+  dirPath: string;
+  skillMdPath: string | null;
+  tokensCssPath: string | null;
+  readmeMdPath: string | null;
+  thumbnailPath: string | null;
+}) {
+  const db = getDb();
+  const now = Date.now();
+  await db.insert(designSystemsTable).values({
+    id: input.id,
+    name: input.name,
+    description: input.description,
+    status: input.status,
+    sourceType: input.sourceType,
+    sourceUri: input.sourceUri,
+    isTemplate: input.isTemplate ?? false,
+    dirPath: input.dirPath,
+    skillMdPath: input.skillMdPath,
+    tokensCssPath: input.tokensCssPath,
+    readmeMdPath: input.readmeMdPath,
+    thumbnailPath: input.thumbnailPath,
+    createdAt: now,
+    updatedAt: now,
+    archivedAt: null,
+  });
+  return await getDesignSystemDetail(input.id);
 }
 
 export async function createProjectRecord(input: {
