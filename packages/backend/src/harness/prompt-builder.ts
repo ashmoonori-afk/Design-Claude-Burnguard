@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import type { UserEvent } from "@bg/shared";
 import type { buildSessionContext } from "../services/context";
-import { attachmentSummaryPath } from "../services/attachments";
+import {
+  attachmentExtractedTextPath,
+  attachmentSummaryPath,
+} from "../services/attachments";
 import {
   readUploadManifest,
   type UploadManifest,
@@ -35,7 +38,6 @@ export async function buildPrompt(
   );
   lines.push("");
 
-  // Project section
   lines.push("## Project");
   lines.push(`- id: ${project.project_id}`);
   lines.push(`- name: ${project.project_name}`);
@@ -44,11 +46,12 @@ export async function buildPrompt(
   lines.push(`- directory: ${project.project_dir}`);
   if (project.project_type === "slide_deck") {
     const slideDeckOptions = parseSlideDeckOptions(project.options_json);
-    lines.push(`- use_speaker_notes: ${slideDeckOptions.use_speaker_notes ? "true" : "false"}`);
+    lines.push(
+      `- use_speaker_notes: ${slideDeckOptions.use_speaker_notes ? "true" : "false"}`,
+    );
   }
   lines.push("");
 
-  // File list
   if (context.files.length > 0) {
     lines.push("## Current files");
     for (const f of context.files.slice(0, MAX_FILES_LISTED)) {
@@ -64,8 +67,6 @@ export async function buildPrompt(
     lines.push("");
   }
 
-  // Design system: SKILL.md + tokens CSS inlined so the first turn doesn't
-  // need a Read round-trip before it can produce branded output.
   if (context.designSystem) {
     const ds = context.designSystem;
     lines.push("## Design system");
@@ -91,9 +92,7 @@ export async function buildPrompt(
       if (content) {
         lines.push("### colors_and_type.css (excerpt)");
         lines.push("```css");
-        lines.push(
-          content.split("\n").slice(0, MAX_TOKENS_CSS_LINES).join("\n"),
-        );
+        lines.push(content.split("\n").slice(0, MAX_TOKENS_CSS_LINES).join("\n"));
         lines.push("```");
         lines.push("");
       }
@@ -110,7 +109,6 @@ export async function buildPrompt(
     }
   }
 
-  // Attachments
   if (userEvent.attachments && userEvent.attachments.length > 0) {
     lines.push("## Attachments");
     const selected = context.attachments.filter((attachment) =>
@@ -120,13 +118,23 @@ export async function buildPrompt(
       lines.push(
         `- ${attachment.original_name} (${attachment.mime_type}, ${attachment.size_bytes}B)`,
       );
-      lines.push(`  path: ${attachment.file_path}`);
       const summary = await readAttachmentSummary(attachment.file_path);
       if (summary) {
-        const summaryLines = renderAttachmentSummary(summary);
-        for (const summaryLine of summaryLines) {
+        const extractedTextPath = attachmentExtractedTextPath(attachment.file_path);
+        const hasExtractedText = (await readOptional(extractedTextPath)) != null;
+        lines.push(
+          `  source_path: ${attachment.file_path} (binary attachment; do not Read/Glob/Bash this file directly)`,
+        );
+        if (hasExtractedText) {
+          lines.push(
+            `  extracted_text_path: ${extractedTextPath} (safe text version for Read)`,
+          );
+        }
+        for (const summaryLine of renderAttachmentSummary(summary)) {
           lines.push(`  ${summaryLine}`);
         }
+      } else {
+        lines.push(`  path: ${attachment.file_path}`);
       }
     }
     for (const p of userEvent.attachments) {
@@ -137,8 +145,6 @@ export async function buildPrompt(
     lines.push("");
   }
 
-  // Open comments pinned on the canvas by the user. Only unresolved pins
-  // are forwarded so the CLI knows which notes still need addressing.
   if (context.openComments.length > 0) {
     lines.push("## Open comments");
     for (const comment of context.openComments) {
@@ -156,17 +162,12 @@ export async function buildPrompt(
     lines.push("");
   }
 
-  // Project-type-specific authoring skill. Injected AFTER the design system
-  // (which defines *look*) and BEFORE Delivery (which defines *scope*), so
-  // the skill can reference tokens introduced above and still be governed
-  // by the hard rules that come after.
   if (project.project_type === "slide_deck") {
     lines.push("## Slide deck skill");
     lines.push(DECK_SKILL_MD.trim());
     lines.push("");
   }
 
-  // Delivery guidance
   lines.push("## Delivery");
   lines.push(
     `- Write or edit files inside \`${project.project_dir}\`. Do not touch anything outside this directory.`,
@@ -178,11 +179,16 @@ export async function buildPrompt(
     "- Keep the design consistent with the design system above. Reference tokens from colors_and_type.css by CSS variable name when styling.",
   );
   lines.push(
+    "- For summarized .pptx/.pdf attachments, plan from the inlined summary first and Read the extracted_text_path if you need slide or page wording.",
+  );
+  lines.push(
+    "- Do not use Read, Glob, or Bash against the original binary .pptx/.pdf attachment path unless the harness explicitly gives you a text-safe derivative file.",
+  );
+  lines.push(
     "- When you are done with the current turn, end your reply with a one-sentence summary of what changed.",
   );
   lines.push("");
 
-  // The user's request
   lines.push("## Request");
   lines.push(userEvent.text);
 
@@ -197,10 +203,9 @@ async function readOptional(filePath: string): Promise<string | null> {
   }
 }
 
-async function readAttachmentSummary(filePath: string): Promise<UploadManifest | null> {
-  // Route through the canonical normalizer so defensive defaults
-  // (empty arrays for missing headings / bodies / misc_lines) are
-  // consistent with how the extract route materializes manifests.
+async function readAttachmentSummary(
+  filePath: string,
+): Promise<UploadManifest | null> {
   try {
     return await readUploadManifest(attachmentSummaryPath(filePath));
   } catch {
@@ -210,7 +215,7 @@ async function readAttachmentSummary(filePath: string): Promise<UploadManifest |
 
 function renderAttachmentSummary(summary: UploadManifest): string[] {
   const lines = [
-    `summary: ${summary.kind.toUpperCase()} · ${summary.page_count} page(s) · brand=${summary.brand_name ?? "unknown"}`,
+    `summary: ${summary.kind.toUpperCase()} | ${summary.page_count} page(s) | brand=${summary.brand_name ?? "unknown"}`,
   ];
   if (summary.fonts.length > 0) {
     lines.push(`fonts: ${summary.fonts.slice(0, 4).join(", ")}`);
@@ -218,11 +223,6 @@ function renderAttachmentSummary(summary: UploadManifest): string[] {
   if (summary.colors.length > 0) {
     lines.push(`colors: ${summary.colors.slice(0, 6).join(", ")}`);
   }
-  // Post-Slice 4 (P4.2 follow-up): the manifest carries raw headings /
-  // bodies / misc_lines instead of pre-classified component buckets.
-  // `detectComponentSamples` still runs at extract time for the canonical
-  // DS folder — for the prompt we only need the heading + body lines
-  // themselves, already deduped by `normalizeUploadStringList`.
   if (summary.headings.length > 0) {
     lines.push(`headings: ${summary.headings.slice(0, 3).join(" | ")}`);
   }
@@ -240,8 +240,12 @@ function renderAttachmentSummary(summary: UploadManifest): string[] {
   if (summary.notes.length > 0) {
     lines.push(`notes: ${summary.notes.slice(0, 2).join(" | ")}`);
   }
+  lines.push("instruction: use this compact summary first for planning.");
   lines.push(
-    "instruction: use this compact summary first for planning; read the original attachment file only if you need exact wording or deeper structure.",
+    "instruction: if an extracted_text_path is listed and you need slide/page wording, Read that file instead of the original binary file.",
+  );
+  lines.push(
+    "instruction: do not use Read, Glob, or Bash against the original .pptx/.pdf attachment path.",
   );
   return lines;
 }
@@ -258,8 +262,10 @@ function parseSlideDeckOptions(optionsJson: string | null): {
     if (parsed && typeof parsed === "object") {
       return {
         use_speaker_notes:
-          typeof (parsed as Record<string, unknown>).use_speaker_notes === "boolean"
-            ? ((parsed as Record<string, unknown>).use_speaker_notes as boolean)
+          typeof (parsed as Record<string, unknown>).use_speaker_notes ===
+          "boolean"
+            ? ((parsed as Record<string, unknown>)
+                .use_speaker_notes as boolean)
             : false,
       };
     }

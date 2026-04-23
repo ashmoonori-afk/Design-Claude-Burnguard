@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import { buildPrompt } from "../src/harness/prompt-builder";
-import { attachmentSummaryPath } from "../src/services/attachments";
+import {
+  attachmentExtractedTextPath,
+  attachmentSummaryPath,
+} from "../src/services/attachments";
 
 type BuildContext = Parameters<typeof buildPrompt>[0];
 
@@ -88,7 +91,6 @@ describe("buildPrompt", () => {
       { type: "user.message", text: "address comments" },
     );
     expect(prompt).toContain("## Open comments");
-    // slide_index=2 becomes user-facing slide 3.
     expect(prompt).toContain("slide=3 (slide_index=2)");
     expect(prompt).toContain("Tighten hero copy");
     expect(prompt).toContain("file-wide");
@@ -114,7 +116,7 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("- /tmp/b.png");
   });
 
-  test("inlines compact summaries for pptx/pdf attachments when a sidecar exists", async () => {
+  test("inlines compact summaries for pptx/pdf attachments and points Read to extracted text", async () => {
     const tempDir = await mkdtemp(path.join(tmpdir(), "bg-prompt-attachment-"));
     try {
       const filePath = path.join(tempDir, "deck.pptx");
@@ -141,10 +143,16 @@ describe("buildPrompt", () => {
               index: 1,
               title: "Quarterly Review",
               summary: "Revenue expanded 22% year over year.",
-              text_excerpt: "Quarterly Review\nRevenue expanded 22% year over year.",
+              text_excerpt:
+                "Quarterly Review\nRevenue expanded 22% year over year.",
             },
           ],
         }),
+        "utf8",
+      );
+      await writeFile(
+        attachmentExtractedTextPath(filePath),
+        "# Extracted attachment text",
         "utf8",
       );
 
@@ -172,10 +180,26 @@ describe("buildPrompt", () => {
         },
       );
 
-      expect(prompt).toContain("summary: PPTX · 3 page(s) · brand=Quarterly Review");
+      expect(prompt).toContain(
+        `source_path: ${filePath} (binary attachment; do not Read/Glob/Bash this file directly)`,
+      );
+      expect(prompt).toContain(
+        `extracted_text_path: ${attachmentExtractedTextPath(filePath)} (safe text version for Read)`,
+      );
+      expect(prompt).toContain(
+        "summary: PPTX | 3 page(s) | brand=Quarterly Review",
+      );
       expect(prompt).toContain("colors: #112233, #445566");
-      expect(prompt).toContain("page 1: Quarterly Review -> Revenue expanded 22% year over year.");
+      expect(prompt).toContain(
+        "page 1: Quarterly Review -> Revenue expanded 22% year over year.",
+      );
       expect(prompt).toContain("use this compact summary first for planning");
+      expect(prompt).toContain(
+        "if an extracted_text_path is listed and you need slide/page wording, Read that file instead of the original binary file.",
+      );
+      expect(prompt).toContain(
+        "do not use Read, Glob, or Bash against the original .pptx/.pdf attachment path.",
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
