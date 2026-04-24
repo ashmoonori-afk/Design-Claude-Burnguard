@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { UserEvent } from "@bg/shared";
 import type { buildSessionContext } from "../services/context";
 import {
@@ -11,6 +12,10 @@ import {
 } from "../services/design-system-extract";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
 import { PROTOTYPE_SKILL_MD } from "./skills/prototype-skill";
+import {
+  summarizeDeckHtml,
+  summarizePrototypeHtml,
+} from "./structure-extractor";
 
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
 
@@ -78,6 +83,33 @@ export async function buildPrompt(
     );
   }
   lines.push("");
+
+  // Structural summary of the entrypoint, when it's an HTML artifact we know
+  // how to parse. This is the main lever against runaway prompt-cache growth:
+  // Claude can plan from the map and then issue 1-2 surgical Reads instead of
+  // re-reading the full 100 KB+ file 6-8 times in a single agent loop.
+  if (
+    project.entrypoint.toLowerCase().endsWith(".html") &&
+    (project.project_type === "slide_deck" ||
+      project.project_type === "prototype")
+  ) {
+    const entrypointPath = path.isAbsolute(project.entrypoint)
+      ? project.entrypoint
+      : path.join(project.project_dir, project.entrypoint);
+    const summary =
+      project.project_type === "slide_deck"
+        ? await summarizeDeckHtml(entrypointPath)
+        : await summarizePrototypeHtml(entrypointPath);
+    if (summary) {
+      lines.push(
+        project.project_type === "slide_deck"
+          ? "## Deck structure (use this map; only Read sections you must change)"
+          : "## Prototype structure (use this map; only Read sections you must change)",
+      );
+      lines.push(summary);
+      lines.push("");
+    }
+  }
 
   if (context.files.length > 0) {
     lines.push("## Current files");
@@ -245,21 +277,35 @@ export async function buildPrompt(
 
 const COMPACT_DECK_SKILL_MD = `# Slide deck compact contract
 
-- Work in \`deck.html\`; keep every slide as a top-level \`<section data-slide data-layout="...">\` directly under \`<body>\`.
+## Token budget rules (READ THESE FIRST)
+- The "## Deck structure" section above is your map. Use it to plan instead of Reading the full file.
+- **Read \`deck.html\` at most ONCE per turn.** Re-reading the same file is forbidden — keep findings in working memory across tool calls.
+- When you do need a slide's exact markup, use \`Grep\` for \`data-bg-node-id="slide-N"\` to find the line, then \`Read\` with \`offset\`/\`limit\` covering that slide only — never the whole file.
+- Prefer multiple targeted \`Edit\` calls (small \`old_string\`/\`new_string\`) over a \`Write\` of the whole file. \`Write\` re-emits the entire 100 KB+ artifact and is the most expensive thing you can do.
+- For multi-slide redesigns, plan all edits before executing, then issue them as a batch. Do not Read between Edits.
+
+## Structure
+- Every slide is a top-level \`<section data-slide>\` directly under \`<body>\`. Preserve order unless the user asks for narrative change.
 - Preserve \`<script src="/runtime/deck-stage.js" defer></script>\`; do not set \`data-active\` statically or reimplement deck navigation.
-- Keep slide order and content unless the user asks to change narrative. For redesigns, update layout, typography, spacing, and hierarchy around the existing structure.
-- Use asymmetric layouts, oversized type or KPI numbers where useful, and avoid centered-everything except cover/closing slides.
 - Every visible text element needs a unique \`data-bg-node-id="slide-{N}-{purpose}"\`; parent slides use \`data-bg-node-id="slide-{N}"\`.
-- Keep CSS inline in the top \`<style>\` block. Reference design-system CSS variables and avoid new palettes, font stacks, or typefaces.
-- For dense decks, inspect only the slides you are changing first. Use targeted Read/Grep and summarize findings instead of dumping the whole deck.`;
+
+## Style
+- Use asymmetric layouts, oversized type or KPI numbers where useful, and avoid centered-everything except cover/closing slides.
+- Keep CSS inline in the top \`<style>\` block. Reference design-system CSS variables (see list above) and avoid new palettes, font stacks, or typefaces.`;
 
 const COMPACT_PROTOTYPE_SKILL_MD = `# Prototype compact contract
 
+## Token budget rules (READ THESE FIRST)
+- The "## Prototype structure" section above is your map. Use it to plan instead of Reading the full file.
+- **Read \`index.html\` at most ONCE per turn.** Re-reading the same file is forbidden — keep findings in working memory across tool calls.
+- When you need a section's exact markup, use \`Grep\` for \`data-section="..."\` (or \`data-bg-node-id\`) to find the line, then \`Read\` with \`offset\`/\`limit\` covering that section only.
+- Prefer multiple targeted \`Edit\` calls over \`Write\`. \`Write\` re-emits the entire artifact and is the most expensive thing you can do.
+
+## Structure & style
 - Work in \`index.html\`; keep the artifact self-contained with inline CSS and vanilla JS unless the user explicitly asks otherwise.
-- Use top-level semantic sections with \`data-section\` and unique \`data-bg-node-id\` values for visible text and editable parent sections.
-- Prefer strong visual hierarchy, asymmetric sections outside true heroes, responsive layouts down to 360 px, and no hidden primary value.
-- Keep CSS in one top \`<style>\` block. Reference design-system CSS variables and avoid new palettes, font stacks, or typefaces.
-- Use targeted Read/Grep before edits and summarize findings instead of pasting full files back into chat.`;
+- Top-level semantic sections need \`data-section\` and unique \`data-bg-node-id\` values for visible text and editable parent sections.
+- Strong visual hierarchy, asymmetric sections outside true heroes, responsive down to 360 px, no hidden primary value.
+- Keep CSS in one top \`<style>\` block. Reference design-system CSS variables (see list above) and avoid new palettes, font stacks, or typefaces.`;
 
 async function readOptional(filePath: string): Promise<string | null> {
   try {

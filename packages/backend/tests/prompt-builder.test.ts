@@ -90,8 +90,117 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("Keep this turn token-light");
     expect(prompt).toContain("# Slide deck compact contract");
     expect(prompt).toContain("top-level `<section data-slide");
+    // Compact skill must spell out token-budget rules so Claude doesn't fall
+    // back to its default "Read the whole file before editing" instinct.
+    expect(prompt).toContain("Token budget rules");
+    expect(prompt).toContain("Read `deck.html` at most ONCE per turn");
+    expect(prompt).toContain("offset");
     expect(prompt).not.toContain("## Layout archetypes");
     expect(prompt).not.toContain("Default pitch deck is 15 slides");
+  });
+
+  test("injects deck structure summary when entrypoint is a real deck.html", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "bg-prompt-deckstruct-"));
+    try {
+      const deckPath = path.join(tempDir, "deck.html");
+      await writeFile(
+        deckPath,
+        `<!doctype html><html><head><style>
+:root { --color-primary:#001a4d; --font-heading:"Pretendard"; }
+.deck-slide { padding: 4rem; }
+</style></head><body>
+<section data-slide class="deck-slide deck-cover" data-bg-node-id="slide-1">
+  <h1>비전 2030</h1>
+</section>
+<section data-slide class="deck-slide" data-layout="kpi-grid" data-bg-node-id="slide-2">
+  <h2>시장 현황</h2>
+</section>
+</body></html>`,
+        "utf8",
+      );
+
+      const prompt = await buildPrompt(
+        makeContext({
+          project_type: "slide_deck",
+          entrypoint: "deck.html",
+          project_dir: tempDir,
+          options_json: JSON.stringify({ use_speaker_notes: false }),
+        }),
+        { type: "user.message", text: "redesign slide 2" },
+        { contextMode: "compact" },
+      );
+
+      expect(prompt).toContain("## Deck structure");
+      expect(prompt).toContain("2 slide(s)");
+      expect(prompt).toContain("1. slide-1 .deck-cover");
+      expect(prompt).toContain("비전 2030");
+      expect(prompt).toContain("[layout=kpi-grid]");
+      expect(prompt).toContain("--color-primary");
+      // The structure section must precede the skill section so Claude reads
+      // the map before the behavioral rules that reference it.
+      expect(prompt.indexOf("## Deck structure")).toBeLessThan(
+        prompt.indexOf("# Slide deck compact contract"),
+      );
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("injects prototype structure summary when entrypoint is a real index.html", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "bg-prompt-protostruct-"));
+    try {
+      const indexPath = path.join(tempDir, "index.html");
+      await writeFile(
+        indexPath,
+        `<!doctype html><html><head><style>
+:root { --space-md: 16px; }
+header { padding: var(--space-md); }
+</style></head><body>
+<header data-section="hero" data-bg-node-id="hero"><h1>Welcome</h1></header>
+<main data-section="features" data-bg-node-id="features"><p>Features</p></main>
+</body></html>`,
+        "utf8",
+      );
+
+      const prompt = await buildPrompt(
+        makeContext({
+          project_type: "prototype",
+          entrypoint: "index.html",
+          project_dir: tempDir,
+        }),
+        { type: "user.message", text: "polish hero" },
+        { contextMode: "compact" },
+      );
+
+      expect(prompt).toContain("## Prototype structure");
+      expect(prompt).toContain("2 section(s)");
+      expect(prompt).toContain("<header> hero");
+      expect(prompt).toContain("Welcome");
+      expect(prompt).toContain("--space-md");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("skips structure summary gracefully when the entrypoint file does not exist yet", async () => {
+    // Brand-new project: backend may build a prompt before the entrypoint has
+    // been Written for the first time. The summary block should silently
+    // disappear instead of crashing the turn.
+    const prompt = await buildPrompt(
+      makeContext({
+        project_type: "slide_deck",
+        entrypoint: "deck.html",
+        project_dir: "/no/such/dir/that/exists",
+      }),
+      { type: "user.message", text: "first turn" },
+      { contextMode: "compact" },
+    );
+    // The compact skill text references "## Deck structure" as documentation,
+    // so we can't just look for that string. The unique signature of an
+    // actually-injected summary is the file-size line.
+    expect(prompt).not.toMatch(/deck\.html — \d/);
+    // The rest of the prompt must still render normally.
+    expect(prompt).toContain("# Slide deck compact contract");
   });
 
   test("serializes open comments with slide scope for deck pins", async () => {
