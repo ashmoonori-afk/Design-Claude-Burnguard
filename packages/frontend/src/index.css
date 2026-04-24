@@ -87,3 +87,29 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/* Always-visible chat scrollbar so streaming content never feels
+ * "lost below the fold" on platforms that auto-hide scrollbars
+ * (macOS default, Windows 11 in some browsers). The chat scroll
+ * container applies the `chat-scroll` class. */
+.chat-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+.chat-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--border));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--muted-foreground) / 0.5);
+  background-clip: padding-box;
+}
