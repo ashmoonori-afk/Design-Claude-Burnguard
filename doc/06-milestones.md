@@ -1,6 +1,6 @@
 # Milestones and Delivery
 
-> **Latest status (2026-04-23):**
+> **Latest status (2026-04-24):**
 >
 > - BurnGuard is now best described as **late Phase 3 with Phase 4
 >   actively underway**.
@@ -8,32 +8,43 @@
 >   export, structured Codex parsing, tool-decision channel, rollback
 >   UI, watcher-driven `file.changed`, macOS packaging, and structured
 >   Tweaks controls.
-> - P4.1 is shipped, and P4.2 is already underway in code with
->   Python-backed PDF/PPTX upload ingest, compact attachment summaries,
->   Python/pypdf health checks, draft validation notes, and upload smoke
->   coverage.
-> - `bun test` is currently 101/101 green and `npm run typecheck` is green.
-> - Immediate remaining product priorities: finish P4.2 quality,
+> - P4.1 is shipped, and P4.2 has broadly landed: Python-backed
+>   PDF/PPTX upload ingest, compact attachment summaries plus
+>   `.extracted.md` text-safe sidecars that the prompt steers the CLI
+>   toward, Python/pypdf health checks, client-side upload-size gates,
+>   and design-system rename / delete flows with template / project
+>   reference guards. P4.2 exit criterion (primary brand colours within
+>   10 % delta of a manual pick) still needs a dedicated acceptance
+>   harness before we flip its badge to ✅.
+> - Cross-cutting polish shipped on top of the Phase 3 / 4 base:
+>   configurable mid-turn **Interrupt** button (Settings → Interrupt
+>   button delay, default 300 s) that routes through the existing
+>   `interruptUserTurn` / `AbortController` / SIGKILL path; rotating
+>   composer waiting-state placeholder; upgraded project-type skills
+>   (slide deck layout archetypes + strict per-slide rules, prototype
+>   section archetypes + strict per-section rules + framework-free
+>   artifact contract).
+> - `bun test` is currently 102/102 green and `npm run typecheck` is green.
+> - Immediate remaining product priorities: close P4.2 acceptance,
 >   implement P4.3 Figma sync, add stronger E2E coverage, then complete
 >   signing and managed auto-update.
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
-> **Next-session pickup (2026-04-23, afternoon):** Phase 3 **Milestone
-> A + B fully shipped; Milestone C 3/4 shipped + P3.12 Tweaks polish
-> shipped**. Phase 4 **started ahead of schedule** — P4.1 DS
-> auto-extract from github + website URLs is live (`68a8103` +
-> `eafcd0c` + `e0bdae5`). Phase 1 smoke gaps narrowed: 1.2 selector
-> overlay fix (`49892a4`) unblocked the hover path; 1.3 interrupt
-> stays as a known gap per `doc/07-manual-smoke-test.md` "Known gaps".
-> Latest P3 / polish commits: `432521c` (P3.12 Tweaks structured
-> controls — px size inputs + brand color picker + 4-side box),
-> `49892a4` (overlay cross-realm instanceof fix), `eae7ccc` (version
-> 0.4.0 baseline later superseded by the current release). `bun test`:
-> 101/101 pass. **Resume at P3.11 (Linux
-> build)** to close Milestone 3.C, or pick up Phase 4 (Figma sync /
-> upload-file DS extract / auto-update / signing). P3.10 Mac bundle
-> still awaits hands-on Mac verification.
+> **Next-session pickup (2026-04-24):** Phase 3 **Milestone A + B fully
+> shipped; Milestone C 4/5 shipped** (P3.11 Linux build still open).
+> Phase 4 P4.1 DS auto-extract shipped; P4.2 upload ingest substantially
+> landed (PDF / PPTX DS uploads, compact manifests + `.extracted.md`
+> sidecars, Python health, upload-size gates, DS rename / delete).
+> Cross-cutting polish shipped: configurable mid-turn Interrupt button
+> (`c9cb760`), composer waiting-state placeholder (`162112d`),
+> attachment extracted-text sidecar (`14e1691`), deck-skill layout
+> archetype catalog (`6b182da`), prototype-skill section archetype
+> catalog (`7c118bc`). `bun test`: 102/102 pass. **Resume at P3.11
+> (Linux build)** to close Milestone 3.C, or pick up Phase 4 —
+> formalise P4.2 acceptance (primary-brand-colour delta harness),
+> then P4.3 Figma sync. P3.10 Mac bundle still awaits hands-on Mac
+> verification.
 
 ## 1. Current Stage
 
@@ -169,14 +180,17 @@ Planned focus (see §8 for the commit-sized sprint plan):
 
 ### Phase 4 - Design system ingestion and platform polish
 
-Status: **started ahead of schedule — P4.1 shipped**. Remaining slices
-queued for pickup any time after P3.11 closes.
+Status: **P4.1 shipped, P4.2 substantially shipped** (missing only the
+formal colour-delta acceptance test). Remaining slices queued for
+pickup any time after P3.11 closes.
 
 Planned focus:
 - ✅ DS auto-extract from github + website URLs (P4.1 — `68a8103` +
   `eafcd0c` + `e0bdae5`); see §9 for the slice detail
-- 🔲 upload a designed file (PDF / PPTX / Figma export) and extract
-  a reusable design system (P4.2)
+- 🟡 upload a designed file (PDF / PPTX / Figma export) and extract
+  a reusable design system (P4.2) — PDF / PPTX path landed end-to-end,
+  chat-attachment path landed, DS rename / delete flows landed, size
+  gates landed; still owes the 10 %-delta colour-accuracy harness
 - 🔲 Figma REST sync (P4.3)
 - 🔲 Auto-update channel (P4.4)
 - 🔲 Windows SmartScreen signing + macOS notarization (P4.5)
@@ -303,7 +317,7 @@ slice, each ends green, each carries its own DoD.
 | # | Status | Slice | Key files | DoD |
 |---|---|---|---|---|
 | **P4.1** | ✅ | **DS auto-extract — github + website URLs.** `POST /api/design-systems/extract` clones a shallow git repo (`git clone --depth=1`) or fetches a live homepage HTML (+ same-origin linked CSS) into a temp dir, walks the tree collecting CSS custom properties, font-families, and logo-like asset candidates, then templates a canonical BurnGuard design system under `~/.burnguard/data/systems/<id>/` (README.md, SKILL.md, colors_and_type.css, fonts/, assets/logos/, preview/*.html × 16, ui_kits/website/, uploads/). Companion `GET /api/design-systems/:id/files/*` serves any file under the system dir with a sniffed Content-Type so iframe previews + linked CSS resolve without a separate static host. Drizzle enum grows a `"website"` source_type; migration `0004_design_systems_website_source_type.sql` rebuilds the SQLite CHECK constraint to match (migrate.ts toggles `PRAGMA foreign_keys` off/on around the loop so the DROP+RENAME doesn't trip the projects FK). Home → **Systems** tab carries the import form (source URL + auto/github/website selector + optional name); submission navigates to the new DS and shows a validation card. Test coverage: 4 unit tests for the pure helpers (`inferSourceType` / `extractCssCustomProperties` / `contentTypeForDesignSystemFile`); `bun test` 67/67. | `backend/src/services/design-system-extract.ts` (new ~1100 lines), `backend/src/routes/system.ts`, `backend/src/db/schema.ts`, `backend/src/db/seed.ts` (+createDesignSystemRecord), `backend/src/db/migrate.ts` (FK toggle), `backend/src/db/migrations/0004_design_systems_website_source_type.sql` (new), `shared/src/design-system.ts` (+DesignSystemSourceType / request+response types), `frontend/src/api/design-system.ts` (new), `frontend/src/views/HomeView.tsx` (+import form on Systems tab), `frontend/src/views/DesignSystemView.tsx` (+validation card), `frontend/src/components/systems/*` (drop "preview route pending" copy), `backend/tests/design-system-extract.test.ts` (new), `doc/05-design-system-format.md` | Import a small public repo or any homepage → new DS appears in Home → Systems tab as a Draft → preview cards render → files under `~/.burnguard/data/systems/<id>/` match the canonical layout |
-| **P4.2** | 🔲 | **Upload-file DS extract (PDF / PPTX / Figma export).** Reuse the same canonical writer; swap the source ingest stage for a multipart upload → parse via pdfjs / pptxgenjs / Figma export JSON → cluster colors (k-means) + detect fonts from embedded metadata. | `backend/src/services/design-system-extract.ts` (+uploadIngest), `backend/src/routes/system.ts` (+POST /upload), `frontend/src/views/HomeView.tsx` (upload button + progress) | Upload a 10-slide PPTX → canonical DS created; primary brand colors within 10% delta of manually picked values |
+| **P4.2** | 🟡 | **Upload-file DS extract (PDF / PPTX).** Reuses the canonical writer; swaps the source ingest stage for a multipart upload → Python-backed extractor (`pypdf` + `python-pptx`) → compact manifest (`uploads/manifest.json`) with colors, fonts, headings, bodies, per-page / per-slide summaries. The same manifest path feeds chat attachments, and each attachment also emits a `.extracted.md` text sidecar the prompt steers the CLI toward (instead of the raw binary). Draft validation card surfaces extraction notes + page-limit warnings. Settings → Python for uploads installs `pypdf` on demand. Client-side upload-size gates + design-system rename / delete flows (with template and project-reference guards) landed on this slice. Figma export extraction deferred to P4.3. | `backend/src/services/design-system-extract.ts` (+uploadIngest + normalizers), `backend/src/services/upload-extractor-py.ts` (new), `backend/src/services/upload-component-detect.ts` (new), `backend/src/services/attachments.ts` (+extracted sidecar), `backend/src/services/python-health.ts` (new), `backend/src/routes/settings.ts` (+python routes), `backend/src/harness/prompt-builder.ts` (sidecar steer), `packages/backend/requirements.txt`, `frontend/src/views/HomeView.tsx` (upload form), `frontend/src/views/DesignSystemView.tsx` (rename/delete + validation card), `frontend/src/components/settings/SettingsModal.tsx` (python install card) | Upload a 10-slide PPTX → canonical DS created; primary brand colors within 10% delta of manually picked values (acceptance harness still owed before closing) |
 | **P4.3** | 🔲 | **Figma REST sync.** Accept a Figma PAT (stored in `config.json`, chmod 600) + a file URL; fetch styles + component thumbnails; emit the same canonical bundle. Two-way sync (publish back) stays out of scope for P4.3. | `backend/src/services/figma.ts` (new), `backend/src/services/design-system-extract.ts` (+figmaIngest), `backend/src/routes/system.ts` (+POST /extract with source_type=figma), UI secret form | Authenticate with a test Figma file; tokens extract matches the styles page |
 | **P4.4** | 🔲 | **Auto-update channel.** Publish signed releases to a static bucket; app checks on launch, offers download + restart; fall back to the current manual download path. | `scripts/release.ts`, `backend/src/services/updater.ts` (new), `shared/src/release.ts` (new), `frontend/src/components/updater/UpdateBanner.tsx` (new) | New release available → in-app banner → one-click download + restart reopens with the new binary |
 | **P4.5** | 🔲 | **Windows SmartScreen signing + macOS notarization.** Wire `signtool.exe` (Windows) + `codesign` + `notarytool` (macOS) into the existing `build:windows` / `build:mac` scripts. Requires an EV code signing cert (Windows) + Apple Developer ID. | `scripts/build-binary.ts` / `scripts/build-mac.ts`, CI workflow, signing secrets | Windows SmartScreen no longer flags the binary on first run; macOS Gatekeeper admits the .app without right-click-open |

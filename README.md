@@ -8,12 +8,76 @@ BurnGuard Design is a local-first AI design workspace that wraps already-install
 
 Current release: `0.4.0`
 
+## Why BurnGuard vs. Claude Design
+
+Claude Design is a hosted AI design experience delivered through
+claude.ai; BurnGuard is a local-first workspace that wraps the `claude`
+and `codex` CLIs already installed on your machine. The two solve
+overlapping problems, but the local harness gives BurnGuard a set of
+concrete advantages for real design work:
+
+- **Your files never leave the machine.** Projects, design systems,
+  SQLite metadata, exports, and logs all live under `~/.burnguard/`.
+  No upload of proprietary decks or brand assets into a hosted tenant.
+- **No separate API key management.** BurnGuard reuses the CLI you
+  already signed in to. No `keyfile`, no secrets UI, no "paste your
+  API key" flow — see [Key File / API Key](#key-file--api-key).
+- **Pluggable backend.** A per-session `cc | cx` toggle switches
+  between Claude Code and Codex for the next idle turn. The same
+  project works with either CLI.
+- **Open, auditable prompt.** The prompt builder
+  (`packages/backend/src/harness/prompt-builder.ts`) is deterministic
+  and inspectable — you can see exactly what the CLI receives every
+  turn, including the project type skill, design-system tokens, open
+  comments, and attachment summaries.
+- **Per-turn rollback.** Every user message keeps a full pre-turn file
+  snapshot (`services/checkpoints.ts`); a hover Revert on any bubble
+  restores the project tree exactly. No manual undo stacks.
+- **First-class design systems.** Import a DS from a GitHub repo, a
+  live homepage, a PPTX, or a PDF into a canonical folder (README,
+  SKILL.md, `colors_and_type.css`, fonts, logos, 16 preview pages,
+  website UI kit, uploads). Every turn then references those tokens;
+  skills forbid introducing new palettes or font stacks.
+- **Six canvas modes, not just a prompt box.** Select / Comment / Edit
+  / Tweaks / Draw / Present are first-class interaction modes with
+  iframe DOM messaging, typed CSS controls, SVG annotation, and
+  fullscreen presenter. Comment pins feed the next turn's prompt
+  under `## Open comments` so the CLI can address them directly.
+- **Rich export formats.** HTML zip, Playwright-rendered PDF, editable
+  PPTX (text boxes per slide, not flattened screenshots), and a
+  handoff bundle with `source/` tree plus `spec.json` token index.
+- **Attachment intelligence.** `.pptx` / `.pdf` attachments produce a
+  compact manifest plus an `.extracted.md` text sidecar; the prompt
+  explicitly steers the CLI toward the sidecar and away from
+  `Read / Glob / Bash` against the original binary.
+- **Deterministic project-type skills.** Slide decks ship with a
+  12-entry layout archetype catalog and strict per-slide content
+  rules; prototypes ship with 13 section archetypes and a
+  framework-free single-file artifact contract.
+- **Mid-turn interrupt.** If a turn runs past the configurable
+  threshold (Settings → Interrupt button delay, default 5 min), a
+  red Stop button surfaces in the composer and SIGKILLs the child
+  CLI cleanly via `AbortController`.
+- **Apache 2.0 open source.** Fork, audit, self-host, or extend; see
+  [LICENSE](LICENSE).
+
 ## Status
 
 - Current stage: **Phase 3 shipped in practice; Phase 4 actively underway**
-- Shipped: Phase 1, Phase 2 A/B/C, Phase 3 A/B/C except Linux packaging, plus **P4.1 DS auto-extract** and the first half of **P4.2 upload ingest**
-- Still open: **P3.11 Linux build**, **P4.3 Figma sync**, full browser E2E automation, **P4.5 signing/notarization**, and **P5.1 Windows/macOS managed auto-update**
-- Validation status: `bun test` 101/101 green, `npm run typecheck` green (backend + frontend)
+- Shipped: Phase 1, Phase 2 A/B/C, Phase 3 A/B/C except Linux packaging,
+  **P4.1 DS auto-extract**, and **P4.2 upload ingest** (PDF/PPTX design-system
+  uploads + chat attachments with Python-backed compact manifests +
+  text-safe extracted sidecars + design-system delete / edit flows +
+  client-side file-size gates)
+- Recent polish: configurable mid-turn Interrupt button (Settings → Interrupt
+  button delay), rotating waiting-state placeholder in the composer,
+  upgraded project-type skills for slide decks and prototypes (layout /
+  section archetype catalogs + strict per-slide content rules)
+- Still open: **P3.11 Linux build**, **P4.3 Figma sync**, full browser E2E
+  automation, **P4.5 signing / notarization**, and **P5.1 Windows / macOS
+  managed auto-update**
+- Validation status: `bun test` 102/102 green, `npm run typecheck` green
+  (backend + frontend)
 
 ## Feature Tour
 
@@ -39,7 +103,12 @@ on the tab header switches between Claude Code and Codex for the next
 idle turn. Each user bubble gets a hover-visible **Revert** button that
 restores the pre-turn snapshot (`services/checkpoints.ts`). A permission
 modal appears mid-turn whenever an adapter emits
-`tool.permission_required`.
+`tool.permission_required`. While the CLI is warming up the composer
+placeholder cycles through friendly Korean waiting-state lines; if a turn
+keeps running past the configurable threshold (default 5 minutes,
+Settings → Interrupt button delay) the Send button swaps to a red **Stop**
+that aborts the active turn via `/api/sessions/:id/interrupt`, killing
+the child CLI process cleanly.
 
 ### Canvas & interaction modes
 
@@ -92,7 +161,38 @@ extractor so BurnGuard keeps the review payload token-light while still
 capturing brand colors, fonts, headings, body samples, and per-page /
 per-slide summaries. The same summary path is also used for chat
 attachments, so a PPT or PDF reference can feed prototype or slide-deck
-generation without dumping the whole document into the prompt.
+generation without dumping the whole document into the prompt. Each
+attachment also emits an `.extracted.md` sidecar alongside the compact
+manifest so the CLI can `Read` safe text excerpts instead of the raw
+binary — the prompt explicitly steers the agent toward the sidecar and
+away from `Read / Glob / Bash` against the original `.pptx` / `.pdf`.
+Uploaded files are size-gated in the UI before round-trip, and every
+design system supports rename + delete flows with template / project-
+reference guards.
+
+### Project-type skills in the prompt
+
+Every CLI turn is prefixed with a project-type authoring skill so the
+agent produces artifacts that the canvas runtime, edit/comment modes,
+and exporters can all consume. Both skills describe STRUCTURE only —
+colour and typography always flow from the linked design system's
+`colors_and_type.css` tokens.
+
+- **Slide deck skill** — `<section data-slide data-layout="...">`
+  contract, a 12-entry layout archetype catalog (`cover`, `agenda`,
+  `two-column-problem-solution`, `photo-list-split`, `big-number`,
+  `vertical-timeline`, `three-step-columns`, `arrow-steps`,
+  `quote-callout`, `logo-grid`, `chart`, `closing`), strict per-slide
+  content rules (title ≤ 8 words, 2–4 bullets ≤ 12 words each, one
+  takeaway per slide), and a default 15-slide pitch narrative.
+- **Prototype skill** — single-file `index.html` contract (no
+  framework, no bundler), a 13-entry section archetype catalog
+  (`hero-centered`, `hero-split`, `hero-video`, `feature-grid-3`,
+  `feature-alternating`, `logo-strip`, `quote-hero`,
+  `testimonial-grid`, `pricing-tiered`, `stats-row`, `faq-accordion`,
+  `cta-banner`, `footer-minimal`), per-section content rules, and
+  interaction conventions (CSS transitions + a single
+  `IntersectionObserver` for scroll reveals).
 
 ### Exports
 
@@ -113,6 +213,10 @@ click (backed by `npx playwright install chromium`).
 
 - Live Chromium install status (grey / amber-pulsing / green) with a
   reinstall button and a polled 12-line tail of the install log.
+- Live Python / pypdf status with a one-click `pip install --user pypdf`
+  button, shared tail format with Chromium.
+- **Interrupt button delay** input (0–3600 s, default 300 s) that controls
+  when the composer's mid-turn Stop button surfaces.
 - Per-session backend toggle reappears on the chat pane and PATCHes
   `/api/sessions/:id/backend` so the next idle turn uses the new CLI.
 
