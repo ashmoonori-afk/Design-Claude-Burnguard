@@ -31,6 +31,28 @@ export interface CreateDesignSystemUploadRequest {
   system_id?: string;
 }
 
+export interface DesignSystemColorToken {
+  name: string;
+  value: string;
+}
+
+export interface DesignSystemTokensResponse {
+  colors: DesignSystemColorToken[];
+  token_file_path: string | null;
+}
+
+export interface UpsertDesignSystemColorRequest {
+  name: string;
+  value: string;
+}
+
+export interface DesignSystemFontUploadResponse {
+  file_name: string;
+  family: string;
+  role: "display" | "sans" | "serif" | "mono" | null;
+  rel_path: string;
+}
+
 export interface DesignSystemExtractionSummary {
   inferred_source_type: Extract<
     DesignSystemSourceType,

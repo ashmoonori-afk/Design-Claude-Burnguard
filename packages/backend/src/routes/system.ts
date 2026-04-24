@@ -8,7 +8,10 @@ import type {
   CreateDesignSystemUploadResponse,
   DeleteDesignSystemResponse,
   DesignSystemDetail,
+  DesignSystemFontUploadResponse,
+  DesignSystemTokensResponse,
   UpdateDesignSystemRequest,
+  UpsertDesignSystemColorRequest,
 } from "@bg/shared";
 import {
   deleteDesignSystemRecord,
@@ -18,10 +21,14 @@ import {
 } from "../db/seed";
 import {
   contentTypeForDesignSystemFile,
+  DesignSystemAssetEditError,
   DesignSystemExtractError,
   extractDesignSystemFromSource,
   extractDesignSystemFromUpload,
+  readDesignSystemTokens,
   resolveDesignSystemFile,
+  uploadDesignSystemFont,
+  upsertDesignSystemColorToken,
 } from "../services/design-system-extract";
 
 function ok<T>(data: T): ApiSuccess<T> {
@@ -116,6 +123,100 @@ systemRoutes.get("/api/design-systems/:id", async (c) => {
     );
   }
   return c.json(ok(system satisfies DesignSystemDetail));
+});
+
+systemRoutes.get("/api/design-systems/:id/tokens", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const tokens = await readDesignSystemTokens(id);
+    return c.json(ok(tokens satisfies DesignSystemTokensResponse));
+  } catch (err) {
+    if (err instanceof DesignSystemAssetEditError) {
+      return c.json(fail(err.code, err.message), err.code === "design_system_not_found" ? 404 : 400);
+    }
+    return c.json(
+      fail(
+        "design_system_tokens_failed",
+        err instanceof Error ? err.message : String(err),
+      ),
+      500,
+    );
+  }
+});
+
+systemRoutes.patch("/api/design-systems/:id/colors", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json<unknown>().catch(() => null)) as
+    | UpsertDesignSystemColorRequest
+    | null;
+  if (!body || typeof body !== "object") {
+    return c.json(fail("invalid_body", "Expected a JSON object body"), 400);
+  }
+
+  try {
+    const tokens = await upsertDesignSystemColorToken(id, body);
+    return c.json(ok(tokens satisfies DesignSystemTokensResponse));
+  } catch (err) {
+    if (err instanceof DesignSystemAssetEditError) {
+      return c.json(fail(err.code, err.message), err.code === "design_system_not_found" ? 404 : 400);
+    }
+    return c.json(
+      fail(
+        "design_system_color_update_failed",
+        err instanceof Error ? err.message : String(err),
+      ),
+      500,
+    );
+  }
+});
+
+systemRoutes.post("/api/design-systems/:id/fonts", async (c) => {
+  const id = c.req.param("id");
+  const form = await c.req.formData().catch(() => null);
+  if (!form) {
+    return c.json(
+      fail("invalid_body", "Expected a multipart/form-data request body"),
+      400,
+    );
+  }
+
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return c.json(
+      fail("invalid_font_upload", "Expected a font file in the `file` field"),
+      400,
+    );
+  }
+  const family = form.get("family");
+  const rawRole = form.get("role");
+  const role =
+    rawRole === "display" ||
+    rawRole === "sans" ||
+    rawRole === "serif" ||
+    rawRole === "mono"
+      ? rawRole
+      : null;
+
+  try {
+    const uploaded = await uploadDesignSystemFont({
+      systemId: id,
+      file,
+      family: typeof family === "string" ? family : undefined,
+      role,
+    });
+    return c.json(ok(uploaded satisfies DesignSystemFontUploadResponse), 201);
+  } catch (err) {
+    if (err instanceof DesignSystemAssetEditError) {
+      return c.json(fail(err.code, err.message), err.code === "design_system_not_found" ? 404 : 400);
+    }
+    return c.json(
+      fail(
+        "design_system_font_upload_failed",
+        err instanceof Error ? err.message : String(err),
+      ),
+      500,
+    );
+  }
 });
 
 systemRoutes.patch("/api/design-systems/:id", async (c) => {

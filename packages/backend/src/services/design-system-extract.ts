@@ -78,6 +78,7 @@ const MAX_LOGO_BYTES = 2_500_000;
 const MAX_TOTAL_DOWNLOAD_BYTES = 8_000_000;
 const MAX_FETCH_REDIRECTS = 5;
 const MAX_UPLOAD_BYTES = 48_000_000;
+const MAX_FONT_UPLOAD_BYTES = 16_000_000;
 const MAX_UPLOAD_UI_KIT_PAGES = 8;
 const BLOCKED_IMPORT_HOSTS = new Set([
   "localhost",
@@ -93,6 +94,7 @@ const SUPPORTED_UPLOAD_EXTENSIONS = new Map([
   [".pdf", "pdf"],
   [".pptx", "pptx"],
 ] as const);
+const SUPPORTED_FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 
 type SupportedExtractionSource = Extract<
   DesignSystemSourceType,
@@ -177,6 +179,21 @@ export class DesignSystemExtractError extends Error {
   ) {
     super(message);
     this.name = "DesignSystemExtractError";
+  }
+}
+
+export class DesignSystemAssetEditError extends Error {
+  constructor(
+    readonly code:
+      | "design_system_not_found"
+      | "tokens_file_missing"
+      | "invalid_color_token"
+      | "invalid_color_value"
+      | "invalid_font_upload",
+    message: string,
+  ) {
+    super(message);
+    this.name = "DesignSystemAssetEditError";
   }
 }
 
@@ -352,6 +369,145 @@ export async function extractDesignSystemFromUpload(input: {
   } finally {
     await rm(tmpRoot, { recursive: true, force: true });
   }
+}
+
+export async function readDesignSystemTokens(systemId: string) {
+  const detail = await getDesignSystemDetail(systemId);
+  if (!detail) {
+    throw new DesignSystemAssetEditError(
+      "design_system_not_found",
+      "Design system not found",
+    );
+  }
+  if (!detail.tokens_css_path) {
+    return { colors: [], token_file_path: null };
+  }
+
+  const css = await readFile(detail.tokens_css_path, "utf8").catch(() => null);
+  if (css === null) {
+    return { colors: [], token_file_path: detail.tokens_css_path };
+  }
+
+  const colors = [...extractCssCustomProperties(css).entries()]
+    .filter(([, value]) => isColorTokenValue(value))
+    .map(([name, value]) => ({ name, value }));
+
+  return { colors, token_file_path: detail.tokens_css_path };
+}
+
+export async function upsertDesignSystemColorToken(
+  systemId: string,
+  input: { name: string; value: string },
+) {
+  const detail = await getDesignSystemDetail(systemId);
+  if (!detail) {
+    throw new DesignSystemAssetEditError(
+      "design_system_not_found",
+      "Design system not found",
+    );
+  }
+  if (!detail.tokens_css_path) {
+    throw new DesignSystemAssetEditError(
+      "tokens_file_missing",
+      "Design system does not have a colors_and_type.css token file",
+    );
+  }
+
+  const tokenName = normalizeCssTokenName(input.name);
+  if (!tokenName) {
+    throw new DesignSystemAssetEditError(
+      "invalid_color_token",
+      "Color token name must contain letters, numbers, dashes, or underscores",
+    );
+  }
+
+  const colorValue = input.value.trim();
+  if (!isColorTokenValue(colorValue)) {
+    throw new DesignSystemAssetEditError(
+      "invalid_color_value",
+      "Color value must be a safe CSS color value",
+    );
+  }
+
+  const existingCss = await readFile(detail.tokens_css_path, "utf8").catch(
+    () => "",
+  );
+  const nextCss = upsertCssCustomProperty(existingCss, tokenName, colorValue);
+  await writeFile(detail.tokens_css_path, nextCss, "utf8");
+  return await readDesignSystemTokens(systemId);
+}
+
+export async function uploadDesignSystemFont(input: {
+  systemId: string;
+  file: File;
+  family?: string;
+  role?: "display" | "sans" | "serif" | "mono" | null;
+}) {
+  const detail = await getDesignSystemDetail(input.systemId);
+  if (!detail) {
+    throw new DesignSystemAssetEditError(
+      "design_system_not_found",
+      "Design system not found",
+    );
+  }
+
+  const originalName = input.file.name?.trim();
+  if (!originalName) {
+    throw new DesignSystemAssetEditError(
+      "invalid_font_upload",
+      "Uploaded font must have a filename",
+    );
+  }
+  const ext = path.extname(originalName).toLowerCase();
+  if (!SUPPORTED_FONT_EXTENSIONS.has(ext)) {
+    throw new DesignSystemAssetEditError(
+      "invalid_font_upload",
+      "Only .woff2, .woff, .ttf, and .otf font files are supported",
+    );
+  }
+  if (input.file.size <= 0 || input.file.size > MAX_FONT_UPLOAD_BYTES) {
+    throw new DesignSystemAssetEditError(
+      "invalid_font_upload",
+      `Font upload must be between 1 byte and ${MAX_FONT_UPLOAD_BYTES} bytes`,
+    );
+  }
+
+  const fontsDir = path.join(detail.dir_path, "fonts");
+  await mkdir(fontsDir, { recursive: true });
+  const fileName = safeFileName(originalName);
+  const fontPath = path.join(fontsDir, fileName);
+  const family = normalizeFontFamily(input.family) || humanizeSlug(path.basename(fileName, ext));
+  const role = input.role ?? null;
+
+  await writeFile(fontPath, Buffer.from(await input.file.arrayBuffer()));
+  await appendFontFaceRule(path.join(fontsDir, "fonts.css"), family, fileName);
+
+  if (role && detail.tokens_css_path) {
+    const existingCss = await readFile(detail.tokens_css_path, "utf8").catch(
+      () => "",
+    );
+    const fallback =
+      role === "display"
+        ? "var(--font-display-fallback)"
+        : role === "sans"
+          ? "var(--font-sans-fallback)"
+          : role === "serif"
+            ? "var(--font-serif-fallback)"
+            : "var(--font-mono-fallback)";
+    const nextCss = upsertCssCustomProperty(
+      existingCss,
+      `font-${role}`,
+      `${cssString(family)}, ${fallback}`,
+    );
+    await writeFile(detail.tokens_css_path, nextCss, "utf8");
+  }
+
+  return {
+    file_name: fileName,
+    family,
+    role,
+    rel_path: `fonts/${fileName}`,
+  };
 }
 
 export function inferSourceType(sourceUrl: string): SupportedExtractionSource {
@@ -2140,6 +2296,111 @@ function cssString(value: string): string {
 
 function safeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
+function normalizeCssTokenName(value: string): string | null {
+  const normalized = value.trim().replace(/^--/, "");
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(normalized)) return null;
+  return normalized;
+}
+
+function normalizeFontFamily(value: string | undefined): string | null {
+  const normalized = (value ?? "")
+    .replace(/[;{}<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized.length > 80) return null;
+  return normalized;
+}
+
+function isColorTokenValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    trimmed.length > 140 ||
+    /[;{}<>\n\r]/.test(trimmed)
+  ) {
+    return false;
+  }
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /^(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color|color-mix)\(/i.test(
+      trimmed,
+    )
+  ) {
+    return true;
+  }
+  if (/^var\(--[a-zA-Z0-9_-]+\)$/.test(trimmed)) {
+    return true;
+  }
+  return /^[a-zA-Z]+$/.test(trimmed);
+}
+
+function upsertCssCustomProperty(
+  css: string,
+  tokenName: string,
+  value: string,
+): string {
+  const declaration = `  --${tokenName}: ${value};`;
+  const existing = new RegExp(
+    `(^\\s*--${escapeRegExp(tokenName)}\\s*:\\s*)[^;]+(;\\s*$)`,
+    "m",
+  );
+  if (existing.test(css)) {
+    return css.replace(existing, `$1${value}$2`);
+  }
+
+  const rootMatch = /:root\s*\{[\s\S]*?\n\}/.exec(css);
+  if (rootMatch) {
+    const closeIndex = rootMatch.index + rootMatch[0].lastIndexOf("\n}");
+    return `${css.slice(0, closeIndex)}\n${declaration}${css.slice(closeIndex)}`;
+  }
+
+  const prefix = css.endsWith("\n") || css.length === 0 ? css : `${css}\n`;
+  return `${prefix}:root {\n${declaration}\n}\n`;
+}
+
+async function appendFontFaceRule(
+  fontsCssPath: string,
+  family: string,
+  fileName: string,
+) {
+  const existing = await readFile(fontsCssPath, "utf8").catch(() => "");
+  const safeFamily = family.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const safeUrl = fileName.replace(/\\/g, "/").replace(/'/g, "%27");
+  const rule = `@font-face {
+  font-family: '${safeFamily}';
+  src: url('./${safeUrl}') format('${fontFormatForFile(fileName)}');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+`;
+  const next =
+    existing.includes(`url('./${safeUrl}')`) || existing.includes(`url("${safeUrl}")`)
+      ? existing
+      : `${existing.trimEnd()}\n\n${rule}`.trimStart();
+  await mkdir(path.dirname(fontsCssPath), { recursive: true });
+  await writeFile(fontsCssPath, next.endsWith("\n") ? next : `${next}\n`, "utf8");
+}
+
+function fontFormatForFile(fileName: string): string {
+  switch (path.extname(fileName).toLowerCase()) {
+    case ".woff2":
+      return "woff2";
+    case ".woff":
+      return "woff";
+    case ".otf":
+      return "opentype";
+    default:
+      return "truetype";
+  }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function escapeHtml(value: string): string {

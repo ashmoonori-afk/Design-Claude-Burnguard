@@ -1,4 +1,6 @@
+import { Pencil } from "lucide-react";
 import PreviewIframe from "./PreviewIframe";
+import { Button } from "@/components/ui/button";
 
 interface PreviewSection {
   group: string;
@@ -49,7 +51,13 @@ const SECTIONS: PreviewSection[] = [
   },
 ];
 
-export default function SystemPreviewGrid({ systemId }: { systemId: string }) {
+export default function SystemPreviewGrid({
+  systemId,
+  onEditColors,
+}: {
+  systemId: string;
+  onEditColors?: () => void;
+}) {
   return (
     <div className="px-8 py-6 space-y-8">
       {SECTIONS.map((grp) => (
@@ -75,12 +83,27 @@ export default function SystemPreviewGrid({ systemId }: { systemId: string }) {
                     title={it.title}
                   />
                 </div>
-                <div className="text-sm font-medium">{it.title}</div>
-                {it.desc && (
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {it.desc}
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium">{it.title}</div>
+                    {it.desc && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {it.desc}
+                      </div>
+                    )}
                   </div>
-                )}
+                  {grp.group === "Colors" && onEditColors ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[11px]"
+                      onClick={onEditColors}
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Edit
+                    </Button>
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>

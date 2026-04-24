@@ -5,7 +5,10 @@ import type {
   CreateDesignSystemUploadResponse,
   DeleteDesignSystemResponse,
   DesignSystemDetail,
+  DesignSystemFontUploadResponse,
+  DesignSystemTokensResponse,
   UpdateDesignSystemRequest,
+  UpsertDesignSystemColorRequest,
 } from "@bg/shared";
 import { apiFetch } from "./client";
 
@@ -57,6 +60,45 @@ export async function updateDesignSystem(
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+export async function getDesignSystemTokens(
+  id: string,
+): Promise<DesignSystemTokensResponse> {
+  return apiFetch<DesignSystemTokensResponse>(`/api/design-systems/${id}/tokens`);
+}
+
+export async function upsertDesignSystemColor(
+  id: string,
+  body: UpsertDesignSystemColorRequest,
+): Promise<DesignSystemTokensResponse> {
+  return apiFetch<DesignSystemTokensResponse>(`/api/design-systems/${id}/colors`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function uploadDesignSystemFont(
+  id: string,
+  file: File,
+  body: { family?: string; role?: "display" | "sans" | "serif" | "mono" | null },
+): Promise<DesignSystemFontUploadResponse> {
+  const form = new FormData();
+  form.set("file", file);
+  if (body.family?.trim()) {
+    form.set("family", body.family.trim());
+  }
+  if (body.role) {
+    form.set("role", body.role);
+  }
+
+  return apiFetch<DesignSystemFontUploadResponse>(
+    `/api/design-systems/${id}/fonts`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
 }
 
 export async function deleteDesignSystem(

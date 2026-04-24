@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DesignSystemDetail } from "@bg/shared";
-import { AlertTriangle, Pencil } from "lucide-react";
+import type { DesignSystemColorToken, DesignSystemDetail } from "@bg/shared";
+import { AlertTriangle, Pencil, Plus, Upload } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { getDesignSystem, updateDesignSystem } from "@/api/design-system";
+import {
+  getDesignSystem,
+  getDesignSystemTokens,
+  updateDesignSystem,
+  uploadDesignSystemFont,
+  upsertDesignSystemColor,
+} from "@/api/design-system";
 import SystemPreviewGrid from "@/components/systems/SystemPreviewGrid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/state/uiStore";
+
+type FontRole = "display" | "sans" | "serif" | "mono";
 
 export default function DesignSystemView({
   systemIdOverride,
@@ -27,6 +35,17 @@ export default function DesignSystemView({
   const [draftStatus, setDraftStatus] = useState<DesignSystemDetail["status"]>(
     "draft",
   );
+  const [colorTokens, setColorTokens] = useState<DesignSystemColorToken[]>([]);
+  const [tokenFilePath, setTokenFilePath] = useState<string | null>(null);
+  const [editingColor, setEditingColor] = useState<DesignSystemColorToken | null>(
+    null,
+  );
+  const [draftColorName, setDraftColorName] = useState("");
+  const [draftColorValue, setDraftColorValue] = useState("#000000");
+  const [fontFile, setFontFile] = useState<File | null>(null);
+  const [fontFamily, setFontFamily] = useState("");
+  const [fontRole, setFontRole] = useState<FontRole>("sans");
+  const colorEditorRef = useRef<HTMLDivElement | null>(null);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -48,6 +67,58 @@ export default function DesignSystemView({
     onError: (err) => {
       pushToast({
         title: "Could not update design system",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
+  const colorMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("missing id");
+      return await upsertDesignSystemColor(id, {
+        name: draftColorName.trim(),
+        value: draftColorValue.trim(),
+      });
+    },
+    onSuccess: (tokens) => {
+      setColorTokens(tokens.colors);
+      setTokenFilePath(tokens.token_file_path);
+      setEditingColor(null);
+      setDraftColorName("");
+      setDraftColorValue("#000000");
+      pushToast({ title: "Color token saved", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Could not save color",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
+  const fontMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("missing id");
+      if (!fontFile) throw new Error("Choose a font file first.");
+      return await uploadDesignSystemFont(id, fontFile, {
+        family: fontFamily,
+        role: fontRole,
+      });
+    },
+    onSuccess: (font) => {
+      setFontFile(null);
+      setFontFamily("");
+      pushToast({
+        title: "Font uploaded",
+        body: `${font.family} saved to ${font.rel_path}`,
+        tone: "success",
+      });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Could not upload font",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -81,6 +152,18 @@ export default function DesignSystemView({
       })
       .catch(() => {
         // ignore — notes are advisory
+      });
+
+    void getDesignSystemTokens(id)
+      .then((tokens) => {
+        if (cancelled) return;
+        setColorTokens(tokens.colors);
+        setTokenFilePath(tokens.token_file_path);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setColorTokens([]);
+        setTokenFilePath(null);
       });
 
     return () => {
@@ -228,16 +311,305 @@ export default function DesignSystemView({
               value={system.tokens_css_path ?? "None"}
             />
           </dl>
+
+          <div className="mt-8 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <FontUploadCard
+              file={fontFile}
+              family={fontFamily}
+              role={fontRole}
+              saving={fontMutation.isPending}
+              onFileChange={setFontFile}
+              onFamilyChange={setFontFamily}
+              onRoleChange={setFontRole}
+              onUpload={() => fontMutation.mutate()}
+            />
+            <ColorTokenEditor
+              refEl={colorEditorRef}
+              tokens={colorTokens}
+              tokenFilePath={tokenFilePath}
+              editingToken={editingColor}
+              name={draftColorName}
+              value={draftColorValue}
+              saving={colorMutation.isPending}
+              onAdd={() => {
+                setEditingColor(null);
+                setDraftColorName("new-color");
+                setDraftColorValue("#000000");
+                colorEditorRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              }}
+              onEdit={(token) => {
+                setEditingColor(token);
+                setDraftColorName(token.name);
+                setDraftColorValue(token.value);
+                colorEditorRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              }}
+              onNameChange={setDraftColorName}
+              onValueChange={setDraftColorValue}
+              onSave={() => colorMutation.mutate()}
+              onCancel={() => {
+                setEditingColor(null);
+                setDraftColorName("");
+                setDraftColorValue("#000000");
+              }}
+            />
+          </div>
         </div>
       </div>
 
       <div className="border-t border-border bg-background">
         <div className="mx-auto max-w-6xl">
-          <SystemPreviewGrid systemId={id} />
+          <SystemPreviewGrid
+            systemId={id}
+            onEditColors={() => {
+              colorEditorRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+function FontUploadCard({
+  file,
+  family,
+  role,
+  saving,
+  onFileChange,
+  onFamilyChange,
+  onRoleChange,
+  onUpload,
+}: {
+  file: File | null;
+  family: string;
+  role: FontRole;
+  saving: boolean;
+  onFileChange: (file: File | null) => void;
+  onFamilyChange: (value: string) => void;
+  onRoleChange: (value: FontRole) => void;
+  onUpload: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-background p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Fonts
+          </div>
+          <h2 className="mt-1 text-base font-semibold">Upload font</h2>
+        </div>
+        <Upload className="mt-1 h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="mt-4 space-y-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Font file
+          </label>
+          <Input
+            type="file"
+            accept=".woff2,.woff,.ttf,.otf"
+            onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+            disabled={saving}
+          />
+          {file ? (
+            <div className="font-mono text-[11px] text-muted-foreground">
+              {file.name}
+            </div>
+          ) : null}
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Font family
+          </label>
+          <Input
+            value={family}
+            placeholder="Leave blank to infer from filename"
+            onChange={(e) => onFamilyChange(e.target.value)}
+            disabled={saving}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            Assign to token
+          </label>
+          <select
+            value={role}
+            onChange={(e) => onRoleChange(e.target.value as FontRole)}
+            disabled={saving}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
+          >
+            <option value="sans">Sans</option>
+            <option value="display">Display</option>
+            <option value="serif">Serif</option>
+            <option value="mono">Mono</option>
+          </select>
+        </div>
+        <Button
+          variant="cta"
+          className="w-full"
+          onClick={onUpload}
+          disabled={saving || !file}
+        >
+          {saving ? "Uploading..." : "Upload font"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function ColorTokenEditor({
+  refEl,
+  tokens,
+  tokenFilePath,
+  editingToken,
+  name,
+  value,
+  saving,
+  onAdd,
+  onEdit,
+  onNameChange,
+  onValueChange,
+  onSave,
+  onCancel,
+}: {
+  refEl: RefObject<HTMLDivElement>;
+  tokens: DesignSystemColorToken[];
+  tokenFilePath: string | null;
+  editingToken: DesignSystemColorToken | null;
+  name: string;
+  value: string;
+  saving: boolean;
+  onAdd: () => void;
+  onEdit: (token: DesignSystemColorToken) => void;
+  onNameChange: (value: string) => void;
+  onValueChange: (value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const hasDraft = Boolean(name || editingToken);
+
+  return (
+    <section ref={refEl} className="rounded-2xl border border-border bg-background p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Colors
+          </div>
+          <h2 className="mt-1 text-base font-semibold">Color tokens</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {tokenFilePath ? "Backed by colors_and_type.css" : "No token file found"}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onAdd}>
+          <Plus className="h-3.5 w-3.5" />
+          Add color
+        </Button>
+      </div>
+
+      {hasDraft ? (
+        <div className="mt-4 rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 text-xs font-medium">
+            {editingToken ? `Edit --${editingToken.name}` : "Add color token"}
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_0.8fr]">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Token name
+              </label>
+              <Input
+                value={name}
+                placeholder="primary-blue"
+                onChange={(e) => onNameChange(e.target.value)}
+                disabled={saving || Boolean(editingToken)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Color value
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  value={normalizeColorInput(value)}
+                  onChange={(e) => onValueChange(e.target.value)}
+                  disabled={saving}
+                  className="h-9 w-11 shrink-0 rounded-md border border-input bg-background p-1"
+                />
+                <Input
+                  value={value}
+                  placeholder="#0057B8"
+                  onChange={(e) => onValueChange(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              variant="cta"
+              size="sm"
+              onClick={onSave}
+              disabled={saving || !name.trim() || !value.trim()}
+            >
+              {saving ? "Saving..." : "Save color"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+        {tokens.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+            No color tokens detected yet.
+          </div>
+        ) : (
+          tokens.map((token) => (
+            <div
+              key={token.name}
+              className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2"
+            >
+              <div
+                className="h-8 w-8 shrink-0 rounded-md border border-border"
+                style={{ background: token.value }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-mono text-xs">--{token.name}</div>
+                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                  {token.value}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => onEdit(token)}
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function normalizeColorInput(value: string): string {
+  const trimmed = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed : "#000000";
 }
 
 function DraftValidationCard({
