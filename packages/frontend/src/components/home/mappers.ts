@@ -26,13 +26,15 @@ const PROJECT_TINTS: Record<string, string> = {
 const SYSTEM_TINTS = ["bg-amber-100", "bg-sky-100", "bg-emerald-100", "bg-violet-100"];
 
 export function projectToCard(p: ProjectSummary): CardViewModel {
+  const name = stripInternalProjectTag(p.name);
   return {
     id: p.id,
-    name: p.name,
+    name,
     subtitle: `${projectTypeLabel(p.type)} · ${formatRelativeDay(p.updated_at)}`,
     href: `/projects/${p.id}`,
     tintClass: PROJECT_TINTS[p.type] ?? "bg-stone-100",
     thumbnail: p.thumbnail_path,
+    isTemplate: p.type === "from_template",
   };
 }
 
@@ -52,4 +54,8 @@ export function systemToCard(s: DesignSystemSummary, index = 0): CardViewModel {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function stripInternalProjectTag(name: string): string {
+  return name.replace(/^\[burnguard:[^\]]+\]\s*/, "");
 }

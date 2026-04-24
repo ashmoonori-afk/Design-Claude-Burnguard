@@ -16,6 +16,7 @@ export default function ProjectTopBar({
   onPresent?: () => void;
   canPresent: boolean;
 }) {
+  const displayName = stripInternalProjectTag(project.name);
   return (
     <header className="h-12 border-b border-border bg-background flex items-stretch shrink-0">
       <div className="flex items-center gap-3 px-4 shrink-0 border-r border-border">
@@ -29,9 +30,9 @@ export default function ProjectTopBar({
         <div className="flex items-center min-w-0">
           <div
             className="text-sm font-medium w-[180px] truncate"
-            title={project.name}
+            title={displayName}
           >
-            {project.name}
+            {displayName}
           </div>
         </div>
       </div>
@@ -55,4 +56,8 @@ export default function ProjectTopBar({
       </div>
     </header>
   );
+}
+
+function stripInternalProjectTag(name: string): string {
+  return name.replace(/^\[burnguard:[^\]]+\]\s*/, "");
 }
