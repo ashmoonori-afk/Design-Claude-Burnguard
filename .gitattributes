@@ -1,0 +1,8 @@
+# Force LF for shell scripts so macOS / Linux can execute them
+# regardless of the developer's core.autocrlf setting.
+*.command text eol=lf
+*.sh      text eol=lf
+
+# Keep Windows scripts as CRLF for cmd.exe compatibility.
+*.bat text eol=crlf
+*.cmd text eol=crlf
