@@ -64,6 +64,12 @@ function isTheme(value: unknown): value is SettingsSummary["theme"] {
   return value === "light" || value === "dark" || value === "auto";
 }
 
+function isChatContextMode(
+  value: unknown,
+): value is SettingsSummary["chat_context_mode"] {
+  return value === "compact" || value === "full";
+}
+
 function toSettingsSummary(config: Awaited<ReturnType<typeof loadConfig>>): SettingsSummary {
   return {
     user: {
@@ -74,6 +80,7 @@ function toSettingsSummary(config: Awaited<ReturnType<typeof loadConfig>>): Sett
     default_backend: config.defaultBackend,
     theme: config.theme,
     chat_abort_threshold_ms: config.chat.abortThresholdMs,
+    chat_context_mode: config.chat.contextMode,
   };
 }
 
@@ -199,6 +206,18 @@ homeRoutes.patch("/api/settings", async (c) => {
       );
     }
     config.chat.abortThresholdMs = Math.round(raw);
+  }
+  if ("chat_context_mode" in patch) {
+    if (!isChatContextMode(patch.chat_context_mode)) {
+      return c.json(
+        fail(
+          "invalid_chat_context_mode",
+          "chat_context_mode must be compact or full",
+        ),
+        400,
+      );
+    }
+    config.chat.contextMode = patch.chat_context_mode;
   }
   if ("user" in patch) {
     if (!isRecord(patch.user)) {

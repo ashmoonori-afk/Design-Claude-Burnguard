@@ -152,6 +152,7 @@ export default function SettingsModal() {
         default_backend: settings.default_backend,
         theme: settings.theme,
         chat_abort_threshold_ms: settings.chat_abort_threshold_ms,
+        chat_context_mode: settings.chat_context_mode,
         user: settings.user,
       });
       queryClient.setQueryData(["settings"], next);
@@ -374,6 +375,33 @@ export default function SettingsModal() {
                 Stop button appears once a chat turn has been running this
                 long. Default 300s (5 min) — lower it if local CLIs stall
                 often, raise it to stay out of the way on cold starts.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Chat context
+              </label>
+              <div className="flex gap-2">
+                {(["compact", "full"] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    variant={
+                      settings.chat_context_mode === mode ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() =>
+                      setSettings({ ...settings, chat_context_mode: mode })
+                    }
+                  >
+                    {mode}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Compact keeps stable project and design-system context as file
+                references so long slide-deck chats stay lighter. Full inlines
+                those excerpts every turn.
               </p>
             </div>
 

@@ -24,6 +24,12 @@ export interface AppConfig {
      * while still giving the user a hard-stop on stuck ones.
      */
     abortThresholdMs: number;
+    /**
+     * Controls how much stable context is injected on every CLI turn.
+     * Compact mode keeps long-running sessions cheaper by referencing
+     * stable design-system files instead of re-inlining them every time.
+     */
+    contextMode: "compact" | "full";
   };
   logs: {
     level: "debug" | "info" | "warn" | "error";
@@ -51,6 +57,7 @@ export const defaultConfig: AppConfig = {
   },
   chat: {
     abortThresholdMs: 300_000,
+    contextMode: "compact",
   },
   logs: {
     level: "info",

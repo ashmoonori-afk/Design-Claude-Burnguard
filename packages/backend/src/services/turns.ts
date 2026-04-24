@@ -18,6 +18,7 @@ import { appendSessionTrace } from "./trace";
 import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
 import { runAdapterTurn } from "../adapters/registry";
+import { loadConfig } from "../config";
 
 type ToolDecision = Extract<UserEvent, { type: "user.tool_decision" }>;
 
@@ -232,11 +233,15 @@ async function runUserTurnInternal(
     });
   }
 
-  const prompt = await buildPrompt(sessionContext, payload);
+  const config = await loadConfig();
+  const prompt = await buildPrompt(sessionContext, payload, {
+    contextMode: config.chat.contextMode,
+  });
   await appendSessionTrace(sessionId, {
     level: "prompt_built",
     turnId,
     prompt_chars: prompt.length,
+    context_mode: config.chat.contextMode,
     backend_id: backendId,
     binary: backend.binary_path,
   });

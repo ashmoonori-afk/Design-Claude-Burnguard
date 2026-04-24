@@ -75,6 +75,25 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("- use_speaker_notes: true");
   });
 
+  test("compact mode references stable context instead of inlining full skills", async () => {
+    const prompt = await buildPrompt(
+      makeContext({
+        project_type: "slide_deck",
+        entrypoint: "deck.html",
+        options_json: JSON.stringify({ use_speaker_notes: false }),
+      }),
+      { type: "user.message", text: "redesign slide 4" },
+      { contextMode: "compact" },
+    );
+
+    expect(prompt).toContain("## Context budget");
+    expect(prompt).toContain("Keep this turn token-light");
+    expect(prompt).toContain("# Slide deck compact contract");
+    expect(prompt).toContain("top-level `<section data-slide");
+    expect(prompt).not.toContain("## Layout archetypes");
+    expect(prompt).not.toContain("Default pitch deck is 15 slides");
+  });
+
   test("serializes open comments with slide scope for deck pins", async () => {
     const prompt = await buildPrompt(
       makeContext(

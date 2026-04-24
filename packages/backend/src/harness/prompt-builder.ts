@@ -20,6 +20,12 @@ const MAX_TOKENS_CSS_LINES = 150;
 const MAX_README_LINES = 120;
 const MAX_ATTACHMENT_PAGES = 4;
 
+export type PromptContextMode = "compact" | "full";
+
+export interface PromptBuildOptions {
+  contextMode?: PromptContextMode;
+}
+
 /**
  * Builds the prompt text piped into the LLM CLI's stdin.
  * Mirrors doc/03-backend-adapters.md section 5.4 at a Phase 1 minimum: project state,
@@ -28,11 +34,31 @@ const MAX_ATTACHMENT_PAGES = 4;
 export async function buildPrompt(
   context: SessionContext,
   userEvent: Extract<UserEvent, { type: "user.message" }>,
+  options: PromptBuildOptions = {},
 ): Promise<string> {
   const lines: string[] = [];
   const project = context.project;
+  const contextMode = options.contextMode ?? "full";
 
   lines.push("# BurnGuard Design project session");
+  lines.push("");
+
+  lines.push("## Context budget");
+  if (contextMode === "compact") {
+    lines.push(
+      "- Keep this turn token-light: use the file list and paths below as an index, then Read/Grep only the exact files or sections needed.",
+    );
+    lines.push(
+      "- Do not paste entire large HTML, CSS, PPTX, PDF, or extracted-text files back into chat; summarize findings and edit targeted regions.",
+    );
+    lines.push(
+      "- If the user asks to redesign or continue existing work, inspect the current entrypoint and nearby CSS first, then make focused edits.",
+    );
+  } else {
+    lines.push(
+      "- Full context mode is enabled, so stable project instructions and design-system excerpts are inlined below.",
+    );
+  }
   lines.push("");
   lines.push(
     "You are working inside a local project directory. Every file you Write or Edit will be rendered live in a canvas iframe in the BurnGuard Design app. Use the pre-installed toolset (Read/Write/Edit/Glob/Grep/Bash) to create the artifact.",
@@ -78,7 +104,16 @@ export async function buildPrompt(
     if (ds.readme_md_path) lines.push(`- readme: ${ds.readme_md_path}`);
     lines.push("");
 
-    if (ds.skill_md_path) {
+    if (contextMode === "compact") {
+      lines.push("### Compact design-system handling");
+      lines.push(
+        "- Use the design-system paths above as source of truth. Read SKILL.md, tokens, or README only when exact brand rules or token names are needed for this request.",
+      );
+      lines.push(
+        "- Prefer targeted Grep/Read ranges over loading full design-system files. Reuse existing CSS variables instead of inventing new palettes or type stacks.",
+      );
+      lines.push("");
+    } else if (ds.skill_md_path) {
       const content = await readOptional(ds.skill_md_path);
       if (content) {
         lines.push("### SKILL.md");
@@ -88,7 +123,7 @@ export async function buildPrompt(
         lines.push("");
       }
     }
-    if (ds.tokens_css_path) {
+    if (contextMode === "full" && ds.tokens_css_path) {
       const content = await readOptional(ds.tokens_css_path);
       if (content) {
         lines.push("### colors_and_type.css (excerpt)");
@@ -98,7 +133,7 @@ export async function buildPrompt(
         lines.push("");
       }
     }
-    if (ds.readme_md_path) {
+    if (contextMode === "full" && ds.readme_md_path) {
       const content = await readOptional(ds.readme_md_path);
       if (content) {
         lines.push("### README.md (excerpt)");
@@ -165,11 +200,19 @@ export async function buildPrompt(
 
   if (project.project_type === "slide_deck") {
     lines.push("## Slide deck skill");
-    lines.push(DECK_SKILL_MD.trim());
+    lines.push(
+      contextMode === "compact"
+        ? COMPACT_DECK_SKILL_MD.trim()
+        : DECK_SKILL_MD.trim(),
+    );
     lines.push("");
   } else if (project.project_type === "prototype") {
     lines.push("## Prototype skill");
-    lines.push(PROTOTYPE_SKILL_MD.trim());
+    lines.push(
+      contextMode === "compact"
+        ? COMPACT_PROTOTYPE_SKILL_MD.trim()
+        : PROTOTYPE_SKILL_MD.trim(),
+    );
     lines.push("");
   }
 
@@ -199,6 +242,24 @@ export async function buildPrompt(
 
   return lines.join("\n");
 }
+
+const COMPACT_DECK_SKILL_MD = `# Slide deck compact contract
+
+- Work in \`deck.html\`; keep every slide as a top-level \`<section data-slide data-layout="...">\` directly under \`<body>\`.
+- Preserve \`<script src="/runtime/deck-stage.js" defer></script>\`; do not set \`data-active\` statically or reimplement deck navigation.
+- Keep slide order and content unless the user asks to change narrative. For redesigns, update layout, typography, spacing, and hierarchy around the existing structure.
+- Use asymmetric layouts, oversized type or KPI numbers where useful, and avoid centered-everything except cover/closing slides.
+- Every visible text element needs a unique \`data-bg-node-id="slide-{N}-{purpose}"\`; parent slides use \`data-bg-node-id="slide-{N}"\`.
+- Keep CSS inline in the top \`<style>\` block. Reference design-system CSS variables and avoid new palettes, font stacks, or typefaces.
+- For dense decks, inspect only the slides you are changing first. Use targeted Read/Grep and summarize findings instead of dumping the whole deck.`;
+
+const COMPACT_PROTOTYPE_SKILL_MD = `# Prototype compact contract
+
+- Work in \`index.html\`; keep the artifact self-contained with inline CSS and vanilla JS unless the user explicitly asks otherwise.
+- Use top-level semantic sections with \`data-section\` and unique \`data-bg-node-id\` values for visible text and editable parent sections.
+- Prefer strong visual hierarchy, asymmetric sections outside true heroes, responsive layouts down to 360 px, and no hidden primary value.
+- Keep CSS in one top \`<style>\` block. Reference design-system CSS variables and avoid new palettes, font stacks, or typefaces.
+- Use targeted Read/Grep before edits and summarize findings instead of pasting full files back into chat.`;
 
 async function readOptional(filePath: string): Promise<string | null> {
   try {

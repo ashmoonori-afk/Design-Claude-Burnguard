@@ -70,12 +70,16 @@ export interface SettingsSummary {
    * the wait is long enough to feel wrong.
    */
   chat_abort_threshold_ms: number;
+  chat_context_mode: "compact" | "full";
 }
 
 export type SettingsPatch = Partial<
   Pick<
     SettingsSummary,
-    "default_backend" | "theme" | "chat_abort_threshold_ms"
+    | "default_backend"
+    | "theme"
+    | "chat_abort_threshold_ms"
+    | "chat_context_mode"
   > & {
     user: Partial<SettingsSummary["user"]>;
   }

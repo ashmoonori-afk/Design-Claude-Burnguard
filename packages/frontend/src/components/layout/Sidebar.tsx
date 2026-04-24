@@ -22,6 +22,7 @@ const FALLBACK_SETTINGS: SettingsSummary = {
   default_backend: "claude-code",
   theme: "light",
   chat_abort_threshold_ms: 300_000,
+  chat_context_mode: "compact",
 };
 
 export default function Sidebar() {
