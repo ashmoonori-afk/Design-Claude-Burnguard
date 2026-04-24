@@ -24,7 +24,18 @@
 >   (slide deck layout archetypes + strict per-slide rules, prototype
 >   section archetypes + strict per-section rules + framework-free
 >   artifact contract).
-> - `bun test` is currently 102/102 green and `npm run typecheck` is green.
+> - This-cycle polish on top of that: **compact chat context mode**
+>   (`d148923`) plus a pre-extracted deck/prototype structure summary
+>   and token-budget rules in the compact skill (`f5505d3`) so
+>   multi-edit deck turns stop accumulating ~580 K cached tokens;
+>   sticky-to-bottom chat with a "New messages" jump pill (`16e1388`);
+>   one-click double-click launchers (`Start-BurnGuard.bat` /
+>   `Start-BurnGuard.command`) backed by a sequenced
+>   `scripts/dev-launcher.ts` that probes 14070, health-gates the
+>   backend before starting Vite, opens the browser when frontend is
+>   ready, and tears both children down on SIGINT or window close
+>   (`36059ea` + `81c068c`).
+> - `bun test` is currently 117/117 green and `npm run typecheck` is green.
 > - Immediate remaining product priorities: close P4.2 acceptance,
 >   implement P4.3 Figma sync, add stronger E2E coverage, then complete
 >   signing and managed auto-update.
@@ -40,11 +51,15 @@
 > (`c9cb760`), composer waiting-state placeholder (`162112d`),
 > attachment extracted-text sidecar (`14e1691`), deck-skill layout
 > archetype catalog (`6b182da`), prototype-skill section archetype
-> catalog (`7c118bc`). `bun test`: 102/102 pass. **Resume at P3.11
-> (Linux build)** to close Milestone 3.C, or pick up Phase 4 —
-> formalise P4.2 acceptance (primary-brand-colour delta harness),
-> then P4.3 Figma sync. P3.10 Mac bundle still awaits hands-on Mac
-> verification.
+> catalog (`7c118bc`), **compact chat context mode** (`d148923`),
+> **sticky-to-bottom chat scroll + "New messages" pill** (`16e1388`),
+> **one-click double-click launchers + sequenced dev-launcher**
+> (`36059ea` + `81c068c`), **deck/prototype structure summary +
+> token-budget rules in compact skill** (`f5505d3`). `bun test`:
+> 117/117 pass. **Resume at P3.11 (Linux build)** to close Milestone
+> 3.C, or pick up Phase 4 — formalise P4.2 acceptance (primary-brand-
+> colour delta harness), then P4.3 Figma sync. P3.10 Mac bundle still
+> awaits hands-on Mac verification.
 
 ## 1. Current Stage
 

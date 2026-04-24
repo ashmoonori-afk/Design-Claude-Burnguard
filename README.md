@@ -30,6 +30,14 @@ concrete advantages for real design work:
   and inspectable — you can see exactly what the CLI receives every
   turn, including the project type skill, design-system tokens, open
   comments, and attachment summaries.
+- **Prompt cache budgeting.** A `compact` chat context mode
+  pre-extracts a structural map of the entrypoint
+  (`structure-extractor.ts` — slide / section count, ids, layouts,
+  heading snippets, CSS variable list) and ships it as a ~600-token
+  summary, then enforces token-budget rules in the compact skill so
+  the agent reads `deck.html` / `index.html` at most once per turn.
+  On a real 130 KB deck this cuts the per-turn cached-token count from
+  ~580 K toward an order of magnitude lower.
 - **Per-turn rollback.** Every user message keeps a full pre-turn file
   snapshot (`services/checkpoints.ts`); a hover Revert on any bubble
   restores the project tree exactly. No manual undo stacks.
@@ -69,14 +77,24 @@ concrete advantages for real design work:
   uploads + chat attachments with Python-backed compact manifests +
   text-safe extracted sidecars + design-system delete / edit flows +
   client-side file-size gates)
-- Recent polish: configurable mid-turn Interrupt button (Settings → Interrupt
+- Newest polish (this cycle): **compact chat context mode**
+  (Settings → Chat context: `compact` / `full`) plus a pre-extracted
+  deck/prototype structure summary and token-budget rules in the
+  compact skill so multi-edit turns stop ballooning to ~580 K cached
+  tokens; sticky-to-bottom chat with a "New messages" jump pill;
+  one-click double-click launchers (`Start-BurnGuard.bat` /
+  `Start-BurnGuard.command`) backed by a sequenced
+  `scripts/dev-launcher.ts` that health-gates the backend on 14070
+  before starting Vite, opens the browser when frontend is ready, and
+  tears both children down on SIGINT / window close.
+- Earlier polish: configurable mid-turn Interrupt button (Settings → Interrupt
   button delay), rotating waiting-state placeholder in the composer,
   upgraded project-type skills for slide decks and prototypes (layout /
   section archetype catalogs + strict per-slide content rules)
 - Still open: **P3.11 Linux build**, **P4.3 Figma sync**, full browser E2E
   automation, **P4.5 signing / notarization**, and **P5.1 Windows / macOS
   managed auto-update**
-- Validation status: `bun test` 102/102 green, `npm run typecheck` green
+- Validation status: `bun test` 117/117 green, `npm run typecheck` green
   (backend + frontend)
 
 ## Feature Tour
@@ -108,7 +126,10 @@ placeholder cycles through friendly Korean waiting-state lines; if a turn
 keeps running past the configurable threshold (default 5 minutes,
 Settings → Interrupt button delay) the Send button swaps to a red **Stop**
 that aborts the active turn via `/api/sessions/:id/interrupt`, killing
-the child CLI process cleanly.
+the child CLI process cleanly. The stream is sticky to the bottom while
+new chunks arrive, releases the moment you scroll up so reading older
+content is never interrupted, and exposes a "New messages" jump pill so
+you can re-attach explicitly.
 
 ### Canvas & interaction modes
 
@@ -217,6 +238,13 @@ click (backed by `npx playwright install chromium`).
   button, shared tail format with Chromium.
 - **Interrupt button delay** input (0–3600 s, default 300 s) that controls
   when the composer's mid-turn Stop button surfaces.
+- **Chat context** toggle (`compact` / `full`, default `compact`) — picks
+  whether per-turn prompts inline the design-system SKILL.md, tokens, and
+  README excerpts (`full`) or reference them by path while shipping a
+  compact deck/prototype structure summary plus token-budget rules
+  (`compact`). Compact mode keeps long slide-deck sessions an order of
+  magnitude lighter on cached tokens; flip to `full` for one-off
+  brand-precision turns.
 - Per-session backend toggle reappears on the chat pane and PATCHes
   `/api/sessions/:id/backend` so the next idle turn uses the new CLI.
 
@@ -252,7 +280,19 @@ bun install
 cmd /c npm.cmd run typecheck
 ```
 
-Run backend and frontend together:
+One-click launch (no terminal needed):
+
+- **Windows:** double-click `Start-BurnGuard.bat` at the repo root.
+- **macOS:** double-click `Start-BurnGuard.command` at the repo root.
+
+Both launchers run `bun install` on first run if `node_modules` is
+missing, then call `scripts/dev-launcher.ts`, which probes port 14070
+first, boots the backend, waits until `/api/projects` actually answers,
+then starts Vite, then opens `http://127.0.0.1:5173/`. Closing the
+launcher window tears both children down. Set `BG_LAUNCHER_NO_OPEN=1`
+to skip the auto-open.
+
+Run backend and frontend together (terminal):
 
 ```powershell
 bun run dev

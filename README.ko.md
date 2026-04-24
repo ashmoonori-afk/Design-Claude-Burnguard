@@ -34,6 +34,13 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
   코드로 확인 가능합니다. 매 턴마다 CLI에 정확히 무엇이 전달되는지
   (프로젝트 타입 skill, 디자인 시스템 토큰, 오픈 코멘트, 첨부파일
   요약 포함) 직접 볼 수 있습니다.
+- **프롬프트 캐시 예산 관리.** `compact` 채팅 컨텍스트 모드는
+  엔트리포인트의 구조 맵을 사전 추출해 (`structure-extractor.ts` —
+  슬라이드/섹션 수, id, layout, 헤딩 스니펫, CSS 변수 목록) 약
+  600 토큰의 요약으로 주입하고, compact skill에 토큰 예산 규칙을
+  강제해 한 턴에 `deck.html` / `index.html` 을 1회만 Read 하도록
+  유도합니다. 실측 130 KB deck 기준 턴당 캐시 토큰을 ~580 K에서
+  자릿수 단위로 줄이는 게 목표입니다.
 - **턴 단위 롤백.** 모든 사용자 메시지는 턴 전 파일 스냅샷을
   남깁니다 (`services/checkpoints.ts`). 채팅 버블 hover 시 나타나는
   Revert로 프로젝트 트리를 정확히 그 시점으로 복원합니다.
@@ -72,14 +79,22 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
   (PDF / PPTX 디자인 시스템 업로드 + 채팅 첨부, Python 기반 compact
   manifest + 안전 텍스트 sidecar, 디자인 시스템 이름 변경 / 삭제 플로,
   업로드 크기 사전 가드)
-- 최근 폴리싱: 설정 가능한 턴 중단 Interrupt 버튼 (Settings → Interrupt
+- 이번 사이클 폴리싱: **compact 채팅 컨텍스트 모드**
+  (Settings → Chat context: `compact` / `full`) + deck/prototype
+  구조 사전 추출 + compact skill에 토큰 예산 규칙 강제로 멀티 편집
+  턴이 ~580 K 캐시 토큰으로 부풀던 문제 해결, 채팅 sticky-to-bottom
+  스크롤 + "New messages" 점프 pill, 더블클릭 원클릭 런처
+  (`Start-BurnGuard.bat` / `Start-BurnGuard.command`) — 백엔드를
+  14070에서 health-gate 한 다음 Vite 띄우고 자동으로 브라우저 오픈,
+  창 닫으면 두 자식 프로세스 깨끗이 종료
+- 이전 폴리싱: 설정 가능한 턴 중단 Interrupt 버튼 (Settings → Interrupt
   button delay), CLI 대기 중 Composer placeholder 회전 문구, slide deck /
   prototype 전용 skill 업그레이드 (레이아웃 / 섹션 아키타입 카탈로그 +
   슬라이드·섹션별 엄격 콘텐츠 규약)
 - 남은 작업: **P3.11 Linux 빌드**, **P4.3 Figma sync**,
   브라우저 E2E 자동화, **P4.5 서명/노타리제이션**,
   **P5.1 Windows/macOS managed auto-update**
-- 검증 상태: `bun test` 102/102 통과, `npm run typecheck` 통과
+- 검증 상태: `bun test` 117/117 통과, `npm run typecheck` 통과
 
 ## 핵심 기능
 
@@ -106,6 +121,14 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
 - 턴이 설정 임계값(기본 5분, Settings에서 변경) 이상 걸리면 Send
   버튼이 빨간 **Stop** 으로 전환되며 `/api/sessions/:id/interrupt`
   호출로 child CLI 프로세스를 SIGKILL로 정리
+- 메시지 스트림은 새 청크가 도착하는 동안 sticky-to-bottom으로 따라가다가
+  사용자가 위로 스크롤하는 순간 분리되어 이전 내용을 방해 없이 읽을 수
+  있고, "New messages" jump pill 로 명시적으로 다시 붙을 수 있음
+- **Chat context** 토글 (`compact` / `full`, 기본 `compact`) — `compact`는
+  매 턴 design-system SKILL.md / 토큰 / README 발췌를 인라인하지 않고
+  경로로 참조하면서 deck/prototype 구조 요약과 토큰 예산 규칙을 함께
+  주입해 긴 슬라이드 덱 세션을 캐시 토큰 기준 자릿수 단위로 가볍게 유지.
+  브랜드 정밀도가 필요한 1회성 턴은 `full`로 전환
 
 ### Export
 
@@ -189,7 +212,19 @@ bun install
 cmd /c npm.cmd run typecheck
 ```
 
-동시 실행:
+원클릭 실행 (터미널 불필요):
+
+- **Windows:** 저장소 루트의 `Start-BurnGuard.bat` 더블클릭
+- **macOS:** 저장소 루트의 `Start-BurnGuard.command` 더블클릭
+
+두 런처 모두 첫 실행 시 `node_modules` 가 없으면 `bun install` 을 돌리고,
+그 다음 `scripts/dev-launcher.ts` 를 호출합니다. dev-launcher 는 14070
+포트를 먼저 검사하고, 백엔드를 띄운 뒤 `/api/projects` 가 실제로 응답할
+때까지 대기, 그 다음 Vite 를 띄우고, 준비되면 `http://127.0.0.1:5173/`
+를 자동으로 엽니다. 런처 창을 닫으면 두 자식 프로세스가 함께 종료됩니다.
+브라우저 자동 오픈을 끄려면 `BG_LAUNCHER_NO_OPEN=1`.
+
+동시 실행 (터미널):
 
 ```powershell
 bun run dev
