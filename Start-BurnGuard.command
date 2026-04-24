@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # One-click launcher for BurnGuard Design (macOS).
 # Double-click this file in Finder to start the backend + frontend dev servers.
+#
+# Real work lives in scripts/dev-launcher.ts so the boot sequence (backend
+# health check, frontend wait, browser open, clean shutdown) is identical
+# on macOS and Windows.
 
 set -u
 
@@ -37,14 +41,14 @@ if [ ! -d "node_modules" ]; then
     fi
 fi
 
-echo "[BurnGuard] Starting dev servers (backend + frontend)..."
+echo "[BurnGuard] Booting dev stack (backend then frontend)..."
 echo "           Close this window to stop the servers."
 echo
-bun run dev
+bun run scripts/dev-launcher.ts
 status=$?
 
 echo
-echo "[BurnGuard] Dev servers stopped (exit $status)."
+echo "[BurnGuard] Dev stack stopped (exit $status)."
 read -n 1 -s -r -p "Press any key to close..."
 echo
 exit "$status"

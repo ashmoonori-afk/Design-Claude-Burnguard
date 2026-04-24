@@ -3,6 +3,10 @@ setlocal EnableExtensions
 
 rem One-click launcher for BurnGuard Design (Windows).
 rem Double-click this file to start the backend + frontend dev servers.
+rem
+rem Real work lives in scripts\dev-launcher.ts so the boot sequence (backend
+rem health check, frontend wait, browser open, clean shutdown) is identical
+rem on Windows and macOS.
 
 cd /d "%~dp0"
 
@@ -30,12 +34,12 @@ if not exist "node_modules" (
     )
 )
 
-echo [BurnGuard] Starting dev servers (backend + frontend)...
+echo [BurnGuard] Booting dev stack (backend then frontend)...
 echo            Close this window to stop the servers.
 echo.
-call bun run dev
+call bun run scripts/dev-launcher.ts
 
 echo.
-echo [BurnGuard] Dev servers stopped.
+echo [BurnGuard] Dev stack stopped.
 pause
 endlocal
