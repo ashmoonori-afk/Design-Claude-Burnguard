@@ -45,6 +45,11 @@ export default function ChatPane({
         ["project", updated.project_id, "session"],
         updated,
       );
+      pushToast({
+        title: "Backend switched",
+        body: `Next turn will use ${backendLabel(updated.backend_id)}.`,
+        tone: "success",
+      });
     },
     onError: (err) => {
       pushToast({
@@ -131,7 +136,7 @@ function BackendToggle({
             if (disabled || opt === current) return;
             onSwitch(opt);
           }}
-          disabled={disabled || opt === current}
+          disabled={disabled}
           title={
             disabled && opt !== current
               ? "Cannot switch while a turn is running"
@@ -152,6 +157,10 @@ function BackendToggle({
       ))}
     </div>
   );
+}
+
+function backendLabel(id: BackendId): string {
+  return id === "claude-code" ? "Claude Code" : "Codex";
 }
 
 function ChatTab({

@@ -477,9 +477,17 @@ export default function ProjectView() {
     // owns the live session state — overriding it with a stale DB refetch
     // (e.g. the session row before `setSessionStatus("idle")` finishes)
     // would flip the status back to "running" after a turn completes.
-    setSessionState((current) =>
-      current?.id === sessionQuery.data.id ? current : sessionQuery.data,
-    );
+    const next = sessionQuery.data;
+    setSessionState((current) => {
+      if (!current || current.id !== next.id) return next;
+      if (current.backend_id === next.backend_id) return current;
+      return {
+        ...current,
+        backend_id: next.backend_id,
+        updated_at: Math.max(current.updated_at, next.updated_at),
+        last_active_at: Math.max(current.last_active_at, next.last_active_at),
+      };
+    });
   }, [sessionQuery.data]);
 
   useEffect(() => {
