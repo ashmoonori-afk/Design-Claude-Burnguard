@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   contentTypeForDesignSystemFile,
+  ensureTokensCssImportsFonts,
   extractCssCustomProperties,
   extractCssStyleSignals,
   extractHtmlComponentSamples,
@@ -13,6 +14,7 @@ import {
   normalizeUploadPages,
   normalizeUploadStringList,
   readUploadManifest,
+  upsertCssCustomProperty,
 } from "../src/services/design-system-extract";
 
 describe("inferSourceType", () => {
@@ -56,6 +58,51 @@ describe("extractCssCustomProperties", () => {
     `);
     expect(vars.get("primary-blue")).toBe("#0057B8");
     expect(vars.get("font-sans")).toBe('"Inter"');
+  });
+});
+
+describe("design system token css editing", () => {
+  test("updates existing custom properties and appends missing ones inside :root", () => {
+    const css = `:root {
+  --primary-blue: #0057B8;
+}
+`;
+    const updated = upsertCssCustomProperty(css, "primary-blue", "#123456");
+    expect(updated).toContain("--primary-blue: #123456;");
+    expect(updated).not.toContain("--primary-blue: #0057B8;");
+
+    const appended = upsertCssCustomProperty(updated, "brand-red", "#ff0000");
+    expect(appended).toContain("--brand-red: #ff0000;");
+    expect(appended.indexOf("--brand-red")).toBeLessThan(appended.indexOf("\n}"));
+  });
+
+  test("creates a :root block when custom properties are written to an empty file", () => {
+    expect(upsertCssCustomProperty("", "primary", "#000000")).toBe(
+      `:root {
+  --primary: #000000;
+}
+`,
+    );
+  });
+
+  test("ensures token css imports local font faces exactly once", () => {
+    const css = `/* Brand tokens */
+:root {
+  --font-sans: Acme, sans-serif;
+}
+`;
+    const imported = ensureTokensCssImportsFonts(css);
+    expect(imported).toContain("@import url('./fonts/fonts.css');");
+    expect(ensureTokensCssImportsFonts(imported)).toBe(imported);
+  });
+
+  test("preserves @charset before inserting font imports", () => {
+    const imported = ensureTokensCssImportsFonts(`@charset "utf-8";
+:root {}
+`);
+    expect(imported.startsWith(`@charset "utf-8";
+@import url('./fonts/fonts.css');
+`)).toBe(true);
   });
 });
 

@@ -45,7 +45,9 @@ export default function DesignSystemView({
   const [fontFile, setFontFile] = useState<File | null>(null);
   const [fontFamily, setFontFamily] = useState("");
   const [fontRole, setFontRole] = useState<FontRole>("sans");
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const colorEditorRef = useRef<HTMLDivElement | null>(null);
+  const fontInputRef = useRef<HTMLInputElement | null>(null);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -87,6 +89,7 @@ export default function DesignSystemView({
       setEditingColor(null);
       setDraftColorName("");
       setDraftColorValue("#000000");
+      setPreviewRefreshKey((key) => key + 1);
       pushToast({ title: "Color token saved", tone: "success" });
     },
     onError: (err) => {
@@ -110,6 +113,10 @@ export default function DesignSystemView({
     onSuccess: (font) => {
       setFontFile(null);
       setFontFamily("");
+      if (fontInputRef.current) {
+        fontInputRef.current.value = "";
+      }
+      setPreviewRefreshKey((key) => key + 1);
       pushToast({
         title: "Font uploaded",
         body: `${font.family} saved to ${font.rel_path}`,
@@ -318,6 +325,7 @@ export default function DesignSystemView({
               family={fontFamily}
               role={fontRole}
               saving={fontMutation.isPending}
+              inputRef={fontInputRef}
               onFileChange={setFontFile}
               onFamilyChange={setFontFamily}
               onRoleChange={setFontRole}
@@ -372,6 +380,7 @@ export default function DesignSystemView({
                 block: "start",
               });
             }}
+            previewRefreshKey={previewRefreshKey}
           />
         </div>
       </div>
@@ -384,6 +393,7 @@ function FontUploadCard({
   family,
   role,
   saving,
+  inputRef,
   onFileChange,
   onFamilyChange,
   onRoleChange,
@@ -393,6 +403,7 @@ function FontUploadCard({
   family: string;
   role: FontRole;
   saving: boolean;
+  inputRef: RefObject<HTMLInputElement>;
   onFileChange: (file: File | null) => void;
   onFamilyChange: (value: string) => void;
   onRoleChange: (value: FontRole) => void;
@@ -415,6 +426,7 @@ function FontUploadCard({
             Font file
           </label>
           <Input
+            ref={inputRef}
             type="file"
             accept=".woff2,.woff,.ttf,.otf"
             onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}

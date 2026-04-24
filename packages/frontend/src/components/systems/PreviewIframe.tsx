@@ -10,10 +10,12 @@ export default function PreviewIframe({
   systemId,
   path,
   title,
+  refreshKey = 0,
 }: {
   systemId: string;
   path: string;
   title?: string;
+  refreshKey?: number;
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -23,12 +25,12 @@ export default function PreviewIframe({
     setContent(null);
     setError(false);
 
-    fetch(
-      `/api/design-systems/${systemId}/files/${path
+    const encodedPath = path
         .split("/")
         .map((segment) => encodeURIComponent(segment))
-        .join("/")}`,
-    )
+        .join("/");
+
+    fetch(`/api/design-systems/${systemId}/files/${encodedPath}?v=${refreshKey}`)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
@@ -43,7 +45,7 @@ export default function PreviewIframe({
     return () => {
       cancelled = true;
     };
-  }, [systemId, path]);
+  }, [systemId, path, refreshKey]);
 
   if (error) {
     return (

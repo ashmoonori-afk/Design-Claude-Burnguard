@@ -54,9 +54,11 @@ const SECTIONS: PreviewSection[] = [
 export default function SystemPreviewGrid({
   systemId,
   onEditColors,
+  previewRefreshKey = 0,
 }: {
   systemId: string;
   onEditColors?: () => void;
+  previewRefreshKey?: number;
 }) {
   return (
     <div className="px-8 py-6 space-y-8">
@@ -81,6 +83,7 @@ export default function SystemPreviewGrid({
                     systemId={systemId}
                     path={`preview/${it.id}.html`}
                     title={it.title}
+                    refreshKey={previewRefreshKey}
                   />
                 </div>
                 <div className="flex items-start justify-between gap-3">

@@ -495,7 +495,7 @@ export async function uploadDesignSystemFont(input: {
             ? "var(--font-serif-fallback)"
             : "var(--font-mono-fallback)";
     const nextCss = upsertCssCustomProperty(
-      existingCss,
+      ensureTokensCssImportsFonts(existingCss),
       `font-${role}`,
       `${cssString(family)}, ${fallback}`,
     );
@@ -1620,6 +1620,8 @@ function buildTokensCss(brandName: string, analysis: SourceAnalysis): string {
           .join("\n")}`;
 
   return `/* ${brandName} canonical token file */
+@import url('./fonts/fonts.css');
+
 :root {
   /* Neutrals */
   --gray-10: #0f172a;
@@ -2338,7 +2340,7 @@ function isColorTokenValue(value: string): boolean {
   return /^[a-zA-Z]+$/.test(trimmed);
 }
 
-function upsertCssCustomProperty(
+export function upsertCssCustomProperty(
   css: string,
   tokenName: string,
   value: string,
@@ -2360,6 +2362,17 @@ function upsertCssCustomProperty(
 
   const prefix = css.endsWith("\n") || css.length === 0 ? css : `${css}\n`;
   return `${prefix}:root {\n${declaration}\n}\n`;
+}
+
+export function ensureTokensCssImportsFonts(css: string): string {
+  if (/fonts\/fonts\.css/i.test(css)) return css;
+
+  const importLine = "@import url('./fonts/fonts.css');";
+  const charsetMatch = /^@charset\s+["'][^"']+["'];\s*\n?/i.exec(css);
+  if (charsetMatch) {
+    return `${charsetMatch[0]}${importLine}\n${css.slice(charsetMatch[0].length)}`;
+  }
+  return `${importLine}\n${css}`;
 }
 
 async function appendFontFaceRule(
