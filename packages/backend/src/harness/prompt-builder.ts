@@ -10,6 +10,7 @@ import {
   type UploadManifest,
 } from "../services/design-system-extract";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
+import { PROTOTYPE_SKILL_MD } from "./skills/prototype-skill";
 
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
 
@@ -165,6 +166,10 @@ export async function buildPrompt(
   if (project.project_type === "slide_deck") {
     lines.push("## Slide deck skill");
     lines.push(DECK_SKILL_MD.trim());
+    lines.push("");
+  } else if (project.project_type === "prototype") {
+    lines.push("## Prototype skill");
+    lines.push(PROTOTYPE_SKILL_MD.trim());
     lines.push("");
   }
 

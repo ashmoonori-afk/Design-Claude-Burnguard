@@ -48,6 +48,20 @@ describe("buildPrompt", () => {
     expect(prompt).not.toContain("use_speaker_notes");
   });
 
+  test("injects prototype skill for prototype projects", async () => {
+    const prompt = await buildPrompt(makeContext(), {
+      type: "user.message",
+      text: "build me a landing page",
+    });
+    expect(prompt).toContain("## Prototype skill");
+    expect(prompt).toContain("# Prototype authoring conventions");
+    expect(prompt).toContain("data-section");
+    expect(prompt).toContain("hero-centered");
+    expect(prompt).toContain("data-bg-node-id");
+    // Skills must not cross-contaminate.
+    expect(prompt).not.toContain("## Slide deck skill");
+  });
+
   test("injects slide deck skill for slide_deck projects", async () => {
     const prompt = await buildPrompt(
       makeContext({
