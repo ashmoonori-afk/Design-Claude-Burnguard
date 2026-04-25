@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -16,9 +17,10 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import type { ProjectType } from "@bg/shared";
+import type { ExportStatus, ProjectType } from "@bg/shared";
 import {
   createExport,
+  formatLabel,
   listExports,
   type ExportFormat,
 } from "@/api/export";
@@ -94,6 +96,40 @@ export default function ExportMenu({
   });
 
   const jobs = jobsQuery.data ?? [];
+
+  // Surface async failures via a toast — the createMutation onError only
+  // catches synchronous create-call errors. Background pipeline failures
+  // (chromium missing, Playwright crash, etc.) only surface through the
+  // poll, and previously sat silently as a "failed" status indicator.
+  // Tracks last-seen status per job so a job that was already failed at
+  // mount, or that we've already toasted, doesn't fire again on every poll.
+  const lastStatusRef = useRef<Map<string, ExportStatus>>(new Map());
+  const isInitialLoadRef = useRef(true);
+  useEffect(() => {
+    if (isInitialLoadRef.current) {
+      for (const job of jobs) lastStatusRef.current.set(job.id, job.status);
+      if (jobs.length > 0 || jobsQuery.status === "success") {
+        isInitialLoadRef.current = false;
+      }
+      return;
+    }
+    for (const job of jobs) {
+      const previous = lastStatusRef.current.get(job.id);
+      lastStatusRef.current.set(job.id, job.status);
+      if (job.status === "failed" && previous !== "failed") {
+        const looksLikeChromium = job.error_message
+          ?.toLowerCase()
+          .includes("chromium");
+        pushToast({
+          title: `Export failed (${formatLabel(job.format)})`,
+          body: looksLikeChromium
+            ? 'Chromium is not installed. Open Settings → "Chromium for exports" → Install, then re-run the export.'
+            : (job.error_message ?? "Unknown error."),
+          tone: "error",
+        });
+      }
+    }
+  }, [jobs, pushToast, jobsQuery.status]);
 
   return (
     <DropdownMenu>

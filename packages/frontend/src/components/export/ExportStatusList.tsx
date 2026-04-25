@@ -1,5 +1,5 @@
 import { CheckCircle2, Clock, Download, Loader2, XCircle } from "lucide-react";
-import type { ExportJob } from "@/api/export";
+import { formatLabel, type ExportJob } from "@/api/export";
 
 function formatBytes(bytes: number | null | undefined) {
   if (!bytes || bytes <= 0) return "";
@@ -42,7 +42,7 @@ export default function ExportStatusList({ jobs }: { jobs: ExportJob[] }) {
               title={j.error_message ?? undefined}
             >
               <Icon className={iconClass} />
-              <span className="flex-1 truncate">{j.format}</span>
+              <span className="flex-1 truncate">{formatLabel(j.format)}</span>
               {canDownload ? (
                 <a
                   href={`/api/exports/${j.id}/download`}
