@@ -12,6 +12,11 @@ import type {
 } from "@bg/shared";
 import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles, resolveDrawFile, resolveProjectFile } from "../services/files";
 import { enqueueProjectExport } from "../services/exports";
+import {
+  buildContentDisposition,
+  buildDownloadFilename,
+  formatMime,
+} from "../services/export-naming";
 import { noteEmittedFileChange } from "../services/file-change-broker";
 import { FilePatchError, patchHtmlNode } from "../services/file-patch";
 import { getExportJob, listProjectExports } from "../db/exports";
@@ -350,11 +355,17 @@ artifactRoutes.get("/api/exports/:id/download", async (c) => {
     return c.json(fail("export_not_ready", "Export is not ready for download", { id }), 409);
   }
 
-  c.header(
-    "Content-Disposition",
-    `attachment; filename="${path.basename(job.output_path)}"`,
-  );
-  c.header("Content-Type", "application/zip");
+  // Friendly user-facing filename (project-slug-format-date.ext) and
+  // the correct MIME type per format. Both fixes from the export audit:
+  // the previous response always claimed application/zip, even for PDF
+  // / PPTX, and the filename was the internal ulid-based staging name.
+  const project = await getProjectDetail(job.project_id);
+  const filename = buildDownloadFilename({
+    projectName: project?.name ?? null,
+    job,
+  });
+  c.header("Content-Disposition", buildContentDisposition(filename));
+  c.header("Content-Type", formatMime(job.format));
   return new Response(Bun.file(job.output_path), {
     headers: c.res.headers,
   });
