@@ -13,6 +13,7 @@
     "@bg/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
+    "jszip": "^3.10.1",
     "node-html-parser": "^7.1.0",
     "playwright-core": "^1.59.1",
     "pptxgenjs": "^4.0.1",

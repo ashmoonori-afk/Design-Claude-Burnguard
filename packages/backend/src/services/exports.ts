@@ -10,6 +10,7 @@ import { renderDeckToPdf } from "./export-pdf";
 import { renderDeckToPptx } from "./export-pptx";
 import { renderHandoffBundle } from "./export-handoff";
 import { getDesignSystemDetail } from "../db/seed";
+import { zipDirectory } from "./zip";
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat) {
   const job = await createExportJob(projectId, format);
@@ -115,42 +116,9 @@ async function runExport(jobId: string) {
           isDeck: project.type === "slide_deck",
         });
 
-        const bundleWildcard = path.join(bundleDir, "*");
-        const zipCmd = [
-          "powershell",
-          "-NoProfile",
-          "-Command",
-          `Compress-Archive -Path '${escapeForPs(bundleWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
-        ];
-        const zipProc = Bun.spawn(zipCmd, {
-          stdout: "ignore",
-          stderr: "pipe",
-        });
-        const code = await zipProc.exited;
-        if (code !== 0) {
-          const errorText = await new Response(zipProc.stderr).text();
-          throw new Error(
-            errorText || `Compress-Archive failed with exit code ${code}`,
-          );
-        }
+        await zipDirectory(bundleDir, outputPath);
       } else {
-        const sourceWildcard = path.join(projectStageDir, "*");
-        const command = [
-          "powershell",
-          "-NoProfile",
-          "-Command",
-          `Compress-Archive -Path '${escapeForPs(sourceWildcard)}' -DestinationPath '${escapeForPs(outputPath)}' -Force`,
-        ];
-
-        const proc = Bun.spawn(command, {
-          stdout: "ignore",
-          stderr: "pipe",
-        });
-        const exitCode = await proc.exited;
-        if (exitCode !== 0) {
-          const errorText = await new Response(proc.stderr).text();
-          throw new Error(errorText || `Compress-Archive failed with exit code ${exitCode}`);
-        }
+        await zipDirectory(projectStageDir, outputPath);
       }
     } finally {
       await rm(stagingDir, { recursive: true, force: true });
@@ -170,10 +138,6 @@ async function runExport(jobId: string) {
       completedAt: Date.now(),
     });
   }
-}
-
-function escapeForPs(value: string) {
-  return value.replaceAll("'", "''");
 }
 
 async function resolveHandoffTokens(
