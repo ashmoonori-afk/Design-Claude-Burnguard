@@ -332,12 +332,46 @@ const BRIDGE_SCRIPT = String.raw`(function () {
 
   function toRect(node) {
     if (!node || !node.getBoundingClientRect) return null;
-    var rect = node.getBoundingClientRect();
+    var elemRect = node.getBoundingClientRect();
+    // For block leaf elements with only text content, the element's
+    // bounding rect covers the full parent content width even when the
+    // visible text is much shorter. That made the selection box look
+    // "too wide left-right" on every overlay (Select / Edit / Tweaks).
+    // Range.getBoundingClientRect over the element's contents returns
+    // the tight visual extent of the actual text runs, which is what
+    // the user expects to see highlighted.
+    var hasElementChild = false;
+    if (node.children && node.children.length > 0) {
+      hasElementChild = true;
+    }
+    if (!hasElementChild && node.childNodes && node.childNodes.length > 0) {
+      try {
+        var range = document.createRange();
+        range.selectNodeContents(node);
+        var tight = range.getBoundingClientRect();
+        // Defensive: only swap when the tight rect is meaningfully
+        // narrower than the element rect (>4 px difference) AND it
+        // actually has area. Avoids flicker on already-tight elements.
+        if (
+          tight && tight.width > 0 && tight.height > 0 &&
+          elemRect.width - tight.width > 4
+        ) {
+          return {
+            left: tight.left,
+            top: tight.top,
+            width: tight.width,
+            height: tight.height
+          };
+        }
+      } catch (e) {
+        // Range API unavailable / failed — fall through.
+      }
+    }
     return {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height
+      left: elemRect.left,
+      top: elemRect.top,
+      width: elemRect.width,
+      height: elemRect.height
     };
   }
 
