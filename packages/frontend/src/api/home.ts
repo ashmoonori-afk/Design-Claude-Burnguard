@@ -56,3 +56,9 @@ export async function deleteProject(id: string): Promise<void> {
     throw new Error(`Failed to delete project ${id}: HTTP ${res.status}`);
   }
 }
+
+export async function restoreSamples(): Promise<{ restored: boolean }> {
+  return apiFetch<{ restored: boolean }>("/api/home/restore-samples", {
+    method: "POST",
+  });
+}

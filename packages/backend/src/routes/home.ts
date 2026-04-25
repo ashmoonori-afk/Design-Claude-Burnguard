@@ -15,6 +15,7 @@ import {
   listHomeDesignSystems,
   listHomeProjects,
 } from "../db/seed";
+import { seedTutorialsOnce } from "../db/seed-tutorials";
 import { detectBackends } from "../services/backends";
 import { ensureProjectWatcher } from "../services/watchers";
 
@@ -160,6 +161,14 @@ homeRoutes.post("/api/projects", async (c) => {
 homeRoutes.get("/api/backends/detect", async (c) => {
   c.header("Cache-Control", "private, max-age=30");
   return c.json(ok((await detectBackends()) as BackendDetectionResult));
+});
+
+// Re-runs the tutorial / prompt-sample seed. Idempotent — only the
+// missing tagged projects are recreated, so callers can hit this any
+// time after deleting samples to bring them back. P4.7(d).
+homeRoutes.post("/api/home/restore-samples", async (c) => {
+  await seedTutorialsOnce();
+  return c.json(ok({ restored: true }));
 });
 
 homeRoutes.get("/api/settings", async (c) => {

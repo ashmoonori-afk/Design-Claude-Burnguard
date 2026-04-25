@@ -13,6 +13,7 @@ import {
   detectBackends,
   listDesignSystems,
   listProjects,
+  restoreSamples,
 } from "@/api/home";
 import CardGrid from "@/components/home/CardGrid";
 import {
@@ -118,6 +119,21 @@ export default function HomeView() {
     onError: (err) => {
       pushToast({
         title: "Delete failed",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
+  const restoreSamplesMutation = useMutation({
+    mutationFn: () => restoreSamples(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      pushToast({ title: "Samples restored", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Restore failed",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -268,6 +284,23 @@ export default function HomeView() {
             </TabsContent>
 
             <TabsContent value="examples">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Built-in tutorials, prompt-samples, and template fixtures.
+                  Deleting any of them is fine — Restore samples brings the
+                  built-in set back.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={restoreSamplesMutation.isPending}
+                  onClick={() => restoreSamplesMutation.mutate()}
+                >
+                  {restoreSamplesMutation.isPending
+                    ? "Restoring…"
+                    : "Restore samples"}
+                </Button>
+              </div>
               <CardSection
                 cards={exampleCards}
                 emptyText="No template-based examples yet."
