@@ -99,6 +99,19 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
     + Try this prompt 1-click 액션, 5개 fixture 프로젝트가 실제 starter
     HTML 들고 있어 Home 카드 클릭 시 빈 캔버스 안 나옴, prompt-sample
     2개 추가 (Korean SaaS + non-landing dashboard).
+  - **디자인 엔진 audit** (수정 11개 + 보너스 iframe 속성 2개) —
+    deck-stage 가 active-slide 변경을 push (5-Hz 폴링 루프 제거),
+    bridge timeout 200ms → 1s, artifact fetch 실패 시 인라인 에러
+    오버레이 + Retry 버튼 (이전엔 placeholder 만 표시되며 무반응),
+    `tempfile + rename` 으로 atomic file write (mid-write 크래시
+    시 파일 손상 방지), inline-style 파서가 `url(data:…)`,
+    `linear-gradient(…)`, `var(--x, fallback)`, quoted string 까지
+    안전하게 파싱, **Edit / Tweaks GUI patch 의 파일 단위 1-step
+    undo** (캔버스 top bar 의 Undo 버튼), `escapeHtmlText` 의 XSS
+    contract 테스트, 3개 overlay 의 polling 루프를 공유 hook
+    (`useFrameElementRect`) 으로 통합. 보너스: canvas iframe 에
+    `allow-popups` + `allow="fullscreen"` 부여로 외부 링크 / deck F
+    키 풀스크린이 실제로 동작.
 - 직전 사이클 폴리싱: **compact 채팅 컨텍스트 모드**
   (Settings → Chat context: `compact` / `full`) + deck/prototype
   구조 사전 추출 + compact skill에 토큰 예산 규칙 강제로 멀티 편집
@@ -114,7 +127,7 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
 - 남은 작업: **P3.11 Linux 빌드**, 브라우저 E2E 자동화,
   **P4.5 서명/노타리제이션**, **P4.6 install 패키지**,
   **P5.1 Windows/macOS managed auto-update**
-- 검증 상태: `bun test` 184/184 통과, `npm run typecheck` 통과
+- 검증 상태: `bun test` 192/192 통과, `npm run typecheck` 통과
 
 ## 핵심 기능
 
@@ -149,6 +162,18 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
   경로로 참조하면서 deck/prototype 구조 요약과 토큰 예산 규칙을 함께
   주입해 긴 슬라이드 덱 세션을 캐시 토큰 기준 자릿수 단위로 가볍게 유지.
   브랜드 정밀도가 필요한 1회성 턴은 `full`로 전환
+- **캔버스 top bar** 의 Refresh 옆에 **단계 1회 Undo** 버튼 — Edit /
+  Tweaks 의 GUI patch 를 저장한 직후 활성화되며, 백엔드 in-memory
+  undo store 에서 직전 파일 상태로 즉시 복원. 턴 단위 checkpoint
+  와는 별개로 턴 사이의 GUI 편집 회복 경로.
+- **Artifact 로드 실패** 시 캔버스 가운데에 인라인 에러 오버레이 +
+  Retry 버튼 — 이전엔 placeholder 만 표시되어 사용자가 실패 사실을
+  몰랐음.
+- **deck-stage 가 active-slide 변경을 push** — 슬라이드 인디케이터
+  / 패널이 폴링 latency 없이 frame-accurate 업데이트.
+- **iframe sandbox 가 popup + fullscreen 허용** — artifact 안의
+  외부 링크가 새 탭으로 열리고, deck 의 F 키가 실제로 풀스크린
+  토글.
 
 ### Export
 

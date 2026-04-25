@@ -35,7 +35,7 @@
 >   backend before starting Vite, opens the browser when frontend is
 >   ready, and tears both children down on SIGINT or window close
 >   (`36059ea` + `81c068c`).
-> - `bun test` is currently 184/184 green and `npm run typecheck` is green.
+> - `bun test` is currently 192/192 green and `npm run typecheck` is green.
 > - **Shipped this cycle on top of all the above:** P4.3 Figma sync
 >   (Settings → Figma access PAT, figma.com URL as a first-class
 >   extraction source, published styles → `--color-<slug>` tokens);
@@ -47,7 +47,16 @@
 >   Northvale Capital + Splash sample brands, uploads/ guard,
 >   Examples-tab filter fix, Restore samples + Try this prompt
 >   affordances, real starter HTML for every fixture project,
->   Korean SaaS + dashboard prompt-samples).
+>   Korean SaaS + dashboard prompt-samples); the design-engine
+>   audit (eleven fixes + two bonus iframe attrs — push-based
+>   active-slide updates from deck-stage, bridge timeout 200 ms →
+>   1 s, inline error overlay with Retry on artifact load failure,
+>   atomic file writes via tempfile + rename, robust inline-style
+>   parser, single-step file-level undo on Edit / Tweaks GUI
+>   patches with a canvas Undo button, XSS test pinning the
+>   escapeHtmlText contract, shared useFrameElementRect hook
+>   collapsing three overlay polling loops, and iframe sandbox
+>   gaining allow-popups + allow-fullscreen).
 > - Immediate remaining product priorities: close P4.2 acceptance,
 >   add stronger E2E coverage, complete P3.11 Linux build, then
 >   P4.5 signing / notarization, P4.6 install packages, and P5.1
@@ -69,16 +78,23 @@
 > **one-click double-click launchers + sequenced dev-launcher**
 > (`36059ea` + `81c068c`), **deck/prototype structure summary +
 > token-budget rules in compact skill** (`f5505d3`). `bun test`:
-> 184/184 pass. P4.3 Figma sync + the seven-fix export audit + P4.7
-> Sample library hardening all shipped after that snapshot. **Resume
-> at P3.11 (Linux build)** to close Milestone 3.C, or pick up Phase 4
-> — formalise P4.2 acceptance (primary-brand-colour delta harness),
-> then P4.5 signing / notarization, P4.6 install packages, and P5.1
-> managed auto-update. Optional follow-ups: P4.7g additional sample
-> design system in a different vertical, P4.7b CI / pre-commit guard
-> for the `design system sample/uploads/` leak vector, Figma effect /
-> grid styles + component-thumbnail asset extraction. P3.10 Mac
-> bundle still awaits hands-on Mac verification.
+> 192/192 pass. P4.3 Figma sync + the seven-fix export audit + P4.7
+> Sample library hardening + the design-engine audit (push-based
+> active slide, bridge timeout, inline error overlay, atomic file
+> write, robust inline-style parser, file-level undo for Edit /
+> Tweaks GUI patches, XSS test, shared overlay polling hook, plus
+> iframe popups + fullscreen) all shipped after that snapshot.
+> **Resume at P3.11 (Linux build)** to close Milestone 3.C, or pick
+> up Phase 4 — formalise P4.2 acceptance (primary-brand-colour delta
+> harness), then P4.5 signing / notarization, P4.6 install packages,
+> and P5.1 managed auto-update. Optional follow-ups: P4.7g
+> additional sample design system in a different vertical, P4.7b
+> CI / pre-commit guard for the `design system sample/uploads/`
+> leak vector, Figma effect / grid styles + component-thumbnail
+> asset extraction, push-based selection-rect tracking to retire
+> the remaining 200 ms overlay polls, and a multi-step undo / redo
+> stack on Edit / Tweaks GUI patches. P3.10 Mac bundle still awaits
+> hands-on Mac verification.
 
 ## 1. Current Stage
 

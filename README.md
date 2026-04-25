@@ -103,6 +103,21 @@ concrete advantages for real design work:
     real starter HTML so opening any Home card lands on a non-empty
     canvas, and two new prompt-samples cover Korean SaaS + a non-
     landing fund-ops dashboard.
+  - **Design-engine audit** (11 fixes + 2 bonus iframe attrs) —
+    push-based active-slide updates from the deck-stage runtime
+    (drops the 5-Hz polling loop), bridge timeout 200 ms → 1 s for
+    busy iframes, inline error overlay with Retry when artifact
+    fetch fails (was silent), atomic file writes via tempfile +
+    rename so a process crash mid-write can no longer leave half a
+    file on disk, robust inline-style parser that survives
+    `url(data:…)`, `linear-gradient(…)`, `var(--x, fallback)` and
+    quoted strings, single-step file-level undo on Edit / Tweaks
+    GUI patches with a new Undo button on the canvas top bar, XSS
+    test pinning the `escapeHtmlText` contract, and a shared
+    `useFrameElementRect` hook collapsing three near-identical
+    overlay polling loops. Bonus: canvas iframe now allows popups
+    and fullscreen so deck F-key + external `<a target="_blank">`
+    actually work.
 - Recent polish: **compact chat context mode**
   (Settings → Chat context: `compact` / `full`) plus a pre-extracted
   deck/prototype structure summary and token-budget rules in the
@@ -120,7 +135,7 @@ concrete advantages for real design work:
 - Still open: **P3.11 Linux build**, full browser E2E automation,
   **P4.5 signing / notarization**, **P4.6 install packages**, and
   **P5.1 Windows / macOS managed auto-update**
-- Validation status: `bun test` 184/184 green, `npm run typecheck` green
+- Validation status: `bun test` 192/192 green, `npm run typecheck` green
   (backend + frontend)
 
 ## Feature Tour
@@ -182,6 +197,19 @@ Live iframe of the current project artifact. Five one-at-a-time modes:
 A **Present** button (visible when the active tab is a slide deck) flips
 into fullscreen playback with arrow-key / space navigation and speaker
 notes (`?present=1` → `body[data-presenter]`).
+
+The canvas top bar carries a **Refresh** + a **single-step Undo** for
+the active file. Undo lights up after any GUI patch (Edit / Tweaks
+save) and rolls the file back via the new in-memory undo store —
+recovery between turns without touching the per-turn checkpoint
+system. If the artifact fails to load, the canvas surfaces an inline
+error overlay with a Retry button instead of silently rendering the
+placeholder. Active-slide updates from the deck-stage runtime arrive
+via push (`postMessage`), not polling, so the slide indicator and
+panel switch frame-accurately even on long sessions. The iframe
+sandbox grants `allow-popups`, `allow-popups-to-escape-sandbox`, and
+`allow="fullscreen"` so external links inside an artifact open in a
+new tab and the deck `F` key actually toggles fullscreen.
 
 ### Design systems
 
