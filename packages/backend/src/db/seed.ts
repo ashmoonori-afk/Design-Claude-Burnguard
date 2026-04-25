@@ -348,29 +348,38 @@ export async function createProjectRecord(input: {
     "utf8",
   );
 
-  await db.insert(projectsTable).values({
-    id: projectId,
-    name: input.name,
-    type: input.type,
-    designSystemId: input.designSystemId,
-    dirPath,
-    entrypoint: input.entrypoint,
-    thumbnailPath: input.thumbnailPath,
-    backendId: input.backendId,
-    optionsJson: input.optionsJson,
-    createdAt: now,
-    updatedAt: now,
-    archivedAt: null,
-  });
-
-  await db.insert(sessionsTable).values({
-    id: sessionId,
-    projectId,
-    backendId: input.backendId,
-    status: "idle",
-    createdAt: now,
-    updatedAt: now,
-    lastActiveAt: now,
+  // Insert project + session atomically — without the transaction a
+  // session-insert failure between the two statements would leave the
+  // project row dangling, which the home view renders but every
+  // session-keyed route (events, status, backend switch) 404s on.
+  db.transaction((tx) => {
+    tx.insert(projectsTable)
+      .values({
+        id: projectId,
+        name: input.name,
+        type: input.type,
+        designSystemId: input.designSystemId,
+        dirPath,
+        entrypoint: input.entrypoint,
+        thumbnailPath: input.thumbnailPath,
+        backendId: input.backendId,
+        optionsJson: input.optionsJson,
+        createdAt: now,
+        updatedAt: now,
+        archivedAt: null,
+      })
+      .run();
+    tx.insert(sessionsTable)
+      .values({
+        id: sessionId,
+        projectId,
+        backendId: input.backendId,
+        status: "idle",
+        createdAt: now,
+        updatedAt: now,
+        lastActiveAt: now,
+      })
+      .run();
   });
 
   return {
