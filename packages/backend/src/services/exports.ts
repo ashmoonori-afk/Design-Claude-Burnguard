@@ -1,7 +1,7 @@
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ExportFormat } from "@bg/shared";
+import type { ExportFormat, ExportOptions } from "@bg/shared";
 import { createExportJob, getExportJob, updateExportJob } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
 import { exportsDir } from "../lib/paths";
@@ -12,17 +12,25 @@ import { renderHandoffBundle } from "./export-handoff";
 import { getDesignSystemDetail } from "../db/seed";
 import { zipDirectory } from "./zip";
 
-export async function enqueueProjectExport(projectId: string, format: ExportFormat) {
+export async function enqueueProjectExport(
+  projectId: string,
+  format: ExportFormat,
+  options: ExportOptions = {},
+) {
   const job = await createExportJob(projectId, format);
   if (!job) {
     throw new Error("export_create_failed");
   }
 
-  void runExport(job.id);
+  // Options are pass-through (not persisted on the job) so a retry from
+  // the status list deliberately falls back to defaults — the menu is
+  // what carries the preset choice. See doc/06-milestones P4 export
+  // audit notes for the trade-off.
+  void runExport(job.id, options);
   return job;
 }
 
-async function runExport(jobId: string) {
+async function runExport(jobId: string, options: ExportOptions = {}) {
   const job = await getExportJob(jobId);
   if (!job) {
     return;
@@ -79,6 +87,7 @@ async function runExport(jobId: string) {
           stagedDir: projectStageDir,
           entrypoint: project.entrypoint,
           outputPath,
+          paper: options.pdf_paper,
         });
       } else if (job.format === "pptx") {
         if (project.type !== "slide_deck") {
@@ -90,6 +99,7 @@ async function runExport(jobId: string) {
           stagedDir: projectStageDir,
           entrypoint: project.entrypoint,
           outputPath,
+          size: options.pptx_size,
         });
       } else if (job.format === "handoff") {
         const tokens = await resolveHandoffTokens(

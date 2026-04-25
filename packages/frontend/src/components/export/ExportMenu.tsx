@@ -23,12 +23,16 @@ import {
   formatLabel,
   listExports,
   type ExportFormat,
+  type ExportOptions,
 } from "@/api/export";
 import { useUIStore } from "@/state/uiStore";
 import ExportStatusList from "./ExportStatusList";
 
 interface Option {
-  id: ExportFormat;
+  /** Stable React key — also doubles as a click identifier. */
+  key: string;
+  format: ExportFormat;
+  options?: ExportOptions;
   label: string;
   icon: LucideIcon;
   phase?: number;
@@ -37,20 +41,48 @@ interface Option {
 }
 
 const OPTIONS: Option[] = [
-  { id: "html_zip", label: "HTML zip", icon: FileDown },
+  { key: "html_zip", format: "html_zip", label: "HTML zip", icon: FileDown },
   {
-    id: "pdf",
-    label: "PDF (deck only)",
+    key: "pdf-a4",
+    format: "pdf",
+    options: { pdf_paper: "a4" },
+    label: "PDF · A4 landscape (deck only)",
     icon: FileType2,
     onlyForTypes: ["slide_deck"],
   },
   {
-    id: "pptx",
-    label: "PowerPoint (.pptx) — deck only",
+    key: "pdf-letter",
+    format: "pdf",
+    options: { pdf_paper: "letter" },
+    label: "PDF · Letter landscape (deck only)",
+    icon: FileType2,
+    onlyForTypes: ["slide_deck"],
+  },
+  {
+    key: "pdf-widescreen",
+    format: "pdf",
+    options: { pdf_paper: "widescreen-16x9" },
+    label: "PDF · 16:9 widescreen (deck only)",
+    icon: FileType2,
+    onlyForTypes: ["slide_deck"],
+  },
+  {
+    key: "pptx-16x9",
+    format: "pptx",
+    options: { pptx_size: "16x9" },
+    label: "PowerPoint · 16:9 (deck only)",
     icon: Presentation,
     onlyForTypes: ["slide_deck"],
   },
-  { id: "handoff", label: "Developer handoff (.zip)", icon: PackagePlus },
+  {
+    key: "pptx-4x3",
+    format: "pptx",
+    options: { pptx_size: "4x3" },
+    label: "PowerPoint · 4:3 (deck only)",
+    icon: Presentation,
+    onlyForTypes: ["slide_deck"],
+  },
+  { key: "handoff", format: "handoff", label: "Developer handoff (.zip)", icon: PackagePlus },
 ];
 
 export default function ExportMenu({
@@ -79,7 +111,8 @@ export default function ExportMenu({
   });
 
   const createMutation = useMutation({
-    mutationFn: (format: ExportFormat) => createExport(projectId, format),
+    mutationFn: (input: { format: ExportFormat; options?: ExportOptions }) =>
+      createExport(projectId, input.format, input.options),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ["project", projectId, "exports"],
@@ -148,13 +181,13 @@ export default function ExportMenu({
             Boolean(o.phase) || wrongType || createMutation.isPending;
           return (
             <DropdownMenuItem
-              key={o.id}
+              key={o.key}
               disabled={disabled}
               onClick={(event) => {
                 if (disabled) return;
                 // Keep the dropdown open so the user can watch the status list.
                 event.preventDefault();
-                createMutation.mutate(o.id);
+                createMutation.mutate({ format: o.format, options: o.options });
               }}
             >
               <o.icon className="h-3.5 w-3.5" />
@@ -176,7 +209,10 @@ export default function ExportMenu({
             <DropdownMenuSeparator />
             <ExportStatusList
               jobs={jobs}
-              onRetry={(format) => createMutation.mutate(format)}
+              // Retry uses default options — see services/exports.ts
+              // comment on enqueueProjectExport. The user can re-pick a
+              // specific preset from the menu above if they need it.
+              onRetry={(format) => createMutation.mutate({ format })}
               retryDisabled={createMutation.isPending}
             />
           </>

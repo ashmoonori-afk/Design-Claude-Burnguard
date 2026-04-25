@@ -7,6 +7,7 @@ import type {
   ArtifactSummary,
   ExportFormat,
   ExportJob,
+  ExportOptions,
   FileInfo,
   PatchFileResponse,
 } from "@bg/shared";
@@ -331,7 +332,55 @@ artifactRoutes.post("/api/projects/:id/exports", async (c) => {
     );
   }
 
-  const job = await enqueueProjectExport(projectId, format);
+  // Parse and validate the optional `options` block. Anything unknown
+  // is rejected so a typo in the client doesn't silently fall back to
+  // defaults — the user thinks they picked Letter, gets A4.
+  const optionsRaw =
+    body && typeof body === "object" && "options" in body
+      ? (body as { options: unknown }).options
+      : undefined;
+  const options: ExportOptions = {};
+  if (optionsRaw !== undefined) {
+    if (typeof optionsRaw !== "object" || optionsRaw === null) {
+      return c.json(
+        fail("invalid_export_options", "options must be an object", { optionsRaw }),
+        400,
+      );
+    }
+    const opts = optionsRaw as Record<string, unknown>;
+    if (opts.pdf_paper !== undefined) {
+      if (
+        opts.pdf_paper !== "a4" &&
+        opts.pdf_paper !== "letter" &&
+        opts.pdf_paper !== "widescreen-16x9"
+      ) {
+        return c.json(
+          fail(
+            "invalid_export_options",
+            "options.pdf_paper must be one of a4 | letter | widescreen-16x9",
+            { value: opts.pdf_paper },
+          ),
+          400,
+        );
+      }
+      options.pdf_paper = opts.pdf_paper;
+    }
+    if (opts.pptx_size !== undefined) {
+      if (opts.pptx_size !== "16x9" && opts.pptx_size !== "4x3") {
+        return c.json(
+          fail(
+            "invalid_export_options",
+            "options.pptx_size must be one of 16x9 | 4x3",
+            { value: opts.pptx_size },
+          ),
+          400,
+        );
+      }
+      options.pptx_size = opts.pptx_size;
+    }
+  }
+
+  const job = await enqueueProjectExport(projectId, format, options);
   return c.json(ok(job satisfies ExportJob), 202);
 });
 

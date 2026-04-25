@@ -1,7 +1,7 @@
-import type { ExportFormat, ExportJob } from "@bg/shared";
+import type { ExportFormat, ExportJob, ExportOptions } from "@bg/shared";
 import { apiFetch } from "./client";
 
-export type { ExportFormat, ExportJob };
+export type { ExportFormat, ExportJob, ExportOptions };
 
 /**
  * User-facing label per export format, used by ExportStatusList and
@@ -24,10 +24,11 @@ export function formatLabel(format: ExportFormat): string {
 export async function createExport(
   projectId: string,
   format: ExportFormat,
+  options?: ExportOptions,
 ): Promise<ExportJob> {
   return apiFetch<ExportJob>(`/api/projects/${projectId}/exports`, {
     method: "POST",
-    body: JSON.stringify({ format }),
+    body: JSON.stringify(options ? { format, options } : { format }),
   });
 }
 

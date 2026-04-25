@@ -1,6 +1,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type LaunchOptions } from "playwright-core";
+import type { PdfPaper } from "@bg/shared";
 
 export class PdfExportError extends Error {
   readonly code: "chromium_not_installed" | "deck_not_ready" | "render_failed";
@@ -15,9 +16,12 @@ export class PdfExportError extends Error {
  * CSS injected by Playwright before `page.pdf()`. Overrides the slide-deck
  * template's `data-deck-ready` single-slide gate so every `<section data-slide>`
  * renders, each on its own page, with no nav-bar artifact.
+ *
+ * Note: no `@page { size: ... }` rule here. Page dimensions are now
+ * driven entirely by the `paper` option below so the user can pick
+ * A4 / Letter / 16:9 widescreen without recompiling.
  */
 export const PDF_PRINT_CSS = `
-@page { size: A4 landscape; margin: 0; }
 html, body {
   margin: 0 !important;
   padding: 0 !important;
@@ -37,10 +41,32 @@ html, body {
 }
 `;
 
+interface PdfPageDimensions {
+  format?: "A4" | "Letter";
+  width?: string;
+  height?: string;
+}
+
+export function pdfDimensionsForPaper(paper: PdfPaper): PdfPageDimensions {
+  switch (paper) {
+    case "letter":
+      return { format: "Letter" };
+    case "widescreen-16x9":
+      // A real 16:9 frame so screen-shaped decks fill every PDF page
+      // without margins, instead of being letterboxed onto A4.
+      return { width: "13.333in", height: "7.5in" };
+    case "a4":
+    default:
+      return { format: "A4" };
+  }
+}
+
 export async function renderDeckToPdf(input: {
   stagedDir: string;
   entrypoint: string;
   outputPath: string;
+  /** Defaults to A4 when omitted — preserves prior behavior. */
+  paper?: PdfPaper;
 }): Promise<void> {
   const browser = await launchChromium();
   try {
@@ -74,12 +100,21 @@ export async function renderDeckToPdf(input: {
     await page.addStyleTag({ content: PDF_PRINT_CSS });
 
     try {
+      const dims = pdfDimensionsForPaper(input.paper ?? "a4");
       await page.pdf({
         path: input.outputPath,
-        format: "A4",
-        landscape: true,
+        format: dims.format,
+        width: dims.width,
+        height: dims.height,
+        // Decks are inherently landscape; only A4 / Letter actually
+        // need the flag. The 16:9 widescreen path uses explicit width
+        // / height so `landscape` is moot for it.
+        landscape: dims.format !== undefined,
         printBackground: true,
-        preferCSSPageSize: true,
+        // Never let the document's CSS @page rules override the chosen
+        // paper. We strip @page from PDF_PRINT_CSS but the user's deck
+        // could still ship its own @page rule.
+        preferCSSPageSize: false,
       });
     } catch (err) {
       throw new PdfExportError(

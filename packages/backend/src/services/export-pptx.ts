@@ -2,6 +2,25 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import PptxGenJS from "pptxgenjs";
 import { chromium, type Browser, type LaunchOptions } from "playwright-core";
+import type { PptxSize } from "@bg/shared";
+
+interface PptxLayoutDims {
+  name: string;
+  width: number; // inches
+  height: number; // inches
+}
+
+export function pptxLayoutForSize(size: PptxSize): PptxLayoutDims {
+  switch (size) {
+    case "4x3":
+      // Standard PowerPoint 4:3 layout = 10in × 7.5in.
+      return { name: "BG_4x3", width: 10, height: 7.5 };
+    case "16x9":
+    default:
+      // 16:9 widescreen = 10in × 5.625in (PptxGenJS default ratio).
+      return { name: "BG_16x9", width: 10, height: 5.625 };
+  }
+}
 
 export class PptxExportError extends Error {
   readonly code: "chromium_not_installed" | "deck_not_ready" | "render_failed";
@@ -137,6 +156,8 @@ export async function renderDeckToPptx(input: {
   stagedDir: string;
   entrypoint: string;
   outputPath: string;
+  /** Defaults to 16:9 widescreen — preserves prior behavior. */
+  size?: PptxSize;
 }): Promise<void> {
   const browser = await launchChromium();
   try {
@@ -182,7 +203,7 @@ export async function renderDeckToPptx(input: {
     }
 
     try {
-      await writePptx(extracted, input.outputPath);
+      await writePptx(extracted, input.outputPath, input.size ?? "16x9");
     } catch (err) {
       throw new PptxExportError(
         "render_failed",
@@ -202,13 +223,19 @@ export async function renderDeckToPptx(input: {
 export async function writePptx(
   slides: ExtractedSlide[],
   outputPath: string,
+  size: PptxSize = "16x9",
 ): Promise<void> {
-  const SLIDE_W_IN = 10;
-  const SLIDE_H_IN = 5.625; // 16:9 at the default pptx width
+  const layout = pptxLayoutForSize(size);
+  const SLIDE_W_IN = layout.width;
+  const SLIDE_H_IN = layout.height;
 
   const pres = new PptxGenJS();
-  pres.defineLayout({ name: "BG_16x9", width: SLIDE_W_IN, height: SLIDE_H_IN });
-  pres.layout = "BG_16x9";
+  pres.defineLayout({
+    name: layout.name,
+    width: SLIDE_W_IN,
+    height: SLIDE_H_IN,
+  });
+  pres.layout = layout.name;
 
   for (const slide of slides) {
     const pSlide = pres.addSlide();
