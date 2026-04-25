@@ -1,3 +1,29 @@
+/**
+ * Iframe ↔ parent messaging for the canvas. Two modalities:
+ *
+ *   1. Request / response (`requestFrame*` exports). The parent posts a
+ *      typed request, the iframe's BRIDGE_SCRIPT processes it and posts
+ *      a response keyed by requestId. Used for selection, hit tests,
+ *      slide control, etc.
+ *   2. Event push (`subscribeFrameEvent`). The iframe broadcasts state
+ *      changes (e.g. active slide changed) without the parent having
+ *      to poll. Used by Canvas to drop the 5-Hz polling loop that used
+ *      to drain CPU even on idle decks.
+ *
+ * Security model:
+ *   - The canvas iframe runs with `sandbox="allow-scripts"` and no
+ *     `allow-same-origin`, so its origin is opaque. That makes
+ *     `event.origin` always `"null"` and `target.postMessage(_, "*")`
+ *     the only viable target. We compensate with a strict source check
+ *     (`event.source === window.parent` inside the iframe;
+ *     `event.source === request.source` in the parent), which is
+ *     immune to spoofing because no other window can become our
+ *     iframe's contentWindow.
+ *   - The shared envelope `{ __bgFrameBridge: true, ... }` doubles as
+ *     a tag so unrelated postMessages (e.g. from extensions) are
+ *     ignored cheaply.
+ */
+
 export interface FrameRect {
   left: number;
   top: number;
@@ -37,6 +63,14 @@ type BridgeAction =
   | "active-slide"
   | "set-active-slide";
 
+/**
+ * Default timeout per request. Bumped from the original 200 ms because
+ * a busy iframe (large DOM, mid-render Edit-mode hover spam) can lose
+ * a tick or two and leave callers staring at a silent `null`. 1000 ms
+ * is long enough to absorb that without making genuine failures slow.
+ */
+export const FRAME_BRIDGE_REQUEST_TIMEOUT_MS = 1_000;
+
 interface BridgeRequest {
   __bgFrameBridge: true;
   type: "request";
@@ -52,6 +86,25 @@ interface BridgeResponse {
   payload?: unknown;
 }
 
+/**
+ * Names of one-way events the iframe can push to the parent without
+ * being asked. Add new event names here AND in BRIDGE_SCRIPT (or
+ * deck-stage.ts for runtime-emitted events).
+ */
+type FrameEventName = "active-slide-changed";
+
+interface FrameEvent<E extends FrameEventName = FrameEventName> {
+  __bgFrameBridge: true;
+  type: "event";
+  event: E;
+  payload: E extends "active-slide-changed" ? { index: number } : unknown;
+}
+
+type FrameEventPayload<E extends FrameEventName> = Extract<
+  FrameEvent,
+  { event: E }
+>["payload"];
+
 interface PendingRequest {
   source: Window;
   resolve: (value: unknown) => void;
@@ -60,21 +113,72 @@ interface PendingRequest {
 }
 
 const pending = new Map<string, PendingRequest>();
+type AnyEventHandler = (payload: unknown) => void;
+const subscribers = new Map<
+  HTMLIFrameElement,
+  Map<FrameEventName, Set<AnyEventHandler>>
+>();
 
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event: MessageEvent) => {
-    const data = event.data as BridgeResponse | undefined;
-    if (!data || data.__bgFrameBridge !== true || data.type !== "response") {
+    const data = event.data as
+      | BridgeResponse
+      | FrameEvent
+      | undefined;
+    if (!data || data.__bgFrameBridge !== true) return;
+
+    if (data.type === "response") {
+      const request = pending.get(data.requestId);
+      if (!request || event.source !== request.source) {
+        return;
+      }
+      pending.delete(data.requestId);
+      window.clearTimeout(request.timer);
+      request.resolve(data.payload);
       return;
     }
-    const request = pending.get(data.requestId);
-    if (!request || event.source !== request.source) {
-      return;
+
+    if (data.type === "event") {
+      // Route to the iframe whose contentWindow matches the event source.
+      // Iterating is fine — we never have more than a handful of canvas
+      // iframes alive at once.
+      for (const [iframe, perEvent] of subscribers) {
+        if (iframe.contentWindow === event.source) {
+          const handlers = perEvent.get(data.event);
+          if (handlers) {
+            for (const handler of handlers) handler(data.payload);
+          }
+          break;
+        }
+      }
     }
-    pending.delete(data.requestId);
-    window.clearTimeout(request.timer);
-    request.resolve(data.payload);
   });
+}
+
+export function subscribeFrameEvent<E extends FrameEventName>(
+  iframe: HTMLIFrameElement | null,
+  event: E,
+  handler: (payload: FrameEventPayload<E>) => void,
+): () => void {
+  if (!iframe) return () => {};
+  let perEvent = subscribers.get(iframe);
+  if (!perEvent) {
+    perEvent = new Map();
+    subscribers.set(iframe, perEvent);
+  }
+  let handlers = perEvent.get(event);
+  if (!handlers) {
+    handlers = new Set();
+    perEvent.set(event, handlers);
+  }
+  handlers.add(handler as AnyEventHandler);
+  return () => {
+    const ps = subscribers.get(iframe);
+    const ss = ps?.get(event);
+    ss?.delete(handler as AnyEventHandler);
+    if (ss && ss.size === 0) ps?.delete(event);
+    if (ps && ps.size === 0) subscribers.delete(iframe);
+  };
 }
 
 export function buildSandboxedArtifactSrcDoc(
@@ -181,9 +285,13 @@ async function requestFrameBridge(
     const timer = window.setTimeout(() => {
       pending.delete(requestId);
       resolve(null);
-    }, 200);
+    }, FRAME_BRIDGE_REQUEST_TIMEOUT_MS);
     pending.set(requestId, { source: target, resolve, reject, timer });
     try {
+      // targetOrigin "*" is unavoidable: the iframe's sandbox makes its
+      // origin opaque, so any other value would silently drop the
+      // message. The recipient enforces a strict source check (see
+      // BRIDGE_SCRIPT) so this isn't a hand-off to an arbitrary origin.
       target.postMessage(request, "*");
     } catch (error) {
       pending.delete(requestId);
@@ -398,4 +506,50 @@ const BRIDGE_SCRIPT = String.raw`(function () {
       payload: response
     }, "*");
   });
+
+  // Push: notify the parent of the active slide whenever it changes
+  // (hashchange, deck-stage nav, MutationObserver-driven structural
+  // edit). Lets the parent drop its 5-Hz polling loop. Same envelope
+  // tag (__bgFrameBridge) so the parent's single message listener
+  // routes both kinds of payload.
+  function notifyActiveSlide() {
+    try {
+      var slides = document.querySelectorAll("[data-slide]");
+      var index;
+      if (!slides || slides.length === 0) {
+        index = -1;
+      } else {
+        var active = document.querySelector("[data-slide][data-active]");
+        index = active ? Array.prototype.indexOf.call(slides, active) : 0;
+      }
+      window.parent.postMessage({
+        __bgFrameBridge: true,
+        type: "event",
+        event: "active-slide-changed",
+        payload: { index: index }
+      }, "*");
+    } catch (e) { /* parent gone, ignore */ }
+  }
+
+  window.addEventListener("hashchange", notifyActiveSlide);
+
+  // Watch for [data-slide] structural edits AND data-active attribute
+  // toggles. Either one means the active slide may have changed.
+  if (typeof MutationObserver === "function") {
+    var slideObserver = new MutationObserver(function() { notifyActiveSlide(); });
+    slideObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-active"]
+    });
+  }
+
+  // Emit an initial state so the parent gets the first slide without
+  // a request.
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    notifyActiveSlide();
+  } else {
+    document.addEventListener("DOMContentLoaded", notifyActiveSlide);
+  }
 })();`;

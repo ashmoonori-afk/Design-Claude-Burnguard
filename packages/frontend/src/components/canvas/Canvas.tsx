@@ -13,8 +13,8 @@ import SelectorOverlay from "./SelectorOverlay";
 import TweaksLayer, { type TweaksTarget } from "./TweaksLayer";
 import {
   buildSandboxedArtifactSrcDoc,
-  requestFrameActiveSlide,
   requestFrameSetActiveSlide,
+  subscribeFrameEvent,
 } from "./frame-bridge";
 import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
@@ -183,28 +183,32 @@ export default function Canvas({
   }, [frameKey, src]);
 
   useEffect(() => {
-    let alive = true;
-    const tick = async () => {
-      if (!alive) return;
-      const next = await requestFrameActiveSlide(iframeRef.current);
-      if (!alive) return;
-      if (restoringSlideRef.current) {
-        const target = restoreTargetSlideIdxRef.current;
-        if (target == null || next === target) {
-          restoringSlideRef.current = false;
-          restoreTargetSlideIdxRef.current = null;
-          onActiveSlideChange(next);
+    // Push-based: deck-stage's BRIDGE_SCRIPT broadcasts active-slide-
+    // changed on every hashchange / data-active mutation, so we no
+    // longer poll at 5 Hz forever (audit fix #1+#3 — that polling kept
+    // burning CPU even on idle decks and even when src was null).
+    const iframe = iframeRef.current;
+    if (!iframe || !src) return;
+    const unsubscribe = subscribeFrameEvent(
+      iframe,
+      "active-slide-changed",
+      (payload) => {
+        // -1 means the artifact has no [data-slide] elements (e.g. a
+        // prototype). Surface that as null so the panel hides slide UI.
+        const next = payload.index >= 0 ? payload.index : null;
+        if (restoringSlideRef.current) {
+          const target = restoreTargetSlideIdxRef.current;
+          if (target == null || next === target) {
+            restoringSlideRef.current = false;
+            restoreTargetSlideIdxRef.current = null;
+            onActiveSlideChange(next);
+          }
+          return;
         }
-        return;
-      }
-      onActiveSlideChange(next);
-    };
-    void tick();
-    const id = window.setInterval(tick, 200);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
+        onActiveSlideChange(next);
+      },
+    );
+    return unsubscribe;
   }, [frameKey, onActiveSlideChange, src]);
 
   useEffect(() => {
@@ -248,7 +252,8 @@ export default function Canvas({
             key={frameKey}
             title="Canvas"
             srcDoc={frameSrcDoc ?? PLACEHOLDER_SRC}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            allow="fullscreen"
             className="absolute inset-0 h-full w-full border-0 bg-background"
           />
         ) : (
@@ -256,7 +261,8 @@ export default function Canvas({
             ref={iframeRef}
             title="Canvas placeholder"
             srcDoc={PLACEHOLDER_SRC}
-            sandbox="allow-scripts"
+            sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+            allow="fullscreen"
             className="absolute inset-0 h-full w-full border-0 bg-background"
           />
         )}
