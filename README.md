@@ -77,7 +77,33 @@ concrete advantages for real design work:
   uploads + chat attachments with Python-backed compact manifests +
   text-safe extracted sidecars + design-system delete / edit flows +
   client-side file-size gates)
-- Newest polish (this cycle): **compact chat context mode**
+- Newest shipped (this cycle):
+  - **P4.3 Figma sync** — config-stored Figma personal access token
+    (Settings → Figma access), `figma.com` URLs as a first-class
+    extraction source alongside github / website, published color +
+    text styles flow into the canonical DS bundle as
+    `--color-<slug>` tokens and a typography list. PAT is never
+    echoed back through the API.
+  - **Export audit** (7 fixes) — cross-platform zip via JSZip
+    (PowerShell-only `Compress-Archive` removed); correct
+    Content-Type per format; friendly download filenames
+    (`<project>-<format>-<date>.<ext>`) with RFC 5987 Unicode
+    support; async-failure toasts with a Chromium-install hint;
+    one-click retry on failed jobs; 7-day GC of stale export
+    artifacts on bootstrap; PDF paper presets (A4 / Letter / 16:9)
+    and PPTX slide-size presets (16:9 / 4:3).
+  - **P4.7 Sample library hardening** — fictional Northvale Capital
+    + Splash sample brands replace the prior real-trademark
+    placeholders, all 12 GS logo files removed, the
+    `design system sample/uploads/` bucket is gitignored + skipped
+    by the seed copy, Examples tab now shows the real working
+    tutorials and prompt-samples (was hidden behind a
+    `from_template`-only filter), one-click "Restore samples" and
+    "Try this prompt" affordances, the five fixture projects ship
+    real starter HTML so opening any Home card lands on a non-empty
+    canvas, and two new prompt-samples cover Korean SaaS + a non-
+    landing fund-ops dashboard.
+- Recent polish: **compact chat context mode**
   (Settings → Chat context: `compact` / `full`) plus a pre-extracted
   deck/prototype structure summary and token-budget rules in the
   compact skill so multi-edit turns stop ballooning to ~580 K cached
@@ -91,10 +117,10 @@ concrete advantages for real design work:
   button delay), rotating waiting-state placeholder in the composer,
   upgraded project-type skills for slide decks and prototypes (layout /
   section archetype catalogs + strict per-slide content rules)
-- Still open: **P3.11 Linux build**, **P4.3 Figma sync**, full browser E2E
-  automation, **P4.5 signing / notarization**, and **P5.1 Windows / macOS
-  managed auto-update**
-- Validation status: `bun test` 117/117 green, `npm run typecheck` green
+- Still open: **P3.11 Linux build**, full browser E2E automation,
+  **P4.5 signing / notarization**, **P4.6 install packages**, and
+  **P5.1 Windows / macOS managed auto-update**
+- Validation status: `bun test` 184/184 green, `npm run typecheck` green
   (backend + frontend)
 
 ## Feature Tour
@@ -166,15 +192,29 @@ Components (buttons / cards / forms / badges + table). A validation
 card on the detail view surfaces extraction caveats (missing tokens,
 substituted fonts, logo count).
 
-### Design system ingest (P4.1 shipped, P4.2 underway)
+### Design system ingest
 
-`POST /api/design-systems/extract` clones a shallow git repo or fetches
-a live homepage + same-origin CSS, parses CSS custom properties, font
-families, and logo-like assets, then scaffolds a canonical BurnGuard
-system under `~/.burnguard/data/systems/<id>/` (README.md / SKILL.md /
-`colors_and_type.css` / `fonts/` / `assets/logos/` / `preview/*.html` ×
-16 / `ui_kits/website/` / `uploads/`). The new row lands as Draft so
-you can review it before promoting to Published.
+`POST /api/design-systems/extract` accepts three source types and
+produces the same canonical bundle for all of them:
+
+- **`source_type: github`** — shallow `git clone --depth=1` of any
+  public design-system repo, parses CSS custom properties + font
+  families + logo-like asset filenames out of the tree.
+- **`source_type: website`** — fetches the homepage + same-origin
+  CSS within a download budget, runs the same extractor.
+- **`source_type: figma`** *(P4.3, shipped)* — pulls published
+  color + text styles via the Figma REST API. Requires a personal
+  access token configured at Settings → Figma access; the value
+  lives only in `~/.burnguard/config.json` and is never echoed
+  back through the public settings API. Effect / grid styles are
+  out of MVP scope.
+
+Each path scaffolds the same canonical layout under
+`~/.burnguard/data/systems/<id>/` (README.md / SKILL.md /
+`colors_and_type.css` / `fonts/` / `assets/logos/` /
+`preview/*.html` × 16 / `ui_kits/website/` / `uploads/`). The new
+row lands as Draft so you can review it before promoting to
+Published.
 
 `POST /api/design-systems/upload` now accepts `.pptx` and `.pdf`
 sources. Those uploads go through a Python-backed compact manifest
@@ -217,15 +257,29 @@ colour and typography always flow from the linked design system's
 
 ### Exports
 
-Four formats:
+Four formats, each with size / layout presets:
 
-- **`html_zip`** — self-contained offline snapshot of the project tree.
-- **`pdf`** — Playwright-rendered deck with zero nav-bar artifacts and
-  per-slide page breaks.
-- **`pptx`** — per-slide editable text boxes (not flattened screenshots)
-  via `pptxgenjs`; bold / italic / alignment / font-family preserved.
-- **`handoff`** — developer bundle (`source/` tree + `spec.json` token
-  index + `tokens/` CSS + README).
+- **`html_zip`** — self-contained offline snapshot of the project
+  tree. Cross-platform via JSZip (no PowerShell / shell tools).
+- **`pdf`** — Playwright-rendered deck with zero nav-bar artifacts
+  and per-slide page breaks. Paper presets: A4 landscape, Letter
+  landscape, 16:9 widescreen.
+- **`pptx`** — per-slide editable text boxes (not flattened
+  screenshots) via `pptxgenjs`; bold / italic / alignment /
+  font-family preserved. Slide-size presets: 16:9 widescreen, 4:3
+  classic.
+- **`handoff`** — developer bundle (`source/` tree + `spec.json`
+  token index + `tokens/` CSS + README). Same JSZip pipeline as
+  html_zip.
+
+Downloads carry the correct per-format MIME (PDF / PPTX no longer
+mis-served as `application/zip`) and a friendly filename
+(`<project>-<format>-<date>.<ext>`) with full Unicode preserved via
+RFC 5987. Failed jobs show a Retry button on the row; if the failure
+mentions Chromium the toast points the user straight to Settings →
+"Chromium for exports". Succeeded export artifacts older than 7 days
+are garbage-collected on next bootstrap so the cache directory does
+not grow without bound.
 
 PDF and PPTX both need Chromium; install it from Settings with one
 click (backed by `npx playwright install chromium`).
@@ -245,13 +299,16 @@ click (backed by `npx playwright install chromium`).
   (`compact`). Compact mode keeps long slide-deck sessions an order of
   magnitude lighter on cached tokens; flip to `full` for one-off
   brand-precision turns.
+- **Figma access** — paste a Figma personal access token (input is
+  password-masked; value is never echoed back through the API) to
+  enable the `figma` source type in Systems → Import. Disconnect at
+  any time. Token lives only in `~/.burnguard/config.json`.
 - Per-session backend toggle reappears on the chat pane and PATCHes
   `/api/sessions/:id/backend` so the next idle turn uses the new CLI.
 
 ## Remaining Work Compared To The Claude Design Goal
 
 - Linux packaging and release path (P3.11)
-- Figma REST sync (P4.3)
 - Full browser E2E automation
 - True live tool-decision round-trip once upstream CLI streaming supports it fully
 - Easy install / launch packages for Windows and macOS: Windows installer (`Setup.exe` / `.msi`) and macOS package (`.dmg` / later optional `.pkg`) with first-run bootstrap (P4.6)

@@ -35,14 +35,23 @@
 >   backend before starting Vite, opens the browser when frontend is
 >   ready, and tears both children down on SIGINT or window close
 >   (`36059ea` + `81c068c`).
-> - `bun test` is currently 117/117 green and `npm run typecheck` is green.
+> - `bun test` is currently 184/184 green and `npm run typecheck` is green.
+> - **Shipped this cycle on top of all the above:** P4.3 Figma sync
+>   (Settings → Figma access PAT, figma.com URL as a first-class
+>   extraction source, published styles → `--color-<slug>` tokens);
+>   the seven-fix export audit (cross-platform JSZip, correct per-
+>   format Content-Type, friendly download filenames, async-failure
+>   toast with Chromium hint, retry-failed-job button, 7-day GC of
+>   stale artifacts on bootstrap, PDF paper / PPTX slide-size
+>   presets); P4.7 Sample library hardening + UX (trademark-safe
+>   Northvale Capital + Splash sample brands, uploads/ guard,
+>   Examples-tab filter fix, Restore samples + Try this prompt
+>   affordances, real starter HTML for every fixture project,
+>   Korean SaaS + dashboard prompt-samples).
 > - Immediate remaining product priorities: close P4.2 acceptance,
->   implement P4.3 Figma sync, ship P4.7 Sample library hardening
->   (trademark-safe brands, `uploads/` leak guard, Examples-tab filter
->   fix, Restore-samples affordance, "Try this prompt" one-click,
->   backfill / retire placeholder fixtures, broader sample variety —
->   surfaced by the 2026-04-24 IRIS-pptx leak audit), add stronger
->   E2E coverage, then complete signing and managed auto-update.
+>   add stronger E2E coverage, complete P3.11 Linux build, then
+>   P4.5 signing / notarization, P4.6 install packages, and P5.1
+>   managed auto-update.
 
 > **Progress key:** ✅ done · 🟡 in progress · 🔲 not started
 >
@@ -60,14 +69,16 @@
 > **one-click double-click launchers + sequenced dev-launcher**
 > (`36059ea` + `81c068c`), **deck/prototype structure summary +
 > token-budget rules in compact skill** (`f5505d3`). `bun test`:
-> 117/117 pass. **Resume at P3.11 (Linux build)** to close Milestone
-> 3.C, or pick up Phase 4 — formalise P4.2 acceptance (primary-brand-
-> colour delta harness), then P4.3 Figma sync, then **P4.7 Sample
-> library hardening + UX** (trademark-safe brands, `uploads/` leak
-> guard, Examples-tab filter, Restore-samples, one-click "Try this
-> prompt", backfill / retire placeholder fixtures, broader sample
-> variety — queued from the 2026-04-24 sample-system audit).
-> P3.10 Mac bundle still awaits hands-on Mac verification.
+> 184/184 pass. P4.3 Figma sync + the seven-fix export audit + P4.7
+> Sample library hardening all shipped after that snapshot. **Resume
+> at P3.11 (Linux build)** to close Milestone 3.C, or pick up Phase 4
+> — formalise P4.2 acceptance (primary-brand-colour delta harness),
+> then P4.5 signing / notarization, P4.6 install packages, and P5.1
+> managed auto-update. Optional follow-ups: P4.7g additional sample
+> design system in a different vertical, P4.7b CI / pre-commit guard
+> for the `design system sample/uploads/` leak vector, Figma effect /
+> grid styles + component-thumbnail asset extraction. P3.10 Mac
+> bundle still awaits hands-on Mac verification.
 
 ## 1. Current Stage
 
@@ -341,7 +352,7 @@ slice, each ends green, each carries its own DoD.
 |---|---|---|---|---|
 | **P4.1** | ✅ | **DS auto-extract — github + website URLs.** `POST /api/design-systems/extract` clones a shallow git repo (`git clone --depth=1`) or fetches a live homepage HTML (+ same-origin linked CSS) into a temp dir, walks the tree collecting CSS custom properties, font-families, and logo-like asset candidates, then templates a canonical BurnGuard design system under `~/.burnguard/data/systems/<id>/` (README.md, SKILL.md, colors_and_type.css, fonts/, assets/logos/, preview/*.html × 16, ui_kits/website/, uploads/). Companion `GET /api/design-systems/:id/files/*` serves any file under the system dir with a sniffed Content-Type so iframe previews + linked CSS resolve without a separate static host. Drizzle enum grows a `"website"` source_type; migration `0004_design_systems_website_source_type.sql` rebuilds the SQLite CHECK constraint to match (migrate.ts toggles `PRAGMA foreign_keys` off/on around the loop so the DROP+RENAME doesn't trip the projects FK). Home → **Systems** tab carries the import form (source URL + auto/github/website selector + optional name); submission navigates to the new DS and shows a validation card. Test coverage: 4 unit tests for the pure helpers (`inferSourceType` / `extractCssCustomProperties` / `contentTypeForDesignSystemFile`); `bun test` 67/67. | `backend/src/services/design-system-extract.ts` (new ~1100 lines), `backend/src/routes/system.ts`, `backend/src/db/schema.ts`, `backend/src/db/seed.ts` (+createDesignSystemRecord), `backend/src/db/migrate.ts` (FK toggle), `backend/src/db/migrations/0004_design_systems_website_source_type.sql` (new), `shared/src/design-system.ts` (+DesignSystemSourceType / request+response types), `frontend/src/api/design-system.ts` (new), `frontend/src/views/HomeView.tsx` (+import form on Systems tab), `frontend/src/views/DesignSystemView.tsx` (+validation card), `frontend/src/components/systems/*` (drop "preview route pending" copy), `backend/tests/design-system-extract.test.ts` (new), `doc/05-design-system-format.md` | Import a small public repo or any homepage → new DS appears in Home → Systems tab as a Draft → preview cards render → files under `~/.burnguard/data/systems/<id>/` match the canonical layout |
 | **P4.2** | 🟡 | **Upload-file DS extract (PDF / PPTX).** Reuses the canonical writer; swaps the source ingest stage for a multipart upload → Python-backed extractor (`pypdf` + `python-pptx`) → compact manifest (`uploads/manifest.json`) with colors, fonts, headings, bodies, per-page / per-slide summaries. The same manifest path feeds chat attachments, and each attachment also emits a `.extracted.md` text sidecar the prompt steers the CLI toward (instead of the raw binary). Draft validation card surfaces extraction notes + page-limit warnings. Settings → Python for uploads installs `pypdf` on demand. Client-side upload-size gates + design-system rename / delete flows (with template and project-reference guards) landed on this slice. Figma export extraction deferred to P4.3. | `backend/src/services/design-system-extract.ts` (+uploadIngest + normalizers), `backend/src/services/upload-extractor-py.ts` (new), `backend/src/services/upload-component-detect.ts` (new), `backend/src/services/attachments.ts` (+extracted sidecar), `backend/src/services/python-health.ts` (new), `backend/src/routes/settings.ts` (+python routes), `backend/src/harness/prompt-builder.ts` (sidecar steer), `packages/backend/requirements.txt`, `frontend/src/views/HomeView.tsx` (upload form), `frontend/src/views/DesignSystemView.tsx` (rename/delete + validation card), `frontend/src/components/settings/SettingsModal.tsx` (python install card) | Upload a 10-slide PPTX → canonical DS created; primary brand colors within 10% delta of manually picked values (acceptance harness still owed before closing) |
-| **P4.3** | 🔲 | **Figma REST sync.** Accept a Figma PAT (stored in `config.json`, chmod 600) + a file URL; fetch styles + component thumbnails; emit the same canonical bundle. Two-way sync (publish back) stays out of scope for P4.3. | `backend/src/services/figma.ts` (new), `backend/src/services/design-system-extract.ts` (+figmaIngest), `backend/src/routes/system.ts` (+POST /extract with source_type=figma), UI secret form | Authenticate with a test Figma file; tokens extract matches the styles page |
+| **P4.3** | ✅ | **Figma REST sync** — `backend/src/services/figma.ts` ships parseFigmaUrl + fetchFigmaFileMeta + fetchFigmaPublishedStyles + fetchFigmaNodes + extractFigmaTokens (FILL → `--color-<slug>` hex, TEXT → typography list with deduped fontFamily set; EFFECT / GRID and component thumbnails are MVP-deferred). `ingestFigmaSource` in `design-system-extract.ts` plugs Figma into the same SourceAnalysis shape as github / website, and the existing `writeCanonicalDesignSystem` path takes it from there. PAT lives in `~/.burnguard/config.json` (`figmaPersonalAccessToken`); `SettingsSummary` exposes only a `figma_token_set` boolean — the value never echoes back through the API. PATCH `/api/settings` accepts `figma_personal_access_token: string \| null` (write-only). Settings modal renders a password-masked input + Save / Disconnect; Systems → Import gets a `figma` source-type option that points the user at Settings when no token is set. Two-way sync (publish back to Figma) explicitly stays out of MVP scope. | `backend/src/services/figma.ts` (new), `backend/src/services/design-system-extract.ts` (+ingestFigmaSource + inferSourceType figma branch), `backend/src/config.ts` (+figmaPersonalAccessToken), `backend/src/routes/home.ts` (+ figma_token_set / figma_personal_access_token PATCH branch), `shared/src/{home,design-system}.ts` (+ types), `frontend/src/components/settings/SettingsModal.tsx` (+ Figma access section), `frontend/src/views/HomeView.tsx` (+ figma source-type option), `backend/tests/figma-client.test.ts` (18 cases) | (a) `parseFigmaUrl` accepts `/file/<key>`, `/design/<key>`, `/proto/<key>`, and bare key; rejects non-figma hosts. (b) `extractFigmaTokens` converts FILL styles to `--color-<slug>` hex entries and TEXT styles to a deduped typography list. (c) Settings round-trip: user pastes PAT → PATCH → `figma_token_set: true` on next GET; clear path PATCHes null. (d) Auth flow against a real Figma file produces a Draft DS row with the file's published styles in `colors_and_type.css` and the file name as the brand label. |
 | **P4.4** | 🔲 | **Auto-update channel.** Publish signed releases to a static bucket; app checks on launch, offers download + restart; fall back to the current manual download path. | `scripts/release.ts`, `backend/src/services/updater.ts` (new), `shared/src/release.ts` (new), `frontend/src/components/updater/UpdateBanner.tsx` (new) | New release available → in-app banner → one-click download + restart reopens with the new binary |
 | **P4.5** | 🔲 | **Windows SmartScreen signing + macOS notarization.** Wire `signtool.exe` (Windows) + `codesign` + `notarytool` (macOS) into the existing `build:windows` / `build:mac` scripts. Requires an EV code signing cert (Windows) + Apple Developer ID. | `scripts/build-binary.ts` / `scripts/build-mac.ts`, CI workflow, signing secrets | Windows SmartScreen no longer flags the binary on first run; macOS Gatekeeper admits the .app without right-click-open |
 
