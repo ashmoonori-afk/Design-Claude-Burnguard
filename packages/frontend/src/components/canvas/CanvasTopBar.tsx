@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CanvasMode } from "@/components/modes/types";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,21 @@ export default function CanvasTopBar({
   mode,
   onModeChange,
   onRefresh,
+  canUndo = false,
+  undoPending = false,
+  onUndo,
 }: {
   mode: CanvasMode | null;
   onModeChange: (m: CanvasMode | null) => void;
   onRefresh: () => void;
+  /**
+   * Whether the active file has a single-step undo entry available.
+   * Audit fix #7: shows after any GUI patch (Edit / Tweaks save)
+   * and clears once the undo runs or the next patch overwrites it.
+   */
+  canUndo?: boolean;
+  undoPending?: boolean;
+  onUndo?: () => void;
 }) {
   return (
     <div className="h-10 border-b border-border bg-background flex items-center justify-between px-3 shrink-0">
@@ -55,6 +66,20 @@ export default function CanvasTopBar({
       </div>
 
       <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onUndo}
+          disabled={!canUndo || undoPending || !onUndo}
+          title={
+            canUndo
+              ? "Undo last save (Edit / Tweaks)"
+              : "No GUI patch to undo on the active file"
+          }
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"

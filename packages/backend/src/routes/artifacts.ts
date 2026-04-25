@@ -19,7 +19,12 @@ import {
   formatMime,
 } from "../services/export-naming";
 import { noteEmittedFileChange } from "../services/file-change-broker";
-import { FilePatchError, patchHtmlNode } from "../services/file-patch";
+import {
+  FilePatchError,
+  getFileUndoState,
+  patchHtmlNode,
+  undoLastFilePatch,
+} from "../services/file-patch";
 import { getExportJob, listProjectExports } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
 
@@ -212,6 +217,67 @@ artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
     }
     throw err;
   }
+});
+
+// Single-step file-level undo for the GUI patch path (audit fix #7).
+// GET reports whether the active file has an undo entry; POST restores
+// the pre-patch content and clears the entry.
+artifactRoutes.get("/api/projects/:id/fs/*/undo-info", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(
+      fail("project_not_found", "Project not found", { projectId }),
+      404,
+    );
+  }
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path.replace(/\/undo-info$/, "");
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+  return c.json(ok(getFileUndoState(projectId, relPath)));
+});
+
+artifactRoutes.post("/api/projects/:id/fs/*/undo", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(
+      fail("project_not_found", "Project not found", { projectId }),
+      404,
+    );
+  }
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path.replace(/\/undo$/, "");
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+  const result = await undoLastFilePatch(projectId, relPath);
+  if (!result) {
+    return c.json(
+      fail("no_undo_available", "No prior patch is available to undo", {
+        relPath,
+      }),
+      404,
+    );
+  }
+  // Same dedupe trick as PATCH: tell the file-change broker we wrote
+  // this so the watcher does not re-emit a duplicate `file.changed`.
+  noteEmittedFileChange(projectId, relPath);
+  await indexProjectFiles(projectId);
+  return c.json(
+    ok({
+      rel_path: relPath,
+      updated_at: result.updatedAt,
+    }),
+  );
 });
 
 /**

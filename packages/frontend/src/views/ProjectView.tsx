@@ -27,6 +27,7 @@ import {
 } from "@/api/project";
 import { apiFetch, ApiError } from "@/api/client";
 import { restoreCheckpoint } from "@/api/checkpoints";
+import { getFileUndoInfo, undoLastFilePatch } from "@/api/files";
 import {
   createProjectComment,
   listProjectComments,
@@ -283,6 +284,9 @@ export default function ProjectView() {
       );
       void queryClient.invalidateQueries({ queryKey: ["project", id, "files"] });
       void queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["project", id, "fs", variables.relPath, "undo-info"],
+      });
       setRefreshTick((value) => value + 1);
     },
     onError: (error) => {
@@ -318,6 +322,9 @@ export default function ProjectView() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
         queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", id, "fs", variables.relPath, "undo-info"],
+        }),
       ]);
       setRefreshTick((value) => value + 1);
     },
@@ -658,6 +665,57 @@ export default function ProjectView() {
     return fallback;
   }, [activeTabId, artifacts?.entrypoint_url, project, tabs]);
 
+  // File-level single-step undo (audit fix #7). Tracks per-file undo
+  // availability and exposes it through the canvas top bar. Server
+  // keeps the previous content of the last patched file in memory and
+  // rolls back on POST /undo. The query key includes activeTabId so a
+  // tab switch refetches; the patch / tweaks mutations invalidate
+  // this key so a successful save flips canUndo from false → true.
+  const undoActiveRelPath = useMemo<string | null>(() => {
+    const activeFile = tabs.find(
+      (tab) => tab.id === activeTabId && tab.kind === "file" && tab.relPath,
+    );
+    return activeFile?.relPath ?? null;
+  }, [activeTabId, tabs]);
+  const undoInfoQuery = useQuery({
+    queryKey: ["project", id, "fs", undoActiveRelPath, "undo-info"] as const,
+    queryFn: () => {
+      if (!id || !undoActiveRelPath) {
+        return { can_undo: false, stored_at: null };
+      }
+      return getFileUndoInfo(id, undoActiveRelPath);
+    },
+    enabled: Boolean(id && undoActiveRelPath),
+  });
+  const undoMutation = useMutation({
+    mutationFn: () => {
+      if (!id || !undoActiveRelPath) {
+        throw new Error("no_active_file");
+      }
+      return undoLastFilePatch(id, undoActiveRelPath);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["project", id, "fs", undoActiveRelPath, "undo-info"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", id, "artifacts"],
+        }),
+      ]);
+      setRefreshTick((value) => value + 1);
+      pushToast({ title: "Last save undone", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Could not undo",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    },
+  });
+
   useEffect(() => {
     if (!tabs.find((tab) => tab.id === activeTabId)) {
       setActiveTabId(tabs[0]?.id ?? "design-system");
@@ -793,6 +851,9 @@ export default function ProjectView() {
                 if (!id) return;
                 refreshMutation.mutate();
               }}
+              canUndo={Boolean(undoInfoQuery.data?.can_undo)}
+              undoPending={undoMutation.isPending}
+              onUndo={() => undoMutation.mutate()}
               comments={comments}
               activeRelPath={activeRelPath}
               activeSlideIdx={activeSlideIdx}

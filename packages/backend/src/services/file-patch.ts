@@ -60,8 +60,89 @@ export async function patchHtmlNode(
 
   const html = await readFile(resolved.absolutePath, "utf8");
   const output = applyHtmlNodePatch(html, input);
+
+  // Capture pre-patch content for the in-memory file-level undo (audit
+  // fix #7). Stored before the rename so the undo entry is consistent
+  // even if the write itself throws.
+  rememberPatchedFile(projectId, relPath, html);
+
   await atomicWriteFile(resolved.absolutePath, output);
   return { absolutePath: resolved.absolutePath, updatedAt: Date.now() };
+}
+
+/**
+ * Single-step in-memory undo for GUI-driven patches (Edit + Tweaks).
+ * Cross-turn rollback is already covered by the per-turn checkpoint
+ * snapshot system; this fills the gap between turns where the user
+ * may make a series of small edits without ever sending a chat
+ * message. Cleared on backend restart by design — undo is a same-
+ * session affordance.
+ *
+ * One entry per (projectId, relPath); a second patch evicts the
+ * first, mirroring how the Tweaks Cmd/Ctrl+Z stack used to behave at
+ * the inline-style level (P3.12).
+ */
+interface UndoEntry {
+  content: string;
+  storedAt: number;
+}
+
+const undoStore = new Map<string, UndoEntry>();
+
+function undoKey(projectId: string, relPath: string): string {
+  return `${projectId}::${relPath}`;
+}
+
+function rememberPatchedFile(
+  projectId: string,
+  relPath: string,
+  preContent: string,
+): void {
+  undoStore.set(undoKey(projectId, relPath), {
+    content: preContent,
+    storedAt: Date.now(),
+  });
+}
+
+export interface FileUndoState {
+  can_undo: boolean;
+  stored_at: number | null;
+}
+
+export function getFileUndoState(
+  projectId: string,
+  relPath: string,
+): FileUndoState {
+  const entry = undoStore.get(undoKey(projectId, relPath));
+  return entry
+    ? { can_undo: true, stored_at: entry.storedAt }
+    : { can_undo: false, stored_at: null };
+}
+
+export async function undoLastFilePatch(
+  projectId: string,
+  relPath: string,
+): Promise<{ absolutePath: string; updatedAt: number } | null> {
+  const key = undoKey(projectId, relPath);
+  const entry = undoStore.get(key);
+  if (!entry) return null;
+  const resolved = await resolveProjectFile(projectId, relPath);
+  if (!resolved) {
+    // Stale entry — file vanished. Drop it so the UI stops offering Undo.
+    undoStore.delete(key);
+    return null;
+  }
+  await atomicWriteFile(resolved.absolutePath, entry.content);
+  undoStore.delete(key);
+  return { absolutePath: resolved.absolutePath, updatedAt: Date.now() };
+}
+
+/**
+ * Test helper. Clears all stored undo entries so tests do not leak
+ * state between runs. Not part of the public route surface.
+ */
+export function __resetFilePatchUndoStoreForTests(): void {
+  undoStore.clear();
 }
 
 /**

@@ -1,10 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
+  __resetFilePatchUndoStoreForTests,
   applyHtmlNodePatch,
   FilePatchError,
+  getFileUndoState,
   parseInlineStyle,
   serializeInlineStyle,
 } from "../src/services/file-patch";
+
+afterEach(() => {
+  __resetFilePatchUndoStoreForTests();
+});
 
 const FIXTURE = `<!doctype html>
 <html>
@@ -226,5 +232,24 @@ describe("parseInlineStyle / serializeInlineStyle", () => {
       filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2))",
       margin: "4px",
     });
+  });
+});
+
+// File-level single-step undo store (audit fix #7). The full round-trip
+// (patchHtmlNode → undoLastFilePatch → file content restored) needs a
+// real project on disk + a DB row, so it's exercised manually in the
+// app. These tests pin the public read-only surface so the empty-store
+// contract and the test reset helper never silently regress.
+describe("file undo store", () => {
+  test("getFileUndoState returns can_undo:false on an unseen file", () => {
+    const state = getFileUndoState("project-x", "deck.html");
+    expect(state.can_undo).toBe(false);
+    expect(state.stored_at).toBeNull();
+  });
+
+  test("the test-only reset helper is idempotent", () => {
+    expect(() => __resetFilePatchUndoStoreForTests()).not.toThrow();
+    expect(() => __resetFilePatchUndoStoreForTests()).not.toThrow();
+    expect(getFileUndoState("project-x", "deck.html").can_undo).toBe(false);
   });
 });

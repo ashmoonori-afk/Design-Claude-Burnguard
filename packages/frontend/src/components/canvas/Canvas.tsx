@@ -93,6 +93,9 @@ export default function Canvas({
   drawLayerRef,
   onCommitDraws,
   onActiveSlideChange,
+  canUndo,
+  undoPending,
+  onUndo,
 }: {
   mode: CanvasMode | null;
   src?: string | null;
@@ -123,6 +126,10 @@ export default function Canvas({
   drawLayerRef: Ref<DrawLayerHandle>;
   onCommitDraws: (shapes: DrawShape[]) => void;
   onActiveSlideChange: (value: number | null) => void;
+  /** Audit fix #7 — file-level single-step undo for the active artifact. */
+  canUndo?: boolean;
+  undoPending?: boolean;
+  onUndo?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -265,6 +272,9 @@ export default function Canvas({
         mode={mode}
         onModeChange={onModeChange}
         onRefresh={onRefresh}
+        canUndo={canUndo}
+        undoPending={undoPending}
+        onUndo={onUndo}
       />
       <div ref={containerRef} className="relative flex-1 overflow-hidden">
         {src ? (
