@@ -17,7 +17,7 @@ export const PROMPT_SAMPLE_TAG = "[burnguard:prompt-sample]";
 export interface PromptSample {
   slug: string;
   name: string;
-  layout: "split-saas" | "liquid-orb" | "editorial" | "cinematic";
+  layout: "split-saas" | "liquid-orb" | "editorial" | "cinematic" | "dashboard";
   eyebrow: string;
   headline: string;
   subhead: string;
@@ -183,6 +183,92 @@ Layout:
 - Avoid decorative blobs. Use the background atmosphere for depth.
 
 Use data-bg-node-id on logo, nav CTA, headline, subtext, and hero CTA.`,
+  },
+  {
+    slug: "daon-korean-saas",
+    name: `${PROMPT_SAMPLE_TAG} Daon Korean SaaS landing`,
+    layout: "editorial",
+    eyebrow: "한국어 SaaS 랜딩",
+    headline: "다온",
+    subhead:
+      "한국 스타트업 풍 SaaS 랜딩 페이지 — 단일 HTML 파일, 한국어 카피, Pretendard 한글 타이포 + 미니멀 monochrome.",
+    theme: {
+      bg: "#fafafa",
+      fg: "#0a0a0a",
+      muted: "rgba(10,10,10,0.62)",
+      accent: "#1a3aff",
+      panel: "rgba(10,10,10,0.04)",
+    },
+    prompt: `한국 SaaS 스타트업 "다온"의 단일 파일 랜딩 페이지를 만들어줘.
+
+전체 HTML/CSS 를 하나의 index.html 안에 인라인으로 넣고 외부 의존성은 쓰지 마.
+
+브랜드 보이스:
+- 다온은 자영업자 / 1인 기업가의 정산·세금·매출 관리를 도와주는 SaaS.
+- 톤은 차분하고 신뢰감 있게 — 과장 없이, 숫자와 사실 위주.
+- 모든 카피는 한국어. 영문 혼용 최소화.
+
+비주얼 톤:
+- 오프-화이트 배경 (#fafafa), 잉크블랙 텍스트 (#0a0a0a).
+- 강조 컬러는 액션블루 #1a3aff, 인터랙티브 요소에만.
+- 한국어 본문은 Pretendard 또는 시스템 한글 폰트 fallback (Apple SD Gothic Neo, Noto Sans KR).
+- 제목은 약간 큰 굵은 무게 (700 이상), 자간 약간 좁게.
+- 그라디언트 / 텍스처 / 일러스트레이션은 사용 금지. 여백과 타이포로 만 구성.
+
+구조:
+1. 상단 네비 — 좌측 "다온" 워드마크, 가운데 [기능 / 가격 / 고객사례 / 자료실], 우측 [로그인][무료로 시작하기].
+2. 히어로 — 왼쪽: 헤드라인 "정산은 다온이, 사장은 매장에." + 서브헤드 "은행 / 카드사 / PG 정산을 자동으로 모으고, 세금까지 한 번에." + CTA [무료로 시작하기] + 보조 CTA [데모 보기]. 오른쪽: 정산 요약 카드 mockup (이번 달 정산 / 예상 세금 / 카드사별 수수료).
+3. 사회적 증거 한 줄 — "전국 12,400+ 자영업자가 다온을 쓰고 있어요." (숫자는 변경 가능)
+4. 기능 3카드 — "정산 자동 매핑", "세금 1-탭 신고", "매장별 손익 대시보드".
+5. 가격 — 무료 / 프로 (월 19,000원) / 비즈니스 (월 49,000원) 3티어, 한국 원화 표기.
+6. CTA 밴드 — "지금 시작하면 첫 30일 무료" + 가입 버튼.
+7. 푸터 — 회사 정보, 사업자등록번호 (placeholder), 개인정보처리방침, 이용약관.
+
+모든 가시 텍스트 요소에 data-bg-node-id 부여 (예: data-bg-node-id="hero-headline"), BurnGuard Edit 모드에서 바로 잡을 수 있게.`,
+  },
+  {
+    slug: "pulse-fund-ops-dashboard",
+    name: `${PROMPT_SAMPLE_TAG} Pulse fund-ops dashboard`,
+    layout: "dashboard",
+    eyebrow: "Admin / analytics dashboard",
+    headline: "Pulse · Fund operations console",
+    subhead:
+      "An institutional fund-ops dashboard — KPI tiles, holdings table, recent activity feed, and a sidebar navigation. Single HTML file, no external scripts.",
+    theme: {
+      bg: "#0e1117",
+      fg: "#f5f7fb",
+      muted: "rgba(245,247,251,0.62)",
+      accent: "#3b82f6",
+      panel: "#161b24",
+    },
+    prompt: `Build a self-contained single-file HTML/CSS dashboard for an institutional fund-operations console called Pulse.
+
+Use only one index.html with inline CSS. No external scripts, no frameworks.
+
+Genre: this is NOT a marketing landing page. It's an internal admin / analytics dashboard the operations team would actually use.
+
+Layout shell:
+- Dark editorial palette: background #0e1117, surface #161b24, text #f5f7fb, accent #3b82f6, success #2f7a4f, danger #b03a3a.
+- Tabular numerals everywhere a number can be compared (font-feature-settings: 'tnum').
+- 240px fixed left sidebar with the brand "Pulse", a list of nav items (Overview / Holdings / Reconciliation / Cash / Reports / Settings), and a small user pill at the bottom.
+- Top bar: page title on the left ("Overview · April 25, 2026"), a date-range selector pill in the middle, and a small avatar + status dot on the right.
+
+Content of the Overview page:
+1. Four KPI tiles in a single row — "AUM under advisement", "Net management margin (TTM)", "Open reconciliation breaks", "Cash buffer (90d)". Each tile shows the headline number, a delta vs. last period (with green/red), and a 1-line label. Use mock numbers consistent with the Series A / quarterly review samples (AUM ~ $1.21B, margin ~ 2.39%, breaks ~ 7, cash buffer ~ 36 months).
+2. A "Top holdings" table — 6 rows. Columns: Position, Strategy, Quarter return, MTD, AUM share. Use mixed positive / negative quarter returns coloured green / red.
+3. A "Recent activity" feed on the right — 5 items (e.g., "Reconciliation break #112 cleared by ops · 14 minutes ago", "Trade ticket NVC-2841 settled · 1 hour ago", etc.) with timestamp.
+4. Footer line: small print, "Sample dashboard artifact in BurnGuard. Numbers are illustrative."
+
+Hover and focus states:
+- Sidebar items hover to a slightly lighter surface.
+- Table rows hover to highlight subtly.
+- KPI tiles use a 1px accent left border on hover.
+
+Accessibility:
+- Real semantic HTML (<nav>, <main>, <table>, <thead>, <tbody>, <th scope="col">).
+- Sufficient contrast on muted text.
+
+Use data-bg-node-id on the page title, every KPI tile (parent + value + delta + label), every table row (parent + cells), and every activity feed item.`,
   },
 ];
 
@@ -419,6 +505,8 @@ function renderPromptSampleHtml(sample: PromptSample): string {
       return renderEditorialSample(sample);
     case "cinematic":
       return renderCinematicSample(sample);
+    case "dashboard":
+      return renderDashboardSample(sample);
   }
 }
 
@@ -612,6 +700,106 @@ function renderCinematicSample(sample: PromptSample): string {
       <section class="copy"><h1 data-bg-node-id="sample-headline">${escapeHtml(sample.headline)}</h1><p class="subtext" data-bg-node-id="sample-subtext">${escapeHtml(sample.subhead)}</p><a class="hero-cta" href="#" data-bg-node-id="sample-hero-cta">Begin Journey</a></section>
     </main>
     <section class="info">${renderUsageCard()}${renderPromptCard(sample)}</section>
+    `,
+  });
+}
+
+function renderDashboardSample(sample: PromptSample): string {
+  return renderPromptSampleDocument({
+    sample,
+    colorScheme: "dark",
+    styles: `
+    body { margin: 0; min-height: 100vh; color: #f5f7fb; background: #0e1117; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", sans-serif; font-feature-settings: 'tnum'; }
+    .shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar { background: #0a0d12; border-right: 1px solid rgba(255,255,255,0.06); padding: 24px 16px; display: flex; flex-direction: column; }
+    .brand { font-weight: 800; font-size: 20px; letter-spacing: -0.02em; margin-bottom: 28px; padding: 0 8px; }
+    .brand .dot { display: inline-block; width: 8px; height: 8px; background: #3b82f6; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+    .nav-item { display: block; padding: 10px 12px; color: rgba(245,247,251,0.62); border-radius: 6px; font-size: 14px; text-decoration: none; margin-bottom: 2px; }
+    .nav-item.active { color: #f5f7fb; background: #161b24; }
+    .nav-item:hover { background: rgba(255,255,255,0.04); color: #f5f7fb; }
+    .user-pill { margin-top: auto; padding: 10px 12px; background: #161b24; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: #3b82f6; display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+    main { padding: 24px 32px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+    .page-title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+    .date-pill { background: #161b24; padding: 8px 14px; border-radius: 999px; font-size: 13px; color: rgba(245,247,251,0.62); border: 1px solid rgba(255,255,255,0.06); }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+    .kpi { background: #161b24; padding: 20px; border-radius: 10px; border-left: 1px solid transparent; transition: border-color 120ms; }
+    .kpi:hover { border-left-color: #3b82f6; }
+    .kpi .num { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+    .kpi .delta { font-size: 13px; margin: 6px 0; }
+    .kpi .delta.up { color: #4ad07c; }
+    .kpi .delta.down { color: #ff7a85; }
+    .kpi .label { font-size: 12px; color: rgba(245,247,251,0.55); }
+    .panels { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 28px; }
+    .panel { background: #161b24; border-radius: 10px; padding: 20px; }
+    .panel h3 { margin: 0 0 16px; font-size: 14px; font-weight: 600; color: rgba(245,247,251,0.78); text-transform: uppercase; letter-spacing: 0.08em; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 10px 0; color: rgba(245,247,251,0.55); border-bottom: 1px solid rgba(255,255,255,0.06); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    td { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .num-col { text-align: right; }
+    .up { color: #4ad07c; }
+    .down { color: #ff7a85; }
+    .feed-item { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-item .time { color: rgba(245,247,251,0.45); font-size: 11px; margin-top: 4px; }
+    footer { padding: 16px 0 0; color: rgba(245,247,251,0.4); font-size: 11px; }
+    .info { display: grid; grid-template-columns: 0.6fr 1.4fr; gap: 18px; margin-top: 28px; }
+    ${commonInfoStyles()}
+    @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .sidebar { display: none; } .kpi-grid { grid-template-columns: repeat(2, 1fr); } .panels { grid-template-columns: 1fr; } .info { grid-template-columns: 1fr; } }
+    `,
+    body: `
+    <div class="shell">
+      <aside class="sidebar" data-bg-node-id="dashboard-sidebar">
+        <div class="brand" data-bg-node-id="dashboard-brand"><span class="dot"></span>Pulse</div>
+        <a class="nav-item active" href="#" data-bg-node-id="nav-overview">Overview</a>
+        <a class="nav-item" href="#" data-bg-node-id="nav-holdings">Holdings</a>
+        <a class="nav-item" href="#" data-bg-node-id="nav-recon">Reconciliation</a>
+        <a class="nav-item" href="#" data-bg-node-id="nav-cash">Cash</a>
+        <a class="nav-item" href="#" data-bg-node-id="nav-reports">Reports</a>
+        <a class="nav-item" href="#" data-bg-node-id="nav-settings">Settings</a>
+        <div class="user-pill" data-bg-node-id="user-pill"><div class="avatar">M</div><div><div>Min Park</div><div style="color:rgba(245,247,251,0.45);font-size:11px;">Operations</div></div></div>
+      </aside>
+      <main>
+        <div class="topbar" data-bg-node-id="topbar">
+          <div class="page-title" data-bg-node-id="page-title">${escapeHtml(sample.headline)}</div>
+          <div class="date-pill" data-bg-node-id="date-pill">Last 30 days · Apr 25, 2026</div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi" data-bg-node-id="kpi-aum"><div class="num" data-bg-node-id="kpi-aum-value">$1.21B</div><div class="delta up" data-bg-node-id="kpi-aum-delta">+8.4% QoQ</div><div class="label" data-bg-node-id="kpi-aum-label">AUM under advisement</div></div>
+          <div class="kpi" data-bg-node-id="kpi-margin"><div class="num" data-bg-node-id="kpi-margin-value">2.39%</div><div class="delta up" data-bg-node-id="kpi-margin-delta">+118 bps TTM</div><div class="label" data-bg-node-id="kpi-margin-label">Net management margin</div></div>
+          <div class="kpi" data-bg-node-id="kpi-breaks"><div class="num" data-bg-node-id="kpi-breaks-value">7</div><div class="delta down" data-bg-node-id="kpi-breaks-delta">+2 vs last week</div><div class="label" data-bg-node-id="kpi-breaks-label">Open reconciliation breaks</div></div>
+          <div class="kpi" data-bg-node-id="kpi-cash"><div class="num" data-bg-node-id="kpi-cash-value">36 mo</div><div class="delta" data-bg-node-id="kpi-cash-delta">held</div><div class="label" data-bg-node-id="kpi-cash-label">Cash buffer (90d)</div></div>
+        </div>
+        <div class="panels">
+          <section class="panel" data-bg-node-id="panel-holdings">
+            <h3>Top holdings</h3>
+            <table data-bg-node-id="holdings-table">
+              <thead><tr><th>Position</th><th>Strategy</th><th class="num-col">Quarter</th><th class="num-col">MTD</th><th class="num-col">AUM share</th></tr></thead>
+              <tbody>
+                <tr data-bg-node-id="holding-1"><td>Pulse · Pacific Ops</td><td>Industrials</td><td class="num-col up">+18.4%</td><td class="num-col up">+3.2%</td><td class="num-col">14.2%</td></tr>
+                <tr data-bg-node-id="holding-2"><td>Pulse · Yield Income</td><td>Credit</td><td class="num-col up">+9.2%</td><td class="num-col up">+1.4%</td><td class="num-col">12.8%</td></tr>
+                <tr data-bg-node-id="holding-3"><td>Pulse · Tech Quality</td><td>Equity</td><td class="num-col down">-4.1%</td><td class="num-col down">-1.8%</td><td class="num-col">11.6%</td></tr>
+                <tr data-bg-node-id="holding-4"><td>Pulse · EM Balanced</td><td>Multi-asset</td><td class="num-col up">+5.8%</td><td class="num-col up">+0.9%</td><td class="num-col">10.1%</td></tr>
+                <tr data-bg-node-id="holding-5"><td>Pulse · APAC FX</td><td>FX</td><td class="num-col up">+11.7%</td><td class="num-col up">+2.1%</td><td class="num-col">8.4%</td></tr>
+                <tr data-bg-node-id="holding-6"><td>Pulse · Real Assets</td><td>Alternatives</td><td class="num-col up">+2.3%</td><td class="num-col down">-0.4%</td><td class="num-col">7.9%</td></tr>
+              </tbody>
+            </table>
+          </section>
+          <section class="panel" data-bg-node-id="panel-feed">
+            <h3>Recent activity</h3>
+            <div class="feed-item" data-bg-node-id="feed-1"><div>Reconciliation break #112 cleared by ops</div><div class="time">14 minutes ago · Min Park</div></div>
+            <div class="feed-item" data-bg-node-id="feed-2"><div>Trade ticket NVC-2841 settled</div><div class="time">1 hour ago · system</div></div>
+            <div class="feed-item" data-bg-node-id="feed-3"><div>Cash sweep run · $4.2M to overnight</div><div class="time">3 hours ago · system</div></div>
+            <div class="feed-item" data-bg-node-id="feed-4"><div>Q1 LP statements queued for review</div><div class="time">Yesterday · Min Park</div></div>
+            <div class="feed-item" data-bg-node-id="feed-5"><div>Strategy rebalance · Pulse · APAC FX</div><div class="time">Yesterday · automation</div></div>
+          </section>
+        </div>
+        <footer data-bg-node-id="dashboard-footer">Sample dashboard artifact in BurnGuard. Numbers are illustrative.</footer>
+        <section class="info">${renderUsageCard()}${renderPromptCard(sample)}</section>
+      </main>
+    </div>
     `,
   });
 }

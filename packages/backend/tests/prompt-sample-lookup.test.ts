@@ -2,15 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { getPromptSampleBySlug } from "../src/db/seed-tutorials";
 
 describe("getPromptSampleBySlug", () => {
-  test("returns the four shipped prompt-sample slugs", () => {
-    // The four samples are referenced by slug from the rendered
-    // sample HTML's "Try this prompt" form — if any of these go
-    // missing the form posts to a 404 and the user gets stuck.
+  test("returns every shipped prompt-sample slug", () => {
+    // Each sample is referenced by slug from the rendered sample HTML's
+    // "Try this prompt" form — if any of these go missing the form posts
+    // to a 404 and the user gets stuck.
     const slugs = [
       "clearinvoice-static-saas",
       "taskly-liquid-glass",
       "mindloop-monochrome",
       "velorah-cinematic",
+      // P4.7g additions — Korean-localized landing + non-landing dashboard.
+      "daon-korean-saas",
+      "pulse-fund-ops-dashboard",
     ];
     for (const slug of slugs) {
       const sample = getPromptSampleBySlug(slug);
