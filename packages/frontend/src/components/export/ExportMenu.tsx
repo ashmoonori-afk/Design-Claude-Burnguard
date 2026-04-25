@@ -174,7 +174,11 @@ export default function ExportMenu({
         {jobs.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <ExportStatusList jobs={jobs} />
+            <ExportStatusList
+              jobs={jobs}
+              onRetry={(format) => createMutation.mutate(format)}
+              retryDisabled={createMutation.isPending}
+            />
           </>
         )}
       </DropdownMenuContent>

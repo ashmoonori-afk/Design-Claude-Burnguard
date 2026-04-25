@@ -1,5 +1,16 @@
-import { CheckCircle2, Clock, Download, Loader2, XCircle } from "lucide-react";
-import { formatLabel, type ExportJob } from "@/api/export";
+import {
+  CheckCircle2,
+  Clock,
+  Download,
+  Loader2,
+  RotateCcw,
+  XCircle,
+} from "lucide-react";
+import {
+  formatLabel,
+  type ExportFormat,
+  type ExportJob,
+} from "@/api/export";
 
 function formatBytes(bytes: number | null | undefined) {
   if (!bytes || bytes <= 0) return "";
@@ -8,7 +19,15 @@ function formatBytes(bytes: number | null | undefined) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function ExportStatusList({ jobs }: { jobs: ExportJob[] }) {
+export default function ExportStatusList({
+  jobs,
+  onRetry,
+  retryDisabled,
+}: {
+  jobs: ExportJob[];
+  onRetry?: (format: ExportFormat) => void;
+  retryDisabled?: boolean;
+}) {
   if (jobs.length === 0) return null;
   return (
     <div className="px-2 py-1.5">
@@ -35,6 +54,7 @@ export default function ExportStatusList({ jobs }: { jobs: ExportJob[] }) {
                   ? "text-destructive"
                   : "text-muted-foreground");
           const canDownload = j.status === "succeeded";
+          const canRetry = j.status === "failed" && Boolean(onRetry);
           return (
             <li
               key={j.id}
@@ -43,7 +63,7 @@ export default function ExportStatusList({ jobs }: { jobs: ExportJob[] }) {
             >
               <Icon className={iconClass} />
               <span className="flex-1 truncate">{formatLabel(j.format)}</span>
-              {canDownload ? (
+              {canDownload && (
                 <a
                   href={`/api/exports/${j.id}/download`}
                   className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent/10"
@@ -54,7 +74,20 @@ export default function ExportStatusList({ jobs }: { jobs: ExportJob[] }) {
                   <Download className="h-3 w-3" />
                   {formatBytes(j.size_bytes)}
                 </a>
-              ) : (
+              )}
+              {canRetry && (
+                <button
+                  type="button"
+                  onClick={() => onRetry?.(j.format)}
+                  disabled={retryDisabled}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/10 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Retry this export"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Retry
+                </button>
+              )}
+              {!canDownload && !canRetry && (
                 <span className="text-[10px] text-muted-foreground">
                   {j.status}
                 </span>
