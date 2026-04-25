@@ -69,11 +69,31 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
       400,
     );
   }
-  if (typeof x_pct !== "number" || !Number.isFinite(x_pct)) {
-    return c.json(fail("invalid_x_pct", "x_pct must be a number"), 400);
+  // Pin coordinates are normalised percentages — values outside 0..100
+  // would render off the canvas and be unclickable. Reject up front so
+  // a misbehaving client can't poison the comments table with
+  // unreachable pins (audit fix).
+  if (
+    typeof x_pct !== "number" ||
+    !Number.isFinite(x_pct) ||
+    x_pct < 0 ||
+    x_pct > 100
+  ) {
+    return c.json(
+      fail("invalid_x_pct", "x_pct must be a number in 0..100", { x_pct }),
+      400,
+    );
   }
-  if (typeof y_pct !== "number" || !Number.isFinite(y_pct)) {
-    return c.json(fail("invalid_y_pct", "y_pct must be a number"), 400);
+  if (
+    typeof y_pct !== "number" ||
+    !Number.isFinite(y_pct) ||
+    y_pct < 0 ||
+    y_pct > 100
+  ) {
+    return c.json(
+      fail("invalid_y_pct", "y_pct must be a number in 0..100", { y_pct }),
+      400,
+    );
   }
   let slideIndex: number | null | undefined;
   if (slide_index === undefined || slide_index === null) {
