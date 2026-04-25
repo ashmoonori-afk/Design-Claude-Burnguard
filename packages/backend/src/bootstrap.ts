@@ -25,13 +25,37 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
+/**
+ * Returns true when a path inside the bundled sample DS source tree
+ * is safe to copy into the runtime systems directory.
+ *
+ * Currently filters out `uploads/` and everything below it: that
+ * folder is a local drop-zone for design references during
+ * exploration and is also gitignored at the repo level (P4.7b).
+ * If a developer happens to have files there locally, this stops
+ * those files from propagating into `~/.burnguard/data/systems/`
+ * on first run.
+ *
+ * `relPath` is the path relative to the source root, normalised
+ * to forward-slash separators.
+ */
+export function isSampleSourcePathAllowed(relPath: string): boolean {
+  if (relPath === "" || relPath === ".") return true;
+  const normalized = relPath.replace(/\\/g, "/");
+  const [first] = normalized.split("/");
+  return first !== "uploads";
+}
+
 async function seedSampleDesignSystem(): Promise<void> {
   const repoRoot = resolveRepoRoot();
   const source = path.join(repoRoot, "design system sample");
   const destination = path.join(systemsDir, "northvale-capital");
 
   if (await exists(destination)) return;
-  await cp(source, destination, { recursive: true });
+  await cp(source, destination, {
+    recursive: true,
+    filter: (src) => isSampleSourcePathAllowed(path.relative(source, src)),
+  });
 }
 
 export async function bootstrapLocalAppData(): Promise<void> {
