@@ -67,7 +67,7 @@ export default function HomeView() {
     useState<SystemImportMode>("url");
   const [systemSourceUrl, setSystemSourceUrl] = useState("");
   const [systemSourceType, setSystemSourceType] = useState<
-    "auto" | "github" | "website"
+    "auto" | "github" | "website" | "figma"
   >("auto");
   const [systemDraftName, setSystemDraftName] = useState("");
   const [systemUploadFile, setSystemUploadFile] = useState<File | null>(null);
@@ -403,7 +403,7 @@ function SystemsSection({
   importOpen: boolean;
   importMode: SystemImportMode;
   sourceUrl: string;
-  sourceType: "auto" | "github" | "website";
+  sourceType: "auto" | "github" | "website" | "figma";
   draftName: string;
   uploadFile: File | null;
   importError: string | null;
@@ -411,7 +411,9 @@ function SystemsSection({
   onToggleImport: () => void;
   onImportModeChange: (value: SystemImportMode) => void;
   onSourceUrlChange: (value: string) => void;
-  onSourceTypeChange: (value: "auto" | "github" | "website") => void;
+  onSourceTypeChange: (
+    value: "auto" | "github" | "website" | "figma",
+  ) => void;
   onDraftNameChange: (value: string) => void;
   onUploadFileChange: (value: File | null) => void;
   onImport: () => void;
@@ -537,7 +539,11 @@ function SystemsSection({
                     value={sourceType}
                     onChange={(e) =>
                       onSourceTypeChange(
-                        e.target.value as "auto" | "github" | "website",
+                        e.target.value as
+                          | "auto"
+                          | "github"
+                          | "website"
+                          | "figma",
                       )
                     }
                     disabled={isPending}
@@ -546,7 +552,14 @@ function SystemsSection({
                     <option value="auto">Auto-detect</option>
                     <option value="github">Git repository</option>
                     <option value="website">Website</option>
+                    <option value="figma">Figma file</option>
                   </select>
+                  {sourceType === "figma" && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Requires a Figma personal access token. Set it in
+                      Settings → Figma access.
+                    </p>
+                  )}
                 </div>
               </>
             ) : (

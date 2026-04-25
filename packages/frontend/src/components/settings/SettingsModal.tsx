@@ -44,6 +44,11 @@ export default function SettingsModal() {
   const [py, setPy] = useState<PythonSettings | null>(null);
   const [pyStarting, setPyStarting] = useState(false);
   const pyPollRef = useRef<number | null>(null);
+  // The Figma PAT input is a separate write-only path: GET /api/settings
+  // never returns the value, only a figma_token_set boolean. The user
+  // types a token here, hits Save, and the field clears.
+  const [figmaTokenInput, setFigmaTokenInput] = useState("");
+  const [figmaTokenSaving, setFigmaTokenSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -166,6 +171,28 @@ export default function SettingsModal() {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveFigmaToken(value: string | null) {
+    setFigmaTokenSaving(true);
+    try {
+      const next = await patchSettings({ figma_personal_access_token: value });
+      setSettings(next);
+      queryClient.setQueryData(["settings"], next);
+      setFigmaTokenInput("");
+      pushToast({
+        title: value === null ? "Figma token cleared" : "Figma token saved",
+        tone: "success",
+      });
+    } catch (err) {
+      pushToast({
+        title: "Could not save Figma token",
+        body: err instanceof Error ? err.message : String(err),
+        tone: "error",
+      });
+    } finally {
+      setFigmaTokenSaving(false);
     }
   }
 
@@ -402,6 +429,55 @@ export default function SettingsModal() {
                 Compact keeps stable project and design-system context as file
                 references so long slide-deck chats stay lighter. Full inlines
                 those excerpts every turn.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Figma access
+              </label>
+              {settings.figma_token_set ? (
+                <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-xs">
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
+                    Connected — Figma personal access token is set.
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={figmaTokenSaving}
+                    onClick={() => saveFigmaToken(null)}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    placeholder="figd_..."
+                    value={figmaTokenInput}
+                    onChange={(e) => setFigmaTokenInput(e.target.value)}
+                    className="flex-1 font-mono text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={
+                      figmaTokenSaving || figmaTokenInput.trim().length === 0
+                    }
+                    onClick={() => saveFigmaToken(figmaTokenInput.trim())}
+                  >
+                    {figmaTokenSaving ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Used by the Systems → Import flow to extract published color
+                and text styles from a Figma file. Generate a token at
+                Figma → Settings → Personal access tokens. The value is stored
+                only in your local <code className="font-mono">~/.burnguard/config.json</code>{" "}
+                and is never echoed back through this UI.
               </p>
             </div>
 
