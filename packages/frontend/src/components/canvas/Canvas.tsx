@@ -130,6 +130,13 @@ export default function Canvas({
   const restoreTargetSlideIdxRef = useRef<number | null>(null);
   const restoringSlideRef = useRef(false);
   const [frameSrcDoc, setFrameSrcDoc] = useState<string | null>(null);
+  // Surfaces fetch failures inline instead of falling back to the
+  // placeholder with no signal (audit fix #6). Cleared on every src
+  // change so a successful Refresh recovers cleanly.
+  const [loadError, setLoadError] = useState<{
+    status?: number;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (activeSlideIdx != null) {
@@ -150,16 +157,26 @@ export default function Canvas({
   useEffect(() => {
     if (!src) {
       setFrameSrcDoc(null);
+      setLoadError(null);
       return;
     }
 
     let cancelled = false;
     setFrameSrcDoc(null);
+    setLoadError(null);
 
     void fetch(src)
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`artifact_fetch_failed:${response.status}`);
+          const text = await response.text().catch(() => "");
+          const detail = text.trim().slice(0, 200);
+          throw Object.assign(
+            new Error(
+              detail ||
+                `Backend returned HTTP ${response.status} fetching the artifact.`,
+            ),
+            { httpStatus: response.status },
+          );
         }
         return response.text();
       })
@@ -172,9 +189,13 @@ export default function Canvas({
           ),
         );
       })
-      .catch(() => {
+      .catch((err: Error & { httpStatus?: number }) => {
         if (cancelled) return;
         setFrameSrcDoc(null);
+        setLoadError({
+          status: err.httpStatus,
+          message: err.message || "Failed to load artifact.",
+        });
       });
 
     return () => {
@@ -304,6 +325,29 @@ export default function Canvas({
           resetKey={drawResetKey}
           onCommit={onCommitDraws}
         />
+        {loadError && (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/80 backdrop-blur-sm">
+            <div className="pointer-events-auto max-w-sm rounded border border-destructive/40 bg-background px-4 py-3 text-xs shadow-md">
+              <div className="font-semibold text-destructive">
+                Could not load artifact
+                {loadError.status ? ` (HTTP ${loadError.status})` : ""}
+              </div>
+              <div className="mt-1 text-muted-foreground">
+                {loadError.message}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadError(null);
+                  onRefresh();
+                }}
+                className="mt-2 inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
