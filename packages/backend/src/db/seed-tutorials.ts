@@ -7,12 +7,12 @@ import { projectsTable, sessionsTable } from "./schema";
 import { projectsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
 
-const TUTORIAL_TAG = "[burnguard:tutorial]";
+export const TUTORIAL_TAG = "[burnguard:tutorial]";
 
 export const PROTOTYPE_TUTORIAL_NAME = `${TUTORIAL_TAG} Prototype demo`;
 export const DECK_TUTORIAL_NAME = `${TUTORIAL_TAG} Slide deck demo`;
 
-const PROMPT_SAMPLE_TAG = "[burnguard:prompt-sample]";
+export const PROMPT_SAMPLE_TAG = "[burnguard:prompt-sample]";
 
 interface PromptSample {
   slug: string;

@@ -24,6 +24,7 @@ import { homeDesignSystemFixtures, homeProjectFixtures } from "../data/home";
 import { projectsDir, systemsDir } from "../lib/paths";
 import { renderInitialArtifact } from "./templates";
 import type { SlideDeckOptions } from "./templates/slide-deck";
+import { PROMPT_SAMPLE_TAG, TUTORIAL_TAG } from "./seed-tutorials";
 
 export async function seedCoreData() {
   const db = getDb();
@@ -148,14 +149,30 @@ export async function listHomeProjects(tab: string, limit: number, offset: numbe
     .orderBy(desc(projectsTable.updatedAt));
 
   const filtered =
-    tab === "examples"
-      ? rows.filter((row) => row.type === "from_template")
-      : rows;
+    tab === "examples" ? rows.filter(isExampleProject) : rows;
 
   return {
     items: filtered.slice(offset, offset + limit) as ProjectSummary[],
     total: filtered.length,
   };
+}
+
+/**
+ * Decides whether a project row should appear under the Examples tab.
+ *
+ * Before this rule existed the filter was `type === "from_template"`
+ * only, which left the seeded tutorials and prompt-samples — typed
+ * `prototype` / `slide_deck` — invisible there. Examples then showed
+ * a single placeholder template fixture instead of the six real
+ * working examples the user actually expects to see (P4.7c).
+ *
+ * Pure / row-level so it can be unit-tested without a DB.
+ */
+export function isExampleProject(row: { type: string; name: string }): boolean {
+  if (row.type === "from_template") return true;
+  return (
+    row.name.startsWith(TUTORIAL_TAG) || row.name.startsWith(PROMPT_SAMPLE_TAG)
+  );
 }
 
 export async function listHomeDesignSystems(status: DesignSystemSummary["status"]) {
