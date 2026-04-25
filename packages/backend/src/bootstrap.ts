@@ -4,6 +4,7 @@ import { ensureConfig } from "./config";
 import { runMigrations } from "./db/migrate";
 import { seedCoreData } from "./db/seed";
 import { seedTutorialsOnce } from "./db/seed-tutorials";
+import { pruneOldExports } from "./services/export-gc";
 import { ensureAllProjectWatchers } from "./services/watchers";
 import {
   appRootDir,
@@ -74,4 +75,8 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await seedCoreData();
   await seedTutorialsOnce();
   await ensureAllProjectWatchers();
+  // Best-effort export GC — never block startup on it.
+  void pruneOldExports().catch(() => {
+    /* swallow: GC failure must not crash the app */
+  });
 }
