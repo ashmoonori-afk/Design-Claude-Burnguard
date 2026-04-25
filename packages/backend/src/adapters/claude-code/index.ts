@@ -28,25 +28,47 @@ export async function runClaudeCodeTurn(
     );
   });
 
-  const result = await runClaudeCode({
-    binaryPath: input.binaryPath,
-    projectDir: input.projectDir,
-    prompt: input.prompt,
-    signal: input.signal,
-    sessionId: input.sessionId,
-    onStdoutLine: async (line) => {
-      const events = parseStreamLine(line, ctx);
-      for (const event of events) {
-        if (event.type === "status.idle") sawIdle = true;
-        await input.onEvent(event);
-      }
-    },
-    onStderrLine: input.onStderr
-      ? async (line) => {
-          await input.onStderr?.(line);
+  let result: AdapterRunResult;
+  try {
+    result = await runClaudeCode({
+      binaryPath: input.binaryPath,
+      projectDir: input.projectDir,
+      prompt: input.prompt,
+      signal: input.signal,
+      sessionId: input.sessionId,
+      onStdoutLine: async (line) => {
+        // Parser exceptions used to bubble up through readLines and
+        // abort the read loop entirely, leaving the CLI subprocess
+        // with a clogged stdout pipe and no clean exit. Trap here so
+        // a single malformed line never wedges the whole turn.
+        let events;
+        try {
+          events = parseStreamLine(line, ctx);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[claude-code] parser threw on a stream line — skipping:",
+            err,
+          );
+          return;
         }
-      : undefined,
-  });
+        for (const event of events) {
+          if (event.type === "status.idle") sawIdle = true;
+          await input.onEvent(event);
+        }
+      },
+      onStderrLine: input.onStderr
+        ? async (line) => {
+            await input.onStderr?.(line);
+          }
+        : undefined,
+    });
+  } finally {
+    // Always release the decision sink — a throw before this used to
+    // leak the listener closure into the broker and re-fire on the
+    // next turn that reused the session id.
+    unsubscribeDecision?.();
+  }
 
   if (!sawIdle) {
     // The CLI exited without emitting a final `result` line.
@@ -63,6 +85,5 @@ export async function runClaudeCodeTurn(
     });
   }
 
-  unsubscribeDecision?.();
   return result;
 }

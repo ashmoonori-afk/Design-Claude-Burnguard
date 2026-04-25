@@ -33,6 +33,9 @@ export async function runCodexTurn(
   });
 
   const proc = Bun.spawn({
+    // FIXME(codex): prompt is passed as a positional CLI arg — visible
+    // in `ps` listings. Move to stdin once the Codex CLI documents a
+    // stdin-reading mode (claude-code uses `claude -p` + stdin pipe).
     cmd: [input.binaryPath, "-p", input.prompt],
     cwd: input.projectDir,
     stdin: "ignore",
@@ -42,20 +45,41 @@ export async function runCodexTurn(
     killSignal: "SIGKILL",
   });
 
-  await Promise.all([
-    readLines(proc.stdout, async (line) => {
-      const events = parseCodexLine(line, ctx);
-      for (const event of events) {
-        if (event.type === "status.idle") sawIdle = true;
-        await input.onEvent(event);
-      }
-    }),
-    readLines(proc.stderr, async (line) => {
-      await input.onStderr?.(line);
-    }),
-  ]);
-
-  const exitCode = await proc.exited;
+  let exitCode: number;
+  try {
+    await Promise.all([
+      readLines(proc.stdout, async (line) => {
+        // Parser exceptions used to bubble up through readLines and
+        // abort the read loop entirely, leaving the CLI subprocess
+        // with a clogged stdout pipe and no clean exit. Trap here so
+        // a single malformed line never wedges the whole turn.
+        let events;
+        try {
+          events = parseCodexLine(line, ctx);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[codex] parser threw on a stream line — skipping:",
+            err,
+          );
+          return;
+        }
+        for (const event of events) {
+          if (event.type === "status.idle") sawIdle = true;
+          await input.onEvent(event);
+        }
+      }),
+      readLines(proc.stderr, async (line) => {
+        await input.onStderr?.(line);
+      }),
+    ]);
+    exitCode = await proc.exited;
+  } finally {
+    // Always release the decision sink — see the matching comment in
+    // the Claude Code adapter. A throw between subscribe and here
+    // would otherwise leak the listener into the broker.
+    unsubscribeDecision?.();
+  }
 
   await input.onEvent({
     id: ulid(),
@@ -80,7 +104,6 @@ export async function runCodexTurn(
     });
   }
 
-  unsubscribeDecision?.();
   return { exitCode };
 }
 
