@@ -14,9 +14,19 @@ cd "$SCRIPT_DIR"
 echo "[BurnGuard] Working directory: $SCRIPT_DIR"
 
 if ! command -v bun >/dev/null 2>&1; then
-    if [ -x "$HOME/.bun/bin/bun" ]; then
-        export PATH="$HOME/.bun/bin:$PATH"
-    fi
+    # Finder launches inherit a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin)
+    # so anything installed via Bun's official installer, Homebrew (Apple
+    # Silicon or Intel), or a user-local npm prefix needs explicit fallback.
+    for candidate in \
+        "$HOME/.bun/bin" \
+        "/opt/homebrew/bin" \
+        "/usr/local/bin" \
+        "$HOME/.local/bin"; do
+        if [ -x "$candidate/bun" ]; then
+            export PATH="$candidate:$PATH"
+            break
+        fi
+    done
 fi
 
 if ! command -v bun >/dev/null 2>&1; then

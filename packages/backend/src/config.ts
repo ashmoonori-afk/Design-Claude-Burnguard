@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import type { BackendId, ThemeMode } from "@bg/shared";
 import { APP_VERSION } from "@bg/shared";
 import { appRootDir, configFilePath } from "./lib/paths";
@@ -126,6 +126,20 @@ export async function loadConfig(): Promise<AppConfig> {
 export async function saveConfig(config: AppConfig): Promise<void> {
   await mkdir(appRootDir, { recursive: true });
   await writeFile(configFilePath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  // Tighten POSIX permissions to 0600 (owner read/write only) so the
+  // Figma PAT and any other secret persisted here never leak to other
+  // users on shared Mac / Linux machines. No-op on Windows where
+  // chmod's mode bits are mostly ignored — the NTFS ACL controls
+  // access there. Best-effort: a chmod failure shouldn't crash the
+  // settings save.
+  if (process.platform !== "win32") {
+    try {
+      await chmod(configFilePath, 0o600);
+    } catch {
+      // Filesystem may not support POSIX modes (e.g. exotic mount).
+      // The file is still written; only the tightening is skipped.
+    }
+  }
 }
 
 export async function ensureConfig(): Promise<AppConfig> {
