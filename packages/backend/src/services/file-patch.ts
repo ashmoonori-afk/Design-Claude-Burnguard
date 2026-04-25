@@ -1,4 +1,5 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { parse } from "node-html-parser";
 import { resolveProjectFile } from "./files";
 
@@ -59,8 +60,39 @@ export async function patchHtmlNode(
 
   const html = await readFile(resolved.absolutePath, "utf8");
   const output = applyHtmlNodePatch(html, input);
-  await writeFile(resolved.absolutePath, output, "utf8");
+  await atomicWriteFile(resolved.absolutePath, output);
   return { absolutePath: resolved.absolutePath, updatedAt: Date.now() };
+}
+
+/**
+ * Writes via tempfile + rename so a process crash mid-write can never
+ * leave half a file on disk. The rename is atomic on POSIX and on
+ * Windows (ReplaceFile) for files on the same volume — which is always
+ * the case here since the temp file is a sibling of the target.
+ *
+ * Best-effort temp cleanup if the rename throws.
+ */
+async function atomicWriteFile(
+  absolutePath: string,
+  contents: string,
+): Promise<void> {
+  const dir = path.dirname(absolutePath);
+  const base = path.basename(absolutePath);
+  const tmp = path.join(
+    dir,
+    `.${base}.${process.pid}.${Date.now()}.tmp`,
+  );
+  try {
+    await writeFile(tmp, contents, "utf8");
+    await rename(tmp, absolutePath);
+  } catch (err) {
+    try {
+      await unlink(tmp);
+    } catch {
+      // Ignore — the tempfile may not have been created yet.
+    }
+    throw err;
+  }
 }
 
 /**
@@ -124,24 +156,70 @@ export function applyHtmlNodePatch(
 }
 
 /**
- * Parse a `style="..."` attribute string into an ordered map. Naive — assumes
- * property values don't contain bare `:` or `;`. Tweaks mode emits
- * well-behaved values (px / rem / rgba / hex / keywords), so this is good
- * enough. If a future slice needs complex values (url(...), var(...), etc.)
- * this can be upgraded or replaced with a proper CSS parser.
+ * Parse a `style="..."` attribute string into an ordered map.
+ *
+ * Tweaks mode emits well-behaved short values (px / rem / rgba / hex /
+ * keywords) but Edit mode lets the user paste arbitrary inline styles,
+ * which can include declarations whose value carries `;` or `:` inside
+ * a function call or string — `background: url(data:image/png;base64,…)`,
+ * `background: linear-gradient(red, blue)`, `color: var(--x, fallback)`,
+ * `font-family: "Helvetica Neue, sans"`, etc.
+ *
+ * The parser is a tiny state machine: split on `;` only when paren
+ * depth is zero AND we're outside a quoted string. Keys are still
+ * separated from values by the first top-level `:`, which is safe
+ * because CSS property names cannot contain `:` or `(`.
  */
 export function parseInlineStyle(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const decl of raw.split(";")) {
-    const trimmed = decl.trim();
-    if (!trimmed) continue;
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let buf = "";
+
+  const commit = () => {
+    const trimmed = buf.trim();
+    buf = "";
+    if (!trimmed) return;
     const colon = trimmed.indexOf(":");
-    if (colon <= 0) continue;
+    if (colon <= 0) return;
     const key = trimmed.slice(0, colon).trim();
     const value = trimmed.slice(colon + 1).trim();
-    if (!key || !value) continue;
+    if (!key || !value) return;
     out[key] = value;
+  };
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      buf += ch;
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      buf += ch;
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === "(") {
+        depth += 1;
+        buf += ch;
+        continue;
+      }
+      if (ch === ")") {
+        if (depth > 0) depth -= 1;
+        buf += ch;
+        continue;
+      }
+      if (ch === ";" && depth === 0) {
+        commit();
+        continue;
+      }
+    }
+    buf += ch;
   }
+  commit();
   return out;
 }
 
@@ -151,11 +229,20 @@ export function serializeInlineStyle(map: Record<string, string>): string {
     .join("; ");
 }
 
+/**
+ * Escapes an arbitrary string so it is safe to drop between HTML tags
+ * via `set_content`. We escape quotes too even though they do not need
+ * escaping in text content — the function is named generically and a
+ * future caller might splice the result into an attribute by mistake.
+ * Defense in depth, no behavioural change for the current call site.
+ */
 function escapeHtmlText(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function escapeAttrSelector(value: string): string {

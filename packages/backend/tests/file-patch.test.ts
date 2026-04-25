@@ -39,6 +39,47 @@ describe("applyHtmlNodePatch", () => {
     expect(out).not.toContain("<script>alert(1)</script>");
   });
 
+  test("escapes quotes too so a future caller cannot inject into an attribute", () => {
+    // Defense-in-depth — the current call site (set_content) treats
+    // quotes as plain text, but the helper is named generically and
+    // could be reused on an attribute path later.
+    const out = applyHtmlNodePatch(FIXTURE, {
+      node_bg_id: "hero-title",
+      text: `He said "hi" and 'bye'`,
+    });
+    expect(out).toContain("&quot;hi&quot;");
+    expect(out).toContain("&#39;bye&#39;");
+    expect(out).not.toContain('"hi"');
+    expect(out).not.toContain("'bye'");
+  });
+
+  test("blocks the classic xss payload via raw event handler injection", () => {
+    // node-html-parser parses set_content output as HTML, so any
+    // unescaped tag / attribute would survive into the resulting tree.
+    // The escape pass turns < > " ' into entities so an attribute like
+    // `onerror="..."` becomes inert text. The 'onerror=' substring may
+    // still appear in the visible text — what matters is that there
+    // is no real onerror attribute on any element.
+    const xssPayload = `" onerror="alert('xss')" x="`;
+    const out = applyHtmlNodePatch(FIXTURE, {
+      node_bg_id: "hero-title",
+      text: xssPayload,
+    });
+    // Quotes are escaped → no real attribute is parsed onto the h1.
+    expect(out).not.toMatch(/<h1[^>]*\sonerror\s*=/);
+    expect(out).toContain("&quot;");
+    expect(out).toContain("&#39;xss&#39;");
+    // And the payload script tag analogue — `<img src=x onerror=...>` —
+    // also survives only as inert text because `<` is escaped.
+    const imgPayload = `<img src=x onerror="alert(1)">`;
+    const out2 = applyHtmlNodePatch(FIXTURE, {
+      node_bg_id: "hero-title",
+      text: imgPayload,
+    });
+    expect(out2).not.toMatch(/<img\s/);
+    expect(out2).toContain("&lt;img");
+  });
+
   test("sets, updates, and removes attributes", () => {
     const out = applyHtmlNodePatch(FIXTURE, {
       node_bg_id: "hero-title",
@@ -145,5 +186,45 @@ describe("parseInlineStyle / serializeInlineStyle", () => {
 
   test("serialize empty map yields empty string", () => {
     expect(serializeInlineStyle({})).toBe("");
+  });
+
+  test("does not split on `;` inside parens — url(), linear-gradient()", () => {
+    const map = parseInlineStyle(
+      "background: url(data:image/png;base64,abc==); color: red",
+    );
+    expect(map).toEqual({
+      background: "url(data:image/png;base64,abc==)",
+      color: "red",
+    });
+  });
+
+  test("does not split on `,` inside parens — gradient stops, var() fallbacks", () => {
+    const map = parseInlineStyle(
+      "background: linear-gradient(90deg, red 0%, blue 100%); color: var(--brand, #333)",
+    );
+    expect(map).toEqual({
+      background: "linear-gradient(90deg, red 0%, blue 100%)",
+      color: "var(--brand, #333)",
+    });
+  });
+
+  test("respects single-quoted and double-quoted strings inside values", () => {
+    const map = parseInlineStyle(
+      `font-family: "Helvetica Neue, sans"; content: 'a; b'`,
+    );
+    expect(map).toEqual({
+      "font-family": '"Helvetica Neue, sans"',
+      content: "'a; b'",
+    });
+  });
+
+  test("nested parens do not corrupt depth tracking", () => {
+    const map = parseInlineStyle(
+      "filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2)); margin: 4px",
+    );
+    expect(map).toEqual({
+      filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2))",
+      margin: "4px",
+    });
   });
 });
