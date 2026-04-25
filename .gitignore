@@ -20,3 +20,10 @@ Thumbs.db
 
 # Local draft notes
 reddit-launch-post-draft.md
+
+# Sample design-system uploads bucket — guards against committing
+# customer / IR / sensitive material dropped into this folder. Keep
+# the folder shape via .gitkeep but ignore every other entry.
+# (Surfaced by the 2026-04-24 IRIS pptx leak audit; see roadmap P4.7b.)
+design system sample/uploads/*
+!design system sample/uploads/.gitkeep
