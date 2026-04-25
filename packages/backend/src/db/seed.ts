@@ -25,6 +25,8 @@ import { projectsDir, systemsDir } from "../lib/paths";
 import { renderInitialArtifact } from "./templates";
 import type { SlideDeckOptions } from "./templates/slide-deck";
 import { PROMPT_SAMPLE_TAG, TUTORIAL_TAG } from "./seed-tutorials";
+import { SEEDED_PROJECT_HTML } from "./seeded-project-html";
+import { DECK_STAGE_JS } from "../runtime/deck-stage";
 
 export async function seedCoreData() {
   const db = getDb();
@@ -100,13 +102,34 @@ export async function seedCoreData() {
     await mkdir(path.join(dirPath, ".attachments"), { recursive: true });
     await mkdir(path.join(dirPath, ".meta", "checkpoints"), { recursive: true });
 
+    const entrypoint =
+      project.type === "slide_deck" ? "deck.html" : "index.html";
+
+    // Each fixture project ships with a real starter artifact so the
+    // canvas isn't empty on first open (P4.7f). Archived rows skip the
+    // file write since the user never sees them.
+    if (project.archived_at == null) {
+      const html = SEEDED_PROJECT_HTML[project.id];
+      if (html) {
+        await writeFile(path.join(dirPath, entrypoint), html, "utf8");
+        if (project.type === "slide_deck") {
+          await mkdir(path.join(dirPath, "runtime"), { recursive: true });
+          await writeFile(
+            path.join(dirPath, "runtime", "deck-stage.js"),
+            DECK_STAGE_JS,
+            "utf8",
+          );
+        }
+      }
+    }
+
     await db.insert(projectsTable).values({
       id: project.id,
       name: project.name,
       type: project.type,
       designSystemId: project.design_system_id,
       dirPath,
-      entrypoint: project.type === "slide_deck" ? "deck.html" : "index.html",
+      entrypoint,
       thumbnailPath: project.thumbnail_path,
       backendId: "claude-code",
       optionsJson: null,
