@@ -14,7 +14,7 @@ export const DECK_TUTORIAL_NAME = `${TUTORIAL_TAG} Slide deck demo`;
 
 export const PROMPT_SAMPLE_TAG = "[burnguard:prompt-sample]";
 
-interface PromptSample {
+export interface PromptSample {
   slug: string;
   name: string;
   layout: "split-saas" | "liquid-orb" | "editorial" | "cinematic";
@@ -29,6 +29,10 @@ interface PromptSample {
     panel: string;
   };
   prompt: string;
+}
+
+export function getPromptSampleBySlug(slug: string): PromptSample | null {
+  return PROMPT_SAMPLES.find((s) => s.slug === slug) ?? null;
 }
 
 const PROMPT_SAMPLES: PromptSample[] = [
@@ -658,11 +662,17 @@ function commonInfoStyles(mode: "dark" | "light" = "dark"): string {
 }
 
 function renderUsageCard(): string {
-  return `<section class="card" data-bg-node-id="sample-usage"><h2>How to use</h2><ol><li>Open this project from the Examples tab.</li><li>Review the visual direction on this page.</li><li>Copy the prompt and paste it into the chat panel.</li><li>Ask for a smaller hero-only pass first if you want faster iteration.</li></ol></section>`;
+  return `<section class="card" data-bg-node-id="sample-usage"><h2>How to use</h2><ol><li>Open this project from the Examples tab.</li><li>Review the visual direction on this page.</li><li>Click <em>Try this prompt</em> below — BurnGuard creates a fresh prototype project with the prompt pre-filled in the chat composer, ready to send.</li><li>Or copy the prompt manually and paste it into the chat panel of any project.</li></ol></section>`;
 }
 
 function renderPromptCard(sample: PromptSample): string {
-  return `<section class="card" id="prompt" data-bg-node-id="sample-prompt"><h2>Source prompt</h2><pre>${escapeHtml(sample.prompt)}</pre></section>`;
+  // The form posts top-level (target="_top") so the iframe submission
+  // navigates the parent window. The route creates a new prototype
+  // project, redirects to it, and pre-fills the chat composer with
+  // this prompt — no manual copy-paste needed (P4.7e).
+  const tryButtonStyles =
+    "display:inline-block;margin-top:12px;padding:10px 18px;background:#186ade;color:#ffffff;border:none;border-radius:4px;font-weight:600;font-family:inherit;font-size:14px;cursor:pointer;";
+  return `<section class="card" id="prompt" data-bg-node-id="sample-prompt"><h2>Source prompt</h2><pre>${escapeHtml(sample.prompt)}</pre><form action="/api/home/use-sample/${escapeHtml(sample.slug)}" method="POST" target="_top" style="margin:0;"><button type="submit" data-bg-node-id="sample-try-button" style="${tryButtonStyles}">Try this prompt →</button></form></section>`;
 }
 
 function promptSampleTitle(sample: PromptSample): string {

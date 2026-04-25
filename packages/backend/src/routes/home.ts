@@ -15,7 +15,7 @@ import {
   listHomeDesignSystems,
   listHomeProjects,
 } from "../db/seed";
-import { seedTutorialsOnce } from "../db/seed-tutorials";
+import { getPromptSampleBySlug, seedTutorialsOnce } from "../db/seed-tutorials";
 import { detectBackends } from "../services/backends";
 import { ensureProjectWatcher } from "../services/watchers";
 
@@ -169,6 +169,36 @@ homeRoutes.get("/api/backends/detect", async (c) => {
 homeRoutes.post("/api/home/restore-samples", async (c) => {
   await seedTutorialsOnce();
   return c.json(ok({ restored: true }));
+});
+
+// One-click "Try this prompt" entrypoint for prompt-sample artifacts.
+// The form button on each rendered sample posts here with target=_top;
+// the route creates a fresh prototype project and 302-redirects to it
+// with the prompt encoded in the query string so the project view can
+// pre-fill the chat composer. P4.7(e).
+homeRoutes.post("/api/home/use-sample/:slug", async (c) => {
+  const slug = c.req.param("slug");
+  const sample = getPromptSampleBySlug(slug);
+  if (!sample) {
+    return c.json(fail("unknown_sample", `unknown prompt sample: ${slug}`), 404);
+  }
+
+  const baseName = sample.name.replace(/^\[burnguard:prompt-sample\]\s*/, "");
+  const created = await createProjectRecord({
+    name: `Try: ${baseName}`,
+    type: "prototype",
+    designSystemId: null,
+    backendId: "claude-code",
+    optionsJson: null,
+    entrypoint: "index.html",
+    thumbnailPath: null,
+  });
+  await ensureProjectWatcher(created.id);
+
+  // base64url so it survives in a URL; the project view decodes and
+  // pre-fills the composer text on first mount.
+  const encoded = Buffer.from(sample.prompt, "utf8").toString("base64url");
+  return c.redirect(`/projects/${created.id}?prefill_prompt=${encoded}`);
 });
 
 homeRoutes.get("/api/settings", async (c) => {

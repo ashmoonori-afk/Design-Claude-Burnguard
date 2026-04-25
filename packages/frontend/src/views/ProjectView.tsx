@@ -17,7 +17,7 @@ import type {
   ProjectDetail,
   SessionInfo,
 } from "@bg/shared";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   getArtifacts,
   getProject,
@@ -71,10 +71,40 @@ import type { ArtifactTab, SelectedNode } from "@/types/project";
 export default function ProjectView() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [sessionState, setSessionState] = useState<SessionInfo | null>(null);
+
+  // Pre-fill from a "Try this prompt" handoff (P4.7e). The home route
+  // base64url-encodes the prompt into ?prefill_prompt; we decode it
+  // once on mount, hand it to the composer, and strip the param so a
+  // refresh doesn't re-prefill on top of whatever the user has typed.
+  const [composerPrefill] = useState<string>(() => {
+    const raw = searchParams.get("prefill_prompt");
+    if (!raw) return "";
+    try {
+      // base64url → base64 (atob doesn't accept the URL-safe variant)
+      // and then decode UTF-8 bytes into a JS string. The padding fix
+      // covers prompts whose encoded length is not a multiple of 4.
+      const b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+      const bytes = Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    if (searchParams.has("prefill_prompt")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("prefill_prompt");
+      setSearchParams(next, { replace: true });
+    }
+    // Run only on first mount; subsequent param edits should not retrigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [activeTabId, setActiveTabId] = useState("design-system");
   const [openFileTabs, setOpenFileTabs] = useState<ArtifactTab[]>([]);
   const [mode, setMode] = useState<CanvasMode | null>(null);
@@ -695,6 +725,7 @@ export default function ProjectView() {
           canInterrupt={canInterrupt}
           interruptPending={interruptMutation.isPending}
           onInterrupt={() => interruptMutation.mutate()}
+          composerInitialText={composerPrefill}
           onSend={async (text, attachedFiles) => {
             if (composerDisabled) {
               return;

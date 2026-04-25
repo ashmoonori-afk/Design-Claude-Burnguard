@@ -21,6 +21,7 @@ export default function ChatPane({
   onOpenFile,
   onRevertTurn,
   revertingTurnId,
+  composerInitialText,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
@@ -32,6 +33,7 @@ export default function ChatPane({
   onOpenFile?: (relPath: string) => void;
   onRevertTurn?: (turnId: string) => void;
   revertingTurnId?: string | null;
+  composerInitialText?: string;
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const queryClient = useQueryClient();
@@ -105,6 +107,7 @@ export default function ChatPane({
             canInterrupt={canInterrupt}
             interruptPending={interruptPending}
             onInterrupt={onInterrupt}
+            initialText={composerInitialText}
           />
         </>
       ) : (

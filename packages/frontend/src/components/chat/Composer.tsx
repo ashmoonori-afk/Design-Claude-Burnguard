@@ -29,6 +29,7 @@ export default function Composer({
   canInterrupt = false,
   interruptPending = false,
   onInterrupt,
+  initialText = "",
 }: {
   onSend: (text: string, files: File[]) => void;
   disabled?: boolean;
@@ -41,8 +42,16 @@ export default function Composer({
   canInterrupt?: boolean;
   interruptPending?: boolean;
   onInterrupt?: () => void;
+  /**
+   * Optional pre-fill for the textarea on first mount. Used by the
+   * "Try this prompt" flow (P4.7e): the project view reads the prompt
+   * out of the URL and seeds the composer so the user only has to hit
+   * Send. Only the initial value matters — later changes are ignored
+   * so a re-render can't clobber what the user has typed.
+   */
+  initialText?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [waitingIndex, setWaitingIndex] = useState(0);
