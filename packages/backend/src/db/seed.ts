@@ -47,9 +47,9 @@ export async function seedCoreData() {
     });
 
   for (const system of homeDesignSystemFixtures) {
-    const isSample = system.id === "goldman-sachs";
+    const isSample = system.id === "northvale-capital";
     const dirPath = isSample
-      ? path.join(systemsDir, "goldman-sachs")
+      ? path.join(systemsDir, "northvale-capital")
       : path.join(systemsDir, system.id);
 
     await db

@@ -1,6 +1,6 @@
 /* ============================================================
-   GOLDMAN SACHS — COLORS & TYPE
-   Tokens distilled from gs-design-system-scss (_colors.scss).
+   NORTHVALE CAPITAL — COLORS & TYPE
+   Tokens distilled from northvale-design-system-scss (_colors.scss).
    Brand serif substituted with Playfair Display (Didone family);
    UI face is Inter; numerals/code use IBM Plex Mono.
    ============================================================ */
@@ -21,7 +21,7 @@
   --gray-10:  #F2F5F7;
 
   /* ---------- COLOR · BRAND ---------- */
-  --primary-blue:  #7399C6;   /* Wordmark "GS Blue" */
+  --primary-blue:  #7399C6;   /* Wordmark "Northvale Blue" */
   --action-blue:   #186ADE;   /* blue-60 — interactive */
 
   /* ---------- COLOR · ACCENT SCALES (key stops) ---------- */

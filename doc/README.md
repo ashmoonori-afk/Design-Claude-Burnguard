@@ -53,7 +53,7 @@ Stored at repo root, outside `doc/`:
 | Folder | Purpose |
 |---|---|
 | `ref/` | Reference screenshots of the real Claude Design UI |
-| `design system sample/` | Canonical Goldman Sachs sample design system |
+| `design system sample/` | Canonical Northvale Capital sample design system |
 | `devplan/` | Execution plans and implementation notes |
 
 ## Document Conventions

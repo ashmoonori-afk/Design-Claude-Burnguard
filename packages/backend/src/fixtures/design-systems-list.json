@@ -1,18 +1,18 @@
 [
   {
-    "id": "goldman-sachs",
-    "name": "Goldman Sachs Design System",
+    "id": "northvale-capital",
+    "name": "Northvale Capital Design System",
     "status": "published",
     "is_template": false,
-    "thumbnail_path": "/fixtures/thumbnails/goldman-sachs.png",
+    "thumbnail_path": "/fixtures/thumbnails/northvale-capital.png",
     "updated_at": 1713751200000
   },
   {
-    "id": "toss",
-    "name": "Toss Design System",
+    "id": "splash",
+    "name": "Splash Design System",
     "status": "published",
     "is_template": true,
-    "thumbnail_path": "/fixtures/thumbnails/toss.png",
+    "thumbnail_path": "/fixtures/thumbnails/splash.png",
     "updated_at": 1713664800000
   },
   {

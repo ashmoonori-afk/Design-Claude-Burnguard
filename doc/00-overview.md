@@ -107,7 +107,7 @@ Notable deviation from the original plan:
 ### Local references
 
 - `ref/` contains screenshots of the real Claude Design UI
-- `design system sample/` contains the canonical Goldman Sachs sample design system
+- `design system sample/` contains the canonical Northvale Capital sample design system
 - `devplan/` contains implementation plans and handoff notes
 
 ## 7. Glossary

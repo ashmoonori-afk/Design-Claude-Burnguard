@@ -2,7 +2,7 @@
 
 ## 1. Source of Truth
 
-`design system sample/` (Goldman Sachs) is the **canonical example** of the format. Every DS we generate follows this structure.
+`design system sample/` (Northvale Capital) is the **canonical example** of the format. Every DS we generate follows this structure.
 
 ## 2. Directory Layout
 
@@ -42,7 +42,7 @@
 
 ```markdown
 ---
-name: goldman-sachs-design
+name: northvale-capital-design
 description: Use this skill to generate well-branded interfaces...
 user-invocable: true
 ---
@@ -171,7 +171,7 @@ draft → (user reviews) → review → [Publish] → published
 
 ## 8. Bundled Sample (Phase 1)
 
-`design system sample/` (Goldman Sachs) is embedded at build time. On first run, copied to `~/.burnguard/data/systems/goldman-sachs/`.
+`design system sample/` (Northvale Capital) is embedded at build time. On first run, copied to `~/.burnguard/data/systems/northvale-capital/`.
 
 - Status: locked to `published`
 - User edits allowed (they are just local files)
@@ -182,10 +182,10 @@ draft → (user reviews) → review → [Publish] → published
 The `SKILL.md` frontmatter conforms to Claude Code's [user-invocable skill](https://docs.anthropic.com/en/docs/claude-code/skills) format. Any DS we produce is usable as a Claude Code skill:
 
 ```bash
-cp -r ~/.burnguard/data/systems/goldman-sachs ~/.claude/skills/
+cp -r ~/.burnguard/data/systems/northvale-capital ~/.claude/skills/
 ```
 
-After which `/goldman-sachs` is invokable from Claude Code CLI. **Two-way interop is an intentional design choice.**
+After which `/northvale-capital` is invokable from Claude Code CLI. **Two-way interop is an intentional design choice.**
 
 ## 10. Font Licensing
 

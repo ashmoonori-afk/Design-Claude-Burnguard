@@ -44,7 +44,7 @@ describe("buildHandoffSpec", () => {
         },
       ],
       designSystem: {
-        name: "Goldman Sachs",
+        name: "Northvale Capital",
         tokensFileInZip: "tokens/colors_and_type.css",
       },
       generatedAt: 1700000000,
@@ -54,7 +54,7 @@ describe("buildHandoffSpec", () => {
     expect(spec.generated_at).toBe(1700000000);
     expect(spec.project.name).toBe("Test");
     expect(spec.viewport).toEqual({ width: 1280, height: 720 });
-    expect(spec.design_system.name).toBe("Goldman Sachs");
+    expect(spec.design_system.name).toBe("Northvale Capital");
     expect(spec.design_system.tokens_file).toBe("tokens/colors_and_type.css");
     expect(spec.pages).toHaveLength(1);
     expect(spec.pages[0].nodes[0].bg_id).toBe("hero");

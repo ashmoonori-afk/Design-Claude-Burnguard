@@ -28,7 +28,7 @@ async function exists(target: string): Promise<boolean> {
 async function seedSampleDesignSystem(): Promise<void> {
   const repoRoot = resolveRepoRoot();
   const source = path.join(repoRoot, "design system sample");
-  const destination = path.join(systemsDir, "goldman-sachs");
+  const destination = path.join(systemsDir, "northvale-capital");
 
   if (await exists(destination)) return;
   await cp(source, destination, { recursive: true });

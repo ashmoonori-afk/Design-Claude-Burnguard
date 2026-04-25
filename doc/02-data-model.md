@@ -10,7 +10,7 @@ Root is `~/.burnguard/` (`%USERPROFILE%\.burnguard\` on Windows). Abstracted as 
 ├── config.json                      # User settings
 ├── data/
 │   ├── systems/
-│   │   ├── goldman-sachs/           # Sample (embedded → copied on first run)
+│   │   ├── northvale-capital/           # Sample (embedded → copied on first run)
 │   │   │   ├── README.md
 │   │   │   ├── SKILL.md
 │   │   │   ├── colors_and_type.css

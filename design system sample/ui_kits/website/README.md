@@ -1,6 +1,6 @@
-# Goldman Sachs · Website UI Kit
+# Northvale Capital · Website UI Kit
 
-A high-fidelity recreation of the Goldman Sachs marketing-website pattern: editorial top nav, restrained hero with serif display headline, insights grid, market data callout, and a quiet footer.
+A high-fidelity recreation of the Northvale Capital marketing-website pattern: editorial top nav, restrained hero with serif display headline, insights grid, market data callout, and a quiet footer.
 
 ## Components
 

@@ -8,7 +8,7 @@ function Header() {
       <div style={{ background: 'var(--gray-10)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1280, margin: '0 auto', padding: '8px 32px', display: 'flex', justifyContent: 'flex-end', gap: 24, fontSize: 12, color: 'var(--fg-3)' }}>
           <a href="#" style={{ color: 'var(--fg-3)' }}>Marquee</a>
-          <a href="#" style={{ color: 'var(--fg-3)' }}>Goldman Sachs Asset Management</a>
+          <a href="#" style={{ color: 'var(--fg-3)' }}>Northvale Capital Asset Management</a>
           <a href="#" style={{ color: 'var(--fg-3)' }}>10,000 Small Businesses</a>
           <span style={{ color: 'var(--gray-30)' }}>|</span>
           <a href="#" style={{ color: 'var(--fg-3)' }}>EN ▾</a>
@@ -16,7 +16,7 @@ function Header() {
       </div>
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 32px', display: 'flex', alignItems: 'center', gap: 48 }}>
         <a href="#" style={{ borderBottom: 'none', flexShrink: 0 }}>
-          <img src="../../assets/logos/Goldman_Sachs_Signature.svg" alt="Goldman Sachs" style={{ height: 36, display: 'block' }} />
+          <img src="../../assets/logos/Northvale_Signature.svg" alt="Northvale Capital" style={{ height: 36, display: 'block' }} />
         </a>
         <nav style={{ display: 'flex', gap: 32, flex: 1 }}>
           {nav.map((n, i) => (

@@ -1,12 +1,11 @@
-# Goldman Sachs Design System
+# Northvale Capital Design System
 
-A working design system distilled from the public **`balajisr/gs-design-system-scss`** repo (a community SCSS recreation of GS color tokens) plus the official Goldman Sachs logo set. Built for prototyping branded interfaces, decks, and marketing artifacts in the GS visual language.
+A fictional editorial-finance reference design system bundled with BurnGuard as a worked example. It exists so the harness has something realistic to render in the canvas, prompts can name a real-feeling brand, and exports / handoffs have tokens to reference. **Northvale Capital is not a real company** — the name, logos, and copy are placeholders. Use this kit when you want to prototype institutional, editorial, financial-services interfaces without bringing in a real brand's trademarks.
 
 > **Sources**
-> - GitHub: `https://github.com/balajisr/gs-design-system-scss` — color tokens (`src/_colors.scss`) and the full logo set (`src/assets/logos/`).
+> - Color, type, spacing, radii, shadow, and motion tokens were synthesized for this sample from common editorial-finance design conventions. Nothing here is derived from a specific real-world institution's design system.
 > - **Brand fonts (user-supplied):** **Zen Serif** for display, **KoPub Batang** (serif) for editorial body, **Pretendard** (variable) as the primary UI sans with **KoPub Dotum** as KR fallback, and **IBM Plex Mono** (CDN) for tabular numerals. Wired up in [`fonts/fonts.css`](./fonts/fonts.css).
-
-This is **not** an official Goldman Sachs product. It's a designer's working kit for prototyping in a GS-inspired aesthetic.
+> - **Logos** in `assets/logos/` are placeholder SVG monograms and wordmarks (not real trademarks). Replace them when you fork this for a real brand.
 
 ---
 
@@ -18,15 +17,16 @@ This is **not** an official Goldman Sachs product. It's a designer's working kit
 | [`SKILL.md`](./SKILL.md) | Agent-Skill manifest (drop into Claude Code) |
 | [`colors_and_type.css`](./colors_and_type.css) | All CSS custom properties — colors, type, spacing, radii, shadows, motion |
 | [`fonts/`](./fonts/) | `fonts.css` (Google-Fonts substitution layer + notes) |
-| [`assets/logos/`](./assets/logos/) | All 6 logo lockups in PNG + SVG (Blue Box, Outline, Reversed, Secondary, Signature, Signature Reverse) |
+| [`assets/logos/`](./assets/logos/) | Six placeholder SVG lockups (Box, Outline, Reversed, Secondary, Signature, Signature Reverse) |
 | [`preview/`](./preview/) | Cards rendered in the Design System tab — colors, type, spacing, components |
 | [`ui_kits/website/`](./ui_kits/website/) | Marketing-website kit: header, hero, article, data callout, footer, full landing page |
+| [`uploads/`](./uploads/) | Drop zone for design references during local exploration. **Gitignored** — nothing here is meant to ship publicly. See `.gitignore` for the guard. |
 
 ---
 
 ## Brand snapshot
 
-Goldman Sachs is a 150-year-old American multinational investment bank. The visual language is **institutional, restrained, and editorial** — closer to a serious newspaper or annual report than a tech product. The wordmark uses a high-contrast Didone serif; the supporting palette is built on cool blue-grays with the dusty `#7399C6` "GS Blue" as the brand color.
+Northvale Capital is positioned as an institutional asset manager — the persona is **considered, restrained, and editorial**, closer to a serious newspaper or annual report than a tech product. The display wordmark is a high-contrast Didone-style serif; the supporting palette is built on cool blue-grays with a dusty `#7399C6` "Northvale Blue" as the brand color.
 
 The system is meant to feel **trustworthy, considered, and quiet**. There is no playfulness. The few moments of color are reserved for data and status.
 
@@ -34,7 +34,7 @@ The system is meant to feel **trustworthy, considered, and quiet**. There is no 
 
 ## CONTENT FUNDAMENTALS
 
-**Voice.** Authoritative, restrained, third-person institutional. Goldman Sachs writes about itself in the third person ("Goldman Sachs is…"), and addresses readers as "our clients," "investors," "the market." Direct second-person ("you") appears in CTAs and product UI, but rarely in editorial.
+**Voice.** Authoritative, restrained, third-person institutional. Northvale writes about itself in the third person ("Northvale Capital is…"), and addresses readers as "our clients," "investors," "the market." Direct second-person ("you") appears in CTAs and product UI, but rarely in editorial.
 
 **Tone.** Considered, evidence-led, never breathless. Headlines state a thesis or a fact; subheads provide context. Marketing copy avoids superlatives ("best-in-class," "revolutionary"). Numbers carry the weight that adjectives would in a startup voice.
 
@@ -49,10 +49,10 @@ The system is meant to feel **trustworthy, considered, and quiet**. There is no 
 
 **Vibe.** Editorial-financial. Think *The Economist* meets a research note. Long-form prose is welcome; whitespace is generous.
 
-**Examples (in the GS voice):**
+**Examples (in the Northvale voice):**
 - ✅ "Equity markets enter the second quarter on firmer footing."
 - ✅ "Our research desk expects a 25 bp cut at the June meeting."
-- ✅ "Insights from Goldman Sachs Research"
+- ✅ "Insights from Northvale Research"
 - ❌ "🚀 Markets are crushing it this quarter!"
 - ❌ "We think you're gonna love what's coming next."
 
@@ -60,7 +60,7 @@ The system is meant to feel **trustworthy, considered, and quiet**. There is no 
 
 ## VISUAL FOUNDATIONS
 
-**Colors.** A 10-step gray ramp from `#FFFFFF` to `#1C2B36` carries 90% of the surface area. The dusty **`#7399C6` "GS Blue"** is reserved for the wordmark and rare brand moments. **`#186ADE` action-blue** drives interactive states (links, buttons, focus). Accent hues (red, orange, green, teal, purple, pink) exist as full 10-step ramps but appear almost exclusively in **data visualization** and **status messaging** — never as decoration.
+**Colors.** A 10-step gray ramp from `#FFFFFF` to `#1C2B36` carries 90% of the surface area. The dusty **`#7399C6` "Northvale Blue"** is reserved for the wordmark and rare brand moments. **`#186ADE` action-blue** drives interactive states (links, buttons, focus). Accent hues (red, orange, green, teal, purple, pink) exist as full 10-step ramps but appear almost exclusively in **data visualization** and **status messaging** — never as decoration.
 
 **Type.** Display in **Zen Serif** (brand) at large sizes with tight tracking (`-0.02em`). Editorial body & long-form in **KoPub Batang** (serif). UI labels, eyebrows, and shorter copy in **Pretendard** (variable, 100–900) with KoPub Dotum as KR fallback. Numerals in **IBM Plex Mono** (tabular).
 
@@ -92,17 +92,19 @@ The system is meant to feel **trustworthy, considered, and quiet**. There is no 
 
 ## ICONOGRAPHY
 
-The Goldman Sachs brand uses **photography** and **typography** as its primary visual language — iconography is a supporting role and is held to a strict, neutral system.
+The Northvale brand uses **photography** and **typography** as its primary visual language — iconography is a supporting role and is held to a strict, neutral system.
 
-- **Logo lockups.** Six official lockups live in `assets/logos/`:
-  - `Goldman_Sachs_Signature` — primary, black on white
-  - `Goldman_Sachs_Signature_Reverse` — primary, white on dark
-  - `Goldman_Sachs_Blue_Box` — square brand mark on `#7399C6`
-  - `Goldman_Sachs_Reversed` — white wordmark for dark backgrounds
-  - `Goldman_Sachs_Outline` — line treatment
-  - `Goldman_Sachs_Secondary` — secondary lockup
-- **UI icons.** The repo does not ship an icon set. We standardize on **[Lucide](https://lucide.dev)** loaded from CDN — a thin, geometric, 1.5px-stroke open-source set that matches the GS restraint. Lucide's stroke weight and squared terminals fit the editorial tone better than thicker rounded sets.
-  - **Substitution flagged.** If GS publishes an internal icon set, swap the CDN reference in `ui_kits/website/index.html`.
+- **Logo lockups.** Six placeholder SVG lockups live in `assets/logos/`:
+  - `Northvale_Signature` — primary wordmark, dark on light
+  - `Northvale_Signature_Reverse` — primary wordmark, white on dark
+  - `Northvale_Box` — square brand mark on `#1a3a5c`
+  - `Northvale_Reversed` — white outline mark for dark backgrounds
+  - `Northvale_Outline` — line treatment of the brand mark
+  - `Northvale_Secondary` — combined mark + wordmark lockup
+
+  These are deliberately simple monograms so a real fork can swap them out without touching layout. None of them carry real-world trademark.
+- **UI icons.** The repo does not ship an icon set. We standardize on **[Lucide](https://lucide.dev)** loaded from CDN — a thin, geometric, 1.5px-stroke open-source set that matches the editorial restraint of this system. Lucide's stroke weight and squared terminals fit the editorial tone better than thicker rounded sets.
+  - **Substitution flagged.** If a real brand is forking this and ships its own icon set, swap the CDN reference in `ui_kits/website/index.html`.
 - **No emoji.** Anywhere.
 - **No unicode pictographs as icons** (★, ✓, →) except the en-dash and bullet (·) used as typographic separators in eyebrows: `INSIGHTS · MARKETS · Q1 2026`.
 - **No hand-drawn SVG illustration.** Where a visual is needed, use photography.
@@ -111,7 +113,7 @@ The Goldman Sachs brand uses **photography** and **typography** as its primary v
 
 ## Caveats & substitutions to flag
 
-1. **Icon set → Lucide.** The repo ships no icons. If GS uses an internal set, replace the Lucide CDN.
-2. **Tokens limited to color.** The source repo only defines colors. Spacing, type scale, radii, shadows, and motion are reasonable derivations consistent with editorial-finance peers — verify against any internal GS guidelines you have.
-3. **Mono → IBM Plex Mono (CDN).** No brand mono was supplied. Swap if you have one.
-
+1. **Icon set → Lucide.** The repo ships no icons. Replace the Lucide CDN if a real brand fork has its own icon library.
+2. **Tokens are sample defaults.** Spacing, type scale, radii, shadows, and motion are reasonable defaults consistent with editorial-finance peers — they are starting points, not a real institution's authoritative tokens.
+3. **Mono → IBM Plex Mono (CDN).** No brand mono is supplied. Swap if a fork has one.
+4. **Logos are placeholders.** The six SVGs in `assets/logos/` are simple monograms; replace before shipping any real-brand artifact.

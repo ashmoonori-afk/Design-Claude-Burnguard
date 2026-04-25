@@ -11,7 +11,7 @@ function CalloutBand() {
             One of the world's leading asset managers, with the scale to invest across every asset class and the conviction to act on it.
           </p>
           <a href="#" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#fff', fontSize: 15, fontWeight: 600, borderBottom: '1px solid #7399C6', paddingBottom: 4 }}>
-            Visit Goldman Sachs Asset Management →
+            Visit Northvale Capital Asset Management →
           </a>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--gray-80)', border: '1px solid var(--gray-80)' }}>

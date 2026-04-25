@@ -147,7 +147,7 @@ Format: one entry per decision, newest at the bottom. Numbering never reused.
 **Date**: 2026-04-22  
 **Status**: Accepted
 
-**Context.** The project owner is Korean; the product README for the Goldman Sachs sample DS is mixed Korean/English. Earlier doc drafts were written in Korean, then re-written in English on request.
+**Context.** The project owner is Korean; the product README for the Northvale Capital sample DS is mixed Korean/English. Earlier doc drafts were written in Korean, then re-written in English on request.
 
 **Decision.** **English is the single official language for `doc/`.** Inline source comments may use any language. The sample DS contents (`design system sample/`) stay as-is because they are example content, not project documentation.
 
@@ -158,14 +158,14 @@ Format: one entry per decision, newest at the bottom. Numbering never reused.
 
 ---
 
-## ADR-009: Sample design system = Goldman Sachs, bundled and preloaded
+## ADR-009: Sample design system = Northvale Capital, bundled and preloaded
 
 **Date**: 2026-04-22  
 **Status**: Accepted
 
 **Context.** A user creating their first project needs something usable immediately. Shipping an empty state requires the user to either extract a DS (Phase 3 only) or hand-author one.
 
-**Decision.** The Goldman Sachs sample DS (`design system sample/`) is **embedded into the binary at build time** and copied to `~/.burnguard/data/systems/goldman-sachs/` on first run. Status is locked to `published`. Users can edit the files (they are local) and Reset restores from the embedded copy.
+**Decision.** The Northvale Capital sample DS (`design system sample/`) is **embedded into the binary at build time** and copied to `~/.burnguard/data/systems/northvale-capital/` on first run. Status is locked to `published`. Users can edit the files (they are local) and Reset restores from the embedded copy.
 
 **Consequences.**
 - Phase 1 binary is usable without any additional setup
