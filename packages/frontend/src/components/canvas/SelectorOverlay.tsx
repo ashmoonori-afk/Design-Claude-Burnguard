@@ -11,6 +11,7 @@ import {
   type FrameRect,
 } from "./frame-bridge";
 import type { SelectedNode } from "@/types/project";
+import { useFrameElementRect } from "@/hooks/useFrameElementRect";
 
 export default function SelectorOverlay({
   active,
@@ -27,38 +28,22 @@ export default function SelectorOverlay({
   const requestSeqRef = useRef(0);
   const [hoverRect, setHoverRect] = useState<FrameRect | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [selectedRect, setSelectedRect] = useState<FrameRect | null>(null);
+  // Selected-rect tracking is the same shared 200 ms loop the other
+  // canvas overlays use (audit fix #11). The hook fires immediately
+  // on identifier change so the first poll lands in < 1 frame, well
+  // before the user notices the previous selection box vanish.
+  const selectedRect = useFrameElementRect(
+    iframeRef,
+    selectedKey,
+    requestFrameRectForSelector,
+  );
 
   useEffect(() => {
     if (!active) {
       setHoverRect(null);
       setSelectedKey(null);
-      setSelectedRect(null);
     }
   }, [active]);
-
-  useEffect(() => {
-    if (!selectedKey) {
-      setSelectedRect(null);
-      return;
-    }
-    let alive = true;
-    const tick = async () => {
-      if (!alive) return;
-      const rect = await requestFrameRectForSelector(
-        iframeRef.current,
-        selectedKey,
-      );
-      if (!alive) return;
-      setSelectedRect((prev) => (rectEqual(prev, rect) ? prev : rect));
-    };
-    void tick();
-    const id = window.setInterval(tick, 200);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [iframeRef, selectedKey]);
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
     if (!active || !overlayRef.current) {
@@ -86,12 +71,12 @@ export default function SelectorOverlay({
     void requestFrameSelectAtPoint(iframeRef.current, relX, relY).then((hit) => {
       if (!hit?.selector || !hit.rect) {
         setSelectedKey(null);
-        setSelectedRect(null);
         onSelect(null);
         return;
       }
+      // Bumping selectedKey triggers useFrameElementRect to fetch the
+      // canonical rect from the iframe; we drop the local override.
       setSelectedKey(hit.selector);
-      setSelectedRect(hit.rect);
       onSelect({
         nodeId: hit.selector,
         rect: {

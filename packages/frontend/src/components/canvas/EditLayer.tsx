@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -10,6 +9,7 @@ import {
   requestFrameRectForBgId,
   type FrameRect,
 } from "./frame-bridge";
+import { useFrameElementRect } from "@/hooks/useFrameElementRect";
 
 export interface EditTarget {
   bg_id: string;
@@ -32,27 +32,14 @@ export default function EditLayer({
   const overlayRef = useRef<HTMLDivElement>(null);
   const requestSeqRef = useRef(0);
   const [hoverRect, setHoverRect] = useState<FrameRect | null>(null);
-  const [selectedRect, setSelectedRect] = useState<FrameRect | null>(null);
-
-  useEffect(() => {
-    if (!selectedBgId) {
-      setSelectedRect(null);
-      return;
-    }
-    let alive = true;
-    const tick = async () => {
-      if (!alive) return;
-      const rect = await requestFrameRectForBgId(iframeRef.current, selectedBgId);
-      if (!alive) return;
-      setSelectedRect((prev) => (rectEqual(prev, rect) ? prev : rect));
-    };
-    void tick();
-    const id = window.setInterval(tick, 200);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [iframeRef, selectedBgId]);
+  // Single shared 200 ms poll loop via useFrameElementRect (audit
+  // fix #11 — was a duplicated useEffect across SelectorOverlay,
+  // EditLayer, TweaksLayer).
+  const selectedRect = useFrameElementRect(
+    iframeRef,
+    selectedBgId,
+    requestFrameRectForBgId,
+  );
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
     if (!active || !overlayRef.current) {

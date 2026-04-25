@@ -10,6 +10,7 @@ import {
   requestFrameRectForBgId,
   type FrameRect,
 } from "./frame-bridge";
+import { useFrameElementRect } from "@/hooks/useFrameElementRect";
 
 export const TWEAKS_STYLE_KEYS = [
   "font-size",
@@ -46,34 +47,19 @@ export default function TweaksLayer({
   const overlayRef = useRef<HTMLDivElement>(null);
   const requestSeqRef = useRef(0);
   const [hoverRect, setHoverRect] = useState<FrameRect | null>(null);
-  const [selectedRect, setSelectedRect] = useState<FrameRect | null>(null);
+  // Shared 200 ms poll loop (audit fix #11). Hovering is still local
+  // because it uses different request shape (point-based, not id-based).
+  const selectedRect = useFrameElementRect(
+    iframeRef,
+    selectedBgId,
+    requestFrameRectForBgId,
+  );
 
   useEffect(() => {
     if (!active) {
       setHoverRect(null);
-      setSelectedRect(null);
     }
   }, [active]);
-
-  useEffect(() => {
-    if (!selectedBgId) {
-      setSelectedRect(null);
-      return;
-    }
-    let alive = true;
-    const tick = async () => {
-      if (!alive) return;
-      const rect = await requestFrameRectForBgId(iframeRef.current, selectedBgId);
-      if (!alive) return;
-      setSelectedRect((prev) => (rectEqual(prev, rect) ? prev : rect));
-    };
-    void tick();
-    const id = window.setInterval(tick, 200);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
-  }, [iframeRef, selectedBgId]);
 
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
     if (!active || !overlayRef.current) {
