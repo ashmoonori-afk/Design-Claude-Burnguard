@@ -35,7 +35,7 @@
 >   backend before starting Vite, opens the browser when frontend is
 >   ready, and tears both children down on SIGINT or window close
 >   (`36059ea` + `81c068c`).
-> - `bun test` is currently 192/192 green and `npm run typecheck` is green.
+> - `bun test` is currently 215/215 green and `npm run typecheck` is green.
 > - **Shipped this cycle on top of all the above:** P4.3 Figma sync
 >   (Settings → Figma access PAT, figma.com URL as a first-class
 >   extraction source, published styles → `--color-<slug>` tokens);
@@ -56,7 +56,20 @@
 >   patches with a canvas Undo button, XSS test pinning the
 >   escapeHtmlText contract, shared useFrameElementRect hook
 >   collapsing three overlay polling loops, and iframe sandbox
->   gaining allow-popups + allow-fullscreen).
+>   gaining allow-popups + allow-fullscreen). On top of the audit:
+>   the Range-based tight selection box that fixes the "box wider
+>   than text" bug across Select / Edit / Tweaks.
+> - **Cross-cutting verification loop:** thirteen functional fixes
+>   plus twenty-three new tests across six subsystems — Mac launcher
+>   bun probe widening + chmod 600 on `~/.burnguard/config.json`;
+>   SSE broker per-listener throw isolation, heartbeat lifecycle,
+>   `EventSource` typed `onError` for parse + connection failures;
+>   CLI adapter parser exception traps inside readLines and
+>   `finally`-released decision sinks for both claude-code and
+>   codex; FS watcher closing on project delete with race-safe map
+>   insert and corrected sessionId trace key; atomic project +
+>   session insert in `createProjectRecord`; comment-pin coordinate
+>   clamping to 0..100 on create.
 > - Immediate remaining product priorities: close P4.2 acceptance,
 >   add stronger E2E coverage, complete P3.11 Linux build, then
 >   P4.5 signing / notarization, P4.6 install packages, and P5.1
@@ -78,12 +91,19 @@
 > **one-click double-click launchers + sequenced dev-launcher**
 > (`36059ea` + `81c068c`), **deck/prototype structure summary +
 > token-budget rules in compact skill** (`f5505d3`). `bun test`:
-> 192/192 pass. P4.3 Figma sync + the seven-fix export audit + P4.7
+> 215/215 pass. P4.3 Figma sync + the seven-fix export audit + P4.7
 > Sample library hardening + the design-engine audit (push-based
 > active slide, bridge timeout, inline error overlay, atomic file
 > write, robust inline-style parser, file-level undo for Edit /
 > Tweaks GUI patches, XSS test, shared overlay polling hook, plus
 > iframe popups + fullscreen) all shipped after that snapshot.
+> Followed by the cross-cutting verification loop: thirteen further
+> functional fixes plus twenty-three new tests across Mac launcher
+> + chmod 600, SSE broker isolation + heartbeat lifecycle +
+> EventSource onError, CLI adapter parser-trap + decision-sink
+> finally release, FS watcher close-on-delete + race-safe slot +
+> sessionId trace fix, atomic project + session insert, comment
+> coordinate clamp, and the Range-based tight selection box.
 > **Resume at P3.11 (Linux build)** to close Milestone 3.C, or pick
 > up Phase 4 — formalise P4.2 acceptance (primary-brand-colour delta
 > harness), then P4.5 signing / notarization, P4.6 install packages,

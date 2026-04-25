@@ -111,7 +111,21 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
     contract 테스트, 3개 overlay 의 polling 루프를 공유 hook
     (`useFrameElementRect`) 으로 통합. 보너스: canvas iframe 에
     `allow-popups` + `allow="fullscreen"` 부여로 외부 링크 / deck F
-    키 풀스크린이 실제로 동작.
+    키 풀스크린이 실제로 동작. 추가: Range 기반 시각 경계로
+    block leaf 의 selection box 를 글자 폭에 맞춤.
+  - **Cross-cutting 검증 loop** (13개 수정 + 23개 새 테스트, 6개
+    영역) — Mac 런처 bun PATH 탐색 확장 (Homebrew + npm prefix)
+    + `~/.burnguard/config.json` chmod 600; SSE broker 가 listener
+    throw 로 다른 구독자 차단되지 않도록 isolation, heartbeat
+    수명 주기 정리 (disconnect 후 unhandled rejection 누수 차단),
+    EventSource parse / connection 실패를 typed `onError` 로 라우팅;
+    CLI 어댑터 (claude-code, codex) 가 parser 예외를 readLines
+    콜백 안에서 trap, decision sink 를 `finally` 에서 해제 (한 줄
+    에러로 subprocess 가 wedge 되지 않음); FS watcher 가 프로젝트
+    삭제 시 close (이전엔 삭제마다 watcher + debounce timer 누수),
+    error trace 가 올바른 sessionId 로그로 기록; `createProjectRecord`
+    가 project + session insert 를 SQLite transaction 으로 묶음;
+    comment-pin 좌표 0..100 clamp.
 - 직전 사이클 폴리싱: **compact 채팅 컨텍스트 모드**
   (Settings → Chat context: `compact` / `full`) + deck/prototype
   구조 사전 추출 + compact skill에 토큰 예산 규칙 강제로 멀티 편집
@@ -127,7 +141,7 @@ BurnGuard는 로컬에 이미 설치된 `claude` / `codex` CLI를 감싸는
 - 남은 작업: **P3.11 Linux 빌드**, 브라우저 E2E 자동화,
   **P4.5 서명/노타리제이션**, **P4.6 install 패키지**,
   **P5.1 Windows/macOS managed auto-update**
-- 검증 상태: `bun test` 192/192 통과, `npm run typecheck` 통과
+- 검증 상태: `bun test` 215/215 통과, `npm run typecheck` 통과
 
 ## 핵심 기능
 

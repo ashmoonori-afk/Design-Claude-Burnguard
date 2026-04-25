@@ -117,7 +117,26 @@ concrete advantages for real design work:
     `useFrameElementRect` hook collapsing three near-identical
     overlay polling loops. Bonus: canvas iframe now allows popups
     and fullscreen so deck F-key + external `<a target="_blank">`
-    actually work.
+    actually work. Plus: tight selection box around visible text
+    via Range bounds (block leaves no longer paint a parent-width
+    box around a short headline).
+  - **Cross-cutting verification loop** (13 fixes + 23 new tests
+    across Mac, SSE, adapters, FS watcher, DB, comments) —
+    widened the Mac launcher's bun probe (Homebrew + npm-prefix
+    paths) and chmod-600s `~/.burnguard/config.json` after each
+    save; SSE broker isolates per-listener throws so one failing
+    subscriber can't starve the rest, heartbeat lifecycle no
+    longer leaks unhandled rejections after a disconnect,
+    `EventSource` parse / connection failures route through a
+    typed `onError` instead of silently breaking; CLI adapters
+    trap parser exceptions inside the readLines callback and
+    release the decision sink in `finally` so a malformed line or
+    mid-turn throw can't wedge the subprocess; FS watcher closes
+    on project delete (was leaking one watcher per delete plus
+    pending debounce timers) and writes its error trail to the
+    correct sessionId-keyed log; `createProjectRecord` now
+    inserts project + session inside a single SQLite transaction;
+    comment-pin coordinates clamped to 0..100 on create.
 - Recent polish: **compact chat context mode**
   (Settings → Chat context: `compact` / `full`) plus a pre-extracted
   deck/prototype structure summary and token-budget rules in the
@@ -135,7 +154,7 @@ concrete advantages for real design work:
 - Still open: **P3.11 Linux build**, full browser E2E automation,
   **P4.5 signing / notarization**, **P4.6 install packages**, and
   **P5.1 Windows / macOS managed auto-update**
-- Validation status: `bun test` 192/192 green, `npm run typecheck` green
+- Validation status: `bun test` 215/215 green, `npm run typecheck` green
   (backend + frontend)
 
 ## Feature Tour
