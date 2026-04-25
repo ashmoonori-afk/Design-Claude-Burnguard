@@ -395,30 +395,56 @@ sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
   }
 
   return streamSSE(c, async (stream) => {
+    let closed = false;
+    const closeAndCleanup = () => {
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+
     const unsubscribe = broker.subscribe(id, async (event: NormalizedEvent) => {
-      await stream.writeSSE({
-        data: JSON.stringify(event),
-        event: "message",
-        id: event.id,
-      });
+      if (closed) return;
+      try {
+        await stream.writeSSE({
+          data: JSON.stringify(event),
+          event: "message",
+          id: event.id,
+        });
+      } catch {
+        // Client disconnected mid-write. Tear down so the broker
+        // stops calling us and the heartbeat below stops firing.
+        closeAndCleanup();
+      }
     });
 
     // Heartbeat must fire inside Bun.serve's idleTimeout window (255s max)
     // to keep the SSE connection alive during long Claude Code runs.
-    const heartbeat = setInterval(async () => {
-      await stream.writeSSE({
-        data: JSON.stringify({ type: "heartbeat", ts: Date.now() }),
-        event: "heartbeat",
-      });
-    }, 8000);
+    // 30 s is well below the limit but doesn't burn round-trips on idle
+    // tabs; the previous 8 s value was a holdover from a smaller
+    // idleTimeout.
+    const heartbeat = setInterval(() => {
+      if (closed) {
+        clearInterval(heartbeat);
+        return;
+      }
+      // Fire-and-forget but trap the promise — an unhandled rejection
+      // here used to leak on every disconnected stream.
+      void stream
+        .writeSSE({
+          data: JSON.stringify({ type: "heartbeat", ts: Date.now() }),
+          event: "heartbeat",
+        })
+        .catch(() => {
+          closeAndCleanup();
+        });
+    }, 30_000);
 
     try {
       await new Promise<void>((resolve) => {
         c.req.raw.signal.addEventListener("abort", () => resolve(), { once: true });
       });
     } finally {
-      clearInterval(heartbeat);
-      unsubscribe();
+      closeAndCleanup();
     }
   });
 });

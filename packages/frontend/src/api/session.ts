@@ -88,11 +88,55 @@ export async function submitToolDecision(
 export function subscribeSessionStream(
   id: string,
   onEvent: (event: NormalizedEvent) => void,
+  onError?: (err: { kind: "parse" | "connection"; message: string }) => void,
 ): () => void {
   const source = new EventSource(`/api/sessions/${id}/stream`);
   const listener = (message: MessageEvent<string>) => {
-    onEvent(JSON.parse(message.data) as NormalizedEvent);
+    let parsed: NormalizedEvent;
+    try {
+      parsed = JSON.parse(message.data) as NormalizedEvent;
+    } catch (err) {
+      // Malformed payload — call the optional error handler so the
+      // caller can surface a toast, but don't bubble up because the
+      // stream is still healthy and more events may follow.
+      onError?.({
+        kind: "parse",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+    try {
+      onEvent(parsed);
+    } catch (err) {
+      // Likewise: an exception inside the consumer must not kill the
+      // EventSource subscription.
+      onError?.({
+        kind: "parse",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+  // EventSource fires `error` on every connection drop, including
+  // mid-flight reconnects (it auto-reconnects via the readyState ===
+  // CONNECTING state). Surface the first one per disconnect cycle so
+  // the UI can show a transient "reconnecting" hint without spamming.
+  let lastErrorReadyState: number | null = null;
+  const errorListener = () => {
+    if (source.readyState === lastErrorReadyState) return;
+    lastErrorReadyState = source.readyState;
+    onError?.({
+      kind: "connection",
+      message:
+        source.readyState === EventSource.CLOSED
+          ? "Stream closed."
+          : "Stream reconnecting…",
+    });
   };
   source.addEventListener("message", listener as EventListener);
-  return () => source.close();
+  source.addEventListener("error", errorListener);
+  return () => {
+    source.removeEventListener("message", listener as EventListener);
+    source.removeEventListener("error", errorListener);
+    source.close();
+  };
 }
