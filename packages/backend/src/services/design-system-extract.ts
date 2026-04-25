@@ -24,6 +24,15 @@ import {
 import { createDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
 import { systemsDir } from "../lib/paths";
 import { detectComponentSamples } from "./upload-component-detect";
+import { loadConfig } from "../config";
+import {
+  extractFigmaTokens,
+  fetchFigmaFileMeta,
+  fetchFigmaNodes,
+  fetchFigmaPublishedStyles,
+  FigmaApiError,
+  parseFigmaUrl,
+} from "./figma";
 import { UPLOAD_EXTRACTOR_PY } from "./upload-extractor-py";
 
 const PREVIEW_FILE_IDS = [
@@ -98,7 +107,7 @@ const SUPPORTED_FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 
 type SupportedExtractionSource = Extract<
   DesignSystemSourceType,
-  "github" | "website" | "upload"
+  "github" | "website" | "figma" | "upload"
 >;
 type SupportedUploadKind = "pdf" | "pptx";
 
@@ -174,6 +183,8 @@ export class DesignSystemExtractError extends Error {
       | "git_clone_failed"
       | "upload_extract_failed"
       | "website_fetch_failed"
+      | "figma_token_missing"
+      | "figma_fetch_failed"
       | "system_id_conflict",
     message: string,
   ) {
@@ -210,7 +221,11 @@ export async function extractDesignSystemFromSource(
 
   const inferredSourceType = inferSourceType(sourceUrl);
   const sourceType = input.source_type ?? inferredSourceType;
-  if (sourceType !== "github" && sourceType !== "website") {
+  if (
+    sourceType !== "github" &&
+    sourceType !== "website" &&
+    sourceType !== "figma"
+  ) {
     throw new DesignSystemExtractError(
       "unsupported_source_type",
       `Unsupported extraction source type: ${String(sourceType)}`,
@@ -224,7 +239,9 @@ export async function extractDesignSystemFromSource(
     const analysis =
       sourceType === "github"
         ? await ingestGitSource(sourceUrl, ingestDir, input.name)
-        : await ingestWebsiteSource(sourceUrl, ingestDir, input.name);
+        : sourceType === "figma"
+          ? await ingestFigmaSource(sourceUrl, ingestDir, input.name)
+          : await ingestWebsiteSource(sourceUrl, ingestDir, input.name);
 
     const brandName = input.name?.trim() || analysis.brandName;
     const systemId = await allocateSystemId(input.system_id ?? slugify(brandName));
@@ -523,6 +540,9 @@ export function inferSourceType(sourceUrl: string): SupportedExtractionSource {
     const url = new URL(trimmed);
     if (url.protocol === "http:" || url.protocol === "https:") {
       const host = url.hostname.toLowerCase();
+      if (host === "figma.com" || host === "www.figma.com") {
+        return "figma";
+      }
       if (
         host === "github.com" ||
         host === "www.github.com" ||
@@ -919,6 +939,132 @@ async function ingestWebsiteSource(
     componentSamples,
     artifactCopies: [],
   };
+}
+
+/**
+ * Pulls published color + text styles from a Figma file via the REST API
+ * and packages them into the same SourceAnalysis shape that the github
+ * and website ingests use, so the rest of the pipeline (writeCanonical-
+ * DesignSystem, etc.) is unchanged. Reads the PAT from
+ * ~/.burnguard/config.json.
+ *
+ * Out of scope at MVP: effect / grid styles, component thumbnail
+ * download as logos, and image asset extraction (those need image
+ * exports which require an extra Playwright-grade fetch loop).
+ */
+async function ingestFigmaSource(
+  sourceUrl: string,
+  ingestDir: string,
+  preferredName?: string,
+): Promise<SourceAnalysis> {
+  void ingestDir;
+  const config = await loadConfig();
+  const token = config.figmaPersonalAccessToken;
+  if (!token || token.trim().length === 0) {
+    throw new DesignSystemExtractError(
+      "figma_token_missing",
+      'Figma personal access token is not set. Add it in Settings → "Figma access" then re-run the import.',
+    );
+  }
+
+  let fileKey: string;
+  try {
+    fileKey = parseFigmaUrl(sourceUrl).fileKey;
+  } catch (err) {
+    if (err instanceof FigmaApiError) {
+      throw new DesignSystemExtractError("invalid_source_url", err.message);
+    }
+    throw err;
+  }
+
+  try {
+    const meta = await fetchFigmaFileMeta(fileKey, token);
+    const styles = await fetchFigmaPublishedStyles(fileKey, token);
+    const nodes = await fetchFigmaNodes(
+      fileKey,
+      styles.map((s) => s.nodeId),
+      token,
+    );
+    const tokens = extractFigmaTokens(styles, nodes);
+
+    const cssVars = new Map<string, string>();
+    for (const [name, hex] of tokens.colors) {
+      cssVars.set(name, `#${hex}`);
+    }
+
+    const colors = [...tokens.colors.values()].map((hex) => `#${hex}`);
+    const fontSizes: string[] = [];
+    const fontWeights: string[] = [];
+    for (const ts of tokens.textStyles) {
+      if (typeof ts.fontSizePx === "number") fontSizes.push(`${ts.fontSizePx}px`);
+      if (typeof ts.fontWeight === "number") fontWeights.push(String(ts.fontWeight));
+    }
+
+    const brandName =
+      preferredName?.trim() || meta.name?.trim() || `Figma file ${fileKey}`;
+
+    const notes: string[] = [
+      `Imported from Figma file "${meta.name}" (key=${fileKey}, lastModified=${meta.lastModified}).`,
+      `${tokens.colors.size} color token(s) and ${tokens.textStyles.length} text style(s) extracted from ${styles.length} published style(s).`,
+    ];
+    if (tokens.colors.size === 0 && tokens.textStyles.length === 0) {
+      notes.push(
+        "No published styles found — make sure the file's color / text styles are published to your team library, then re-run the import.",
+      );
+    }
+
+    return {
+      brandName,
+      cssVars,
+      fontFamilies: tokens.fontFamilies,
+      colors,
+      fontSizes: dedupeOrderedStrings(fontSizes),
+      fontWeights: dedupeOrderedStrings(fontWeights),
+      spacingValues: [],
+      radii: [],
+      shadows: [],
+      notes,
+      logoFiles: [],
+      uiKitFiles: [],
+      rawFiles: [],
+      homepageHtml: null,
+      fetchedPageCount: 0,
+      componentSamples: {
+        buttons: [],
+        cards: [],
+        forms: [],
+        tables: [],
+        badges: [],
+        headings: [],
+        body: [],
+      },
+      artifactCopies: [],
+    };
+  } catch (err) {
+    if (err instanceof DesignSystemExtractError) throw err;
+    if (err instanceof FigmaApiError) {
+      throw new DesignSystemExtractError(
+        "figma_fetch_failed",
+        err.message,
+      );
+    }
+    throw new DesignSystemExtractError(
+      "figma_fetch_failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+function dedupeOrderedStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    if (!seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
 }
 
 async function ingestUploadSource(input: {

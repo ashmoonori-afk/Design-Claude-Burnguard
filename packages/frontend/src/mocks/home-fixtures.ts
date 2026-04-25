@@ -127,4 +127,5 @@ export const mockSettings: SettingsSummary = {
   theme: "light",
   chat_abort_threshold_ms: 300_000,
   chat_context_mode: "compact",
+  figma_token_set: false,
 };

@@ -71,6 +71,13 @@ export interface SettingsSummary {
    */
   chat_abort_threshold_ms: number;
   chat_context_mode: "compact" | "full";
+  /**
+   * Whether a Figma Personal Access Token is configured. The actual
+   * token never leaves the server — only this boolean is exposed via
+   * GET /api/settings, so the UI can show "set / not set" without ever
+   * holding the secret.
+   */
+  figma_token_set: boolean;
 }
 
 export type SettingsPatch = Partial<
@@ -82,5 +89,11 @@ export type SettingsPatch = Partial<
     | "chat_context_mode"
   > & {
     user: Partial<SettingsSummary["user"]>;
+    /**
+     * Write-only on PATCH /api/settings. Pass a string to set / replace
+     * the Figma PAT; pass null to clear it. The summary that comes back
+     * never includes the value — only the figma_token_set boolean.
+     */
+    figma_personal_access_token: string | null;
   }
 >;

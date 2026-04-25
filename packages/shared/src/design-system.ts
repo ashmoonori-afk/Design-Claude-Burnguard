@@ -21,7 +21,7 @@ export interface DesignSystemDetail extends DesignSystemSummary {
 
 export interface CreateDesignSystemExtractionRequest {
   source_url: string;
-  source_type?: Extract<DesignSystemSourceType, "github" | "website">;
+  source_type?: Extract<DesignSystemSourceType, "github" | "website" | "figma">;
   name?: string;
   system_id?: string;
 }
@@ -56,7 +56,7 @@ export interface DesignSystemFontUploadResponse {
 export interface DesignSystemExtractionSummary {
   inferred_source_type: Extract<
     DesignSystemSourceType,
-    "github" | "website" | "upload"
+    "github" | "website" | "figma" | "upload"
   >;
   brand_name: string;
   generated_files: string[];

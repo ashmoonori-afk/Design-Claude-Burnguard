@@ -82,6 +82,10 @@ function toSettingsSummary(config: Awaited<ReturnType<typeof loadConfig>>): Sett
     theme: config.theme,
     chat_abort_threshold_ms: config.chat.abortThresholdMs,
     chat_context_mode: config.chat.contextMode,
+    // Surface only whether a Figma PAT is configured; never the value.
+    figma_token_set:
+      typeof config.figmaPersonalAccessToken === "string" &&
+      config.figmaPersonalAccessToken.trim().length > 0,
   };
 }
 
@@ -268,6 +272,24 @@ homeRoutes.patch("/api/settings", async (c) => {
       patch.user.display_name.trim()
     ) {
       config.user.displayName = patch.user.display_name.trim();
+    }
+  }
+  if ("figma_personal_access_token" in patch) {
+    const raw = patch.figma_personal_access_token;
+    if (raw === null) {
+      config.figmaPersonalAccessToken = null;
+    } else if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      // Empty string also clears, so the UI can use "" as a clear path.
+      config.figmaPersonalAccessToken = trimmed.length > 0 ? trimmed : null;
+    } else {
+      return c.json(
+        fail(
+          "invalid_figma_token",
+          "figma_personal_access_token must be a string or null",
+        ),
+        400,
+      );
     }
   }
 

@@ -38,6 +38,14 @@ export interface AppConfig {
     id: "local";
     displayName: string;
   };
+  /**
+   * Figma Personal Access Token used by the design-system Figma
+   * extractor (P4.3). Persisted to ~/.burnguard/config.json — keep
+   * the file readable only by the local user. Never echoed back
+   * through the public settings API; only a boolean
+   * `figma_token_set` flag is surfaced.
+   */
+  figmaPersonalAccessToken: string | null;
   appVersion: string;
 }
 
@@ -66,6 +74,7 @@ export const defaultConfig: AppConfig = {
     id: "local",
     displayName: "You",
   },
+  figmaPersonalAccessToken: null,
   appVersion: APP_VERSION,
 };
 
@@ -96,6 +105,11 @@ function mergeConfig(input: unknown): AppConfig {
       ...defaultConfig.user,
       ...source.user,
     },
+    figmaPersonalAccessToken:
+      typeof source.figmaPersonalAccessToken === "string" &&
+      source.figmaPersonalAccessToken.trim().length > 0
+        ? source.figmaPersonalAccessToken
+        : null,
     appVersion: APP_VERSION,
   };
 }
