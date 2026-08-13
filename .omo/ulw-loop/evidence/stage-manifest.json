@@ -9,15 +9,20 @@
       "base": "main",
       "dependsOn": [],
       "status": "verified",
-      "greenCommands": ["git diff --check", "HTML LSP diagnostics: 0"],
+      "greenCommands": [
+        "git diff main...HEAD --check",
+        "HTML LSP diagnostics: 0",
+        "independent Korean writing gate: PASS",
+        "Chromium visual QA at 390,900,901,1024,1079,1080,1180,1440: PASS"
+      ],
       "qaArtifacts": [
         ".omo/ulw-research/20260813-113143/evidence/render-measurements.json",
         ".omo/ulw-research/20260813-113143/evidence/synthesis-desktop-1440-full.png",
         ".omo/ulw-research/20260813-113143/evidence/synthesis-mobile-390-full.png"
       ],
-      "commit": null,
-      "remoteRef": null,
-      "pullRequest": null
+      "commit": "68bc510",
+      "remoteRef": "origin/research/design-competitive-synthesis",
+      "pullRequest": "https://github.com/ashmoonori-afk/Design-Claude-Burnguard/pull/2"
     },
     {
       "id": "S1",
