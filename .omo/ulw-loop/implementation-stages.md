@@ -56,4 +56,3 @@ Each stage directory under `.omo/ulw-loop/evidence/stages/<stage>/` must contain
 4. `quality.md` — spaghetti-code and documentation consistency verdicts.
 5. `delivery.json` — branch, base, dependency state, commit SHA, remote ref,
    green commands, QA artifact paths, PR head/base, and PR URL.
-

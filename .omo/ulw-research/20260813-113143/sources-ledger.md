@@ -40,4 +40,3 @@
 [S038] shuttleslide repository @ `ba6589969e26` — https://github.com/solid-shuwen/shuttleslide/tree/ba6589969e26 — HTML metadata and round-trip claim not executed.
 [S039] Marp CLI — https://github.com/marp-team/marp-cli — presentation export architecture reference.
 [S040] PptxGenJS repository @ `3c9ec1b687c1` — https://github.com/gitbrent/PptxGenJS/tree/3c9ec1b687c1 — current BurnGuard exporter dependency lineage reference.
-

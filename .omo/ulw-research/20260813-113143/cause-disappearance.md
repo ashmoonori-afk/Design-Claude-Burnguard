@@ -7,4 +7,3 @@
 | Design-system quality is unknown because extraction results are not deterministic. | Seed a known omission/substitution and require a source-anchored finding. | Existing UI exposes generic notes, not measured correctness. | Support diagnostics; block auto-correction. |
 | PPTX loss is caused by text-only extraction. | Add one local image, rectangle, and line and open output in PowerPoint and LibreOffice. | Current exporter has no equivalent element union. | Hold broad parity; support only a fixture-gated coverage slice. |
 | Localhost API safety follows from loopback binding. | Send hostile-Origin/Host mutation, turn, and restore requests. | Route inspection shows authority but exploit test is not yet present. | Treat as Gate 0; authority-expanding features stay blocked. |
-

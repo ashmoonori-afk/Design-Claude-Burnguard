@@ -50,4 +50,3 @@
 - **Resolution:** visual targeting and change control are now separate BurnGuard design hypotheses joined by a change-set ID only after one vertical slice proves them.
 - **Attack:** “proprietary” and “off-limits for close reference” overstated Dyad's FSL terms.
 - **Resolution:** Dyad is labeled mixed Apache/FSL and current `src/pro/` is non-donor for competing-product implementation; behavior is independently specified and tested.
-

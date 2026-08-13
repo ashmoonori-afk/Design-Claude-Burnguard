@@ -33,4 +33,3 @@
 - Expanded builder code evidence across Onlook, Dyad, bolt.diy, open-lovable, fragments and llamacoder; architecture converged on stable identity, typed bridge, staged mutation, diff and revert.
 - Confirmed WebContainer commercial production licensing and Dyad's proprietary `src/pro/` carve-out; neither may be treated as uniformly permissive.
 - Added a moat thesis based on local evidence corpus, design-system provenance and loss-aware handoff; customer willingness-to-pay remains a later validation question.
-

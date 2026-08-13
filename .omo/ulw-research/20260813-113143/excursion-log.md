@@ -23,4 +23,3 @@
 - **Question:** Should BurnGuard match Open Design, Onlook, Dyad, or bolt.diy feature breadth?
 - **Result:** Their strongest transferable patterns are typed lifecycle events, durable element identity, visible action/diff state, and package boundaries—not provider, plugin, or cloud breadth.
 - **Changed:** Marketplace, provider matrix, cloud runtime, and collaboration were made non-goals.
-

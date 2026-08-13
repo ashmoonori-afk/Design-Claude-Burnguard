@@ -8,4 +8,3 @@
 - HTML: self-contained CSS, responsive tables, printable A4 rules, accessible contrast, semantic headings, no JavaScript dependency.
 - Figures: Mermaid source blocks in Markdown and inline SVG or CSS-native diagrams in HTML; preserve aspect ratio and label every axis/value.
 - Citations: numbered inline links with access date; GitHub code references must use repository and pinned commit SHA when available.
-
