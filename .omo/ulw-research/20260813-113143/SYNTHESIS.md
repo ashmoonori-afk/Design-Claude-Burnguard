@@ -511,4 +511,3 @@ flowchart LR
 - 외부 저장소의 README상 품질 수치는 실행 검증 전에는 제품 주장으로만 취급했다.
 - oh-my-ppt, ppt-master, shuttleslide의 export 품질은 이 조사에서 실제 PowerPoint로 실행하지 않았으므로 계획에는 compatibility spike로만 포함한다.
 - PPTist의 AGPL 구현과 source-less/closed converter는 패턴 조사 외 코드 재사용 대상이 아니다. [PPTist license](https://github.com/pipipi-pikachu/PPTist/blob/2bfd88fef0d721b24b3a97bd5e3c8a36cabff0c6/LICENSE)
-
