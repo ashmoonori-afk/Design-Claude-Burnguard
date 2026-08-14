@@ -79,6 +79,7 @@ content from exports.
   hardcode colours, font families, or scales that exist as tokens.
 - Do not introduce new palettes, font stacks, or typefaces. The design
   system owns visual identity; archetypes above describe STRUCTURE only.
+- Icons (LUCIDE_ICON_REFERENCE): on demand, Read \`packages/backend/src/harness/assets/lucide/reference.md\`. Use only its inline \`<svg>\`; keep \`stroke="currentColor"\` and size with \`--icon-size\`. Never use external URLs, sprites, or icon fonts.
 - Keep \`.deck-slide { aspect-ratio: 16 / 9 }\` unless the user requests
   otherwise.
 
