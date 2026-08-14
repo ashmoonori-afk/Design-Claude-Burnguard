@@ -3,8 +3,9 @@
  * for a diagram. Diagrams remain self-contained HTML artifacts; this skill adds
  * routing and SVG structure rules without introducing another project type.
  *
- * Keep this under MAX_SKILL_CHARS (4000). Design-system tokens continue to own
- * colour and typography; this file defines structure and legibility only.
+ * Keep this under the exported MAX_SKILL_CHARS budget. Design-system tokens
+ * continue to own colour and typography; this file defines structure and
+ * legibility only.
  */
 export const DIAGRAM_SKILL_MD = `# Diagram authoring conventions
 
