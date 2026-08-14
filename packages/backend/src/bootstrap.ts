@@ -1,11 +1,13 @@
 import { cp, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureConfig } from "./config";
+import {
+  bundledDesignSystemId,
+  bundledDesignSystems,
+} from "./data/bundled-design-systems";
 import { runMigrations } from "./db/migrate";
 import { seedCoreData } from "./db/seed";
 import { seedTutorialsOnce } from "./db/seed-tutorials";
-import { pruneOldExports } from "./services/export-gc";
-import { ensureAllProjectWatchers } from "./services/watchers";
 import {
   appRootDir,
   cacheDir,
@@ -16,6 +18,8 @@ import {
   resolveRepoRoot,
   systemsDir,
 } from "./lib/paths";
+import { pruneOldExports } from "./services/export-gc";
+import { ensureAllProjectWatchers } from "./services/watchers";
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -47,16 +51,36 @@ export function isSampleSourcePathAllowed(relPath: string): boolean {
   return first !== "uploads";
 }
 
-async function seedSampleDesignSystem(): Promise<void> {
-  const repoRoot = resolveRepoRoot();
-  const source = path.join(repoRoot, "design system sample");
-  const destination = path.join(systemsDir, "northvale-capital");
+export async function seedBundledDesignSystems(
+  repoRoot = resolveRepoRoot(),
+  destinationRoot = systemsDir,
+): Promise<void> {
+  const themesSource = path.join(repoRoot, "design system themes");
+  await Promise.all(
+    bundledDesignSystems.map(async ({ slug }) => {
+      const destination = path.join(
+        destinationRoot,
+        bundledDesignSystemId(slug),
+      );
+      if (await exists(destination)) return;
+      await cp(path.join(themesSource, slug), destination, { recursive: true });
+    }),
+  );
+}
 
-  if (await exists(destination)) return;
-  await cp(source, destination, {
-    recursive: true,
-    filter: (src) => isSampleSourcePathAllowed(path.relative(source, src)),
-  });
+async function seedSampleDesignSystems(): Promise<void> {
+  const repoRoot = resolveRepoRoot();
+  const sampleSource = path.join(repoRoot, "design system sample");
+  const sampleDestination = path.join(systemsDir, "northvale-capital");
+
+  if (!(await exists(sampleDestination))) {
+    await cp(sampleSource, sampleDestination, {
+      recursive: true,
+      filter: (src) => isSampleSourcePathAllowed(path.relative(sampleSource, src)),
+    });
+  }
+
+  await seedBundledDesignSystems(repoRoot, systemsDir);
 }
 
 export async function bootstrapLocalAppData(): Promise<void> {
@@ -70,7 +94,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
     mkdir(logsDir, { recursive: true }),
   ]);
   await ensureConfig();
-  await seedSampleDesignSystem();
+  await seedSampleDesignSystems();
   await runMigrations();
   await seedCoreData();
   await seedTutorialsOnce();

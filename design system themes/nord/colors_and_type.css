@@ -1,0 +1,66 @@
+/* Derived from daisyUI (https://github.com/saadeghi/daisyui) - MIT License, Copyright (c) 2020 Pouya Saadeghi. Converted for BurnGuard. */
+/* OKLCH values were converted offline to sRGB, gamut-clipped, and rounded to the nearest 8-bit channel. */
+
+:root {
+  color-scheme: light;
+
+  /* Color */
+  --bg: #ECEFF4;
+  --bg-subtle: #E5E9F0;
+  --bg-muted: #D8DEE9;
+  --surface: #ECEFF4;
+  --fg-1: #2E3440;
+  --fg-2: #2E3440;
+  --fg-3: #2E3440;
+  --primary-blue: #5E81AC;
+  --action-blue: #5E81AC;
+  --fg-on-brand: #03060B;
+  --secondary: #81A1C1;
+  --fg-on-secondary: #06090D;
+  --accent: #88C0D0;
+  --fg-on-accent: #070D10;
+  --surface-inverse: #4C566A;
+  --fg-on-dark: #D8DEE9;
+  --info: #B48EAD;
+  --fg-on-info: #0C070B;
+  --success: #A3BE8D;
+  --fg-on-success: #0A0D07;
+  --warning-yellow: #EBCB8B;
+  --fg-on-warning: #130F07;
+  --error: #BF616A;
+  --fg-on-error: #0D0304;
+  --border: #D8DEE9;
+
+  /* Type */
+  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-20: 1.25rem;
+  --fs-24: 1.5rem;
+  --fs-32: 2rem;
+  --fs-48: 3rem;
+  --fs-64: 4rem;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --lh-tight: 1.1;
+  --lh-normal: 1.5;
+
+  /* Spacing and shape */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+  --r-selector: 1rem;
+  --r-field: 0.25rem;
+  --r-box: 0.5rem;
+  --border-width: 1px;
+  --depth: 0;
+}
