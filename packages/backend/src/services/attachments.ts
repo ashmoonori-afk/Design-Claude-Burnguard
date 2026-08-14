@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { ulid } from "ulid";
 import { insertAttachment } from "../db/attachments";
 import { getSessionProject } from "../db/events";
+import { assertSafeName, resolveWithin } from "../security/path-boundary";
 import {
   inferUploadKind,
   readUploadManifest,
@@ -25,7 +25,7 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
     throw new Error(`attachment_limit_exceeded:${MAX_ATTACHMENT_COUNT}`);
   }
 
-  const attachmentsDir = path.join(context.project_dir, ".attachments");
+  const attachmentsDir = resolveWithin(context.project_dir, ".attachments");
   await mkdir(attachmentsDir, { recursive: true });
 
   const records: string[] = [];
@@ -43,15 +43,28 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
     }
 
     const base = sanitize(file.name || "attachment");
-    const storedName = `${ulid()}-${base}`;
-    const absolutePath = path.join(attachmentsDir, storedName);
+    const storedName = assertSafeName(`${ulid()}-${base}`);
+    const absolutePath = resolveWithin(
+      context.project_dir,
+      ".attachments",
+      storedName,
+    );
     const buffer = Buffer.from(await file.arrayBuffer());
     const sha256 = createHash("sha256").update(buffer).digest("hex");
 
     await writeFile(absolutePath, buffer);
     const uploadKind = inferUploadKind(file.name || storedName, file.type);
     if (uploadKind) {
-      const manifestPath = attachmentSummaryPath(absolutePath);
+      const manifestPath = resolveWithin(
+        context.project_dir,
+        ".attachments",
+        assertSafeName(`${storedName}.summary.json`),
+      );
+      const extractedTextPath = resolveWithin(
+        context.project_dir,
+        ".attachments",
+        assertSafeName(`${storedName}.extracted.md`),
+      );
       try {
         await runPythonUploadExtractor({
           sourcePath: absolutePath,
@@ -59,16 +72,14 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
         });
         const manifest = await readUploadManifest(manifestPath);
         await writeFile(
-          attachmentExtractedTextPath(absolutePath),
+          extractedTextPath,
           renderAttachmentExtract(manifest, file.name || storedName),
           "utf8",
         );
       } catch (error) {
         await rm(absolutePath, { force: true }).catch(() => {});
         await rm(manifestPath, { force: true }).catch(() => {});
-        await rm(attachmentExtractedTextPath(absolutePath), {
-          force: true,
-        }).catch(() => {});
+        await rm(extractedTextPath, { force: true }).catch(() => {});
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(
           `attachment_extract_failed:${file.name || storedName}:${message}`,

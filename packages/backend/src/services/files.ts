@@ -3,6 +3,11 @@ import path from "node:path";
 import type { ArtifactSummary, FileInfo } from "@bg/shared";
 import { listProjectFiles as listProjectFilesFromDb, replaceProjectFiles } from "../db/files";
 import { getProjectDetail } from "../db/seed";
+import {
+  PathBoundaryError,
+  assertSafeName,
+  resolveWithin,
+} from "../security/path-boundary";
 
 const IGNORED_DIRS = new Set([
   ".attachments",
@@ -101,17 +106,16 @@ export async function resolveProjectFile(projectId: string, relPath: string) {
     return null;
   }
 
-  const absolute = path.resolve(project.dir_path, normalized);
-  const root = path.resolve(project.dir_path);
-  if (!absolute.startsWith(root)) {
-    return null;
+  try {
+    return {
+      project,
+      relPath: normalized,
+      absolutePath: resolveWithin(project.dir_path, normalized),
+    };
+  } catch (error) {
+    if (error instanceof PathBoundaryError) return null;
+    throw error;
   }
-
-  return {
-    project,
-    relPath: normalized,
-    absolutePath: absolute,
-  };
 }
 
 /**
@@ -133,23 +137,29 @@ export async function resolveDrawFile(projectId: string, relPath: string) {
     return null;
   }
 
-  const drawsRoot = path.resolve(project.dir_path, ".meta", "draws");
-  const svgPath = path.resolve(drawsRoot, `${normalized}.svg`);
-  if (!svgPath.startsWith(drawsRoot)) {
-    return null;
+  try {
+    const svgPath = resolveWithin(
+      project.dir_path,
+      ".meta",
+      "draws",
+      `${normalized}.svg`,
+    );
+    return {
+      project,
+      relPath: normalized,
+      absolutePath: svgPath,
+      parentDir: path.dirname(svgPath),
+    };
+  } catch (error) {
+    if (error instanceof PathBoundaryError) return null;
+    throw error;
   }
-
-  return {
-    project,
-    relPath: normalized,
-    absolutePath: svgPath,
-    parentDir: path.dirname(svgPath),
-  };
 }
 
 async function scanProjectDir(projectDir: string) {
   const output: FileInfo[] = [];
-  await walk(projectDir, projectDir, output);
+  const rootDir = resolveWithin(projectDir);
+  await walk(rootDir, rootDir, output);
   return output.sort((a, b) => a.rel_path.localeCompare(b.rel_path));
 }
 
@@ -160,8 +170,16 @@ async function walk(rootDir: string, currentDir: string, output: FileInfo[]) {
       continue;
     }
 
-    const absolute = path.join(currentDir, entry.name);
-    const relPath = path.relative(rootDir, absolute).replaceAll("\\", "/");
+    const relPath = path
+      .relative(rootDir, path.join(currentDir, entry.name))
+      .replaceAll("\\", "/");
+    let absolute: string;
+    try {
+      absolute = resolveWithin(rootDir, relPath);
+    } catch (error) {
+      if (error instanceof PathBoundaryError) continue;
+      throw error;
+    }
     const stats = await stat(absolute);
 
     if (entry.isDirectory()) {
@@ -215,10 +233,15 @@ function categorize(relPath: string): FileInfo["category"] {
 }
 
 function normalizeRelativePath(relPath: string) {
-  const normalized = relPath.replaceAll("\\", "/").replace(/^\/+/, "");
-  if (!normalized || normalized.includes("..")) {
-    return null;
+  try {
+    return relPath
+      .replaceAll("\\", "/")
+      .split("/")
+      .map(assertSafeName)
+      .join("/");
+  } catch (error) {
+    if (error instanceof PathBoundaryError) return null;
+    throw error;
   }
-  return normalized;
 }
 
