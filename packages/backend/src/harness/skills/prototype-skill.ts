@@ -5,8 +5,7 @@
  * hero prototype looks like inside our constraints — plain HTML +
  * inline CSS + vanilla JS, no framework, no bundler.
  *
- * Keep this tight — it ships on every turn for a prototype project.
- * Current size ~3.5 KB; re-measure before adding new sections.
+ * Keep this under MAX_SKILL_CHARS (4000); it ships on every prototype turn.
  *
  * Design-system boundary: STRUCTURE only — section archetypes, content
  * strictness, node-id contracts, interaction conventions. Colour,
@@ -15,84 +14,81 @@
  */
 export const PROTOTYPE_SKILL_MD = `# Prototype authoring conventions
 
-\`index.html\` renders live in the canvas iframe and feeds edit, comment,
-and export modes. Output must be a single self-contained HTML file — no
-bundler, no framework, no build step.
+\`index.html\` renders live for edit/comment/export. Emit one self-contained file; no framework, bundler, or build.
 
 ## Artifact contract
 
-- One \`index.html\` at the project root with all CSS inline in a top
-  \`<style>\` block and JS inline in a \`<script>\` before \`</body>\`.
-- No React, Vue, Svelte, Tailwind classes, or bundler-only syntax (no
-  JSX, no \`import\` of npm modules). Plain HTML / CSS / vanilla JS only.
-- External CDN \`<script>\` tags allowed only on explicit user request.
+- Root \`index.html\`; all CSS in a top \`<style>\`, all JS in \`<script>\` before \`</body>\`.
+- Plain HTML/CSS/JS only: no React/Vue/Svelte/Tailwind, JSX, or npm \`import\`.
+- CDN scripts require an explicit request.
 
 ## Default page structure
 
-- Unspecified pages default to: navbar → hero → features → social proof
-  → pricing or secondary feature → CTA banner → footer (4–7 sections).
-- Top-level blocks are \`<section data-section="<archetype>">\` direct
-  children of \`<body>\`, except navbar (\`<header>\`) and footer
-  (\`<footer>\`). Wrap the body sections in a single \`<main>\`.
+- Default 4–7 sections: navbar → hero → features → social proof → pricing or secondary feature → CTA → footer.
+- One \`<main>\` holds direct \`<section data-section="<archetype>">\` children; navbar is \`<header>\`, footer \`<footer>\`.
 
 ## Per-section content rules (strict)
 
-- Hero headline ≤ 10 words; subheadline ≤ 20 words; one primary CTA.
-- Feature grids: 3–6 cards; title ≤ 5 words, body ≤ 25 words per card.
-- Testimonials: quote ≤ 30 words + attribution (name, role, company).
-- Pricing: 2–4 tiers; ≤ 6 feature bullets per tier, ≤ 10 words each.
-- CTA banner: one sentence + verb-first button ≤ 4 words.
-- Break dense blocks into list items or multiple cards. No walls of text.
+- Hero: headline ≤10 words; subheadline ≤20; one primary CTA.
+- Features: 3–6 cards; titles ≤5 words, bodies ≤25 each.
+- Testimonial: quote ≤30 words + name, role, company.
+- Pricing: 2–4 tiers; ≤6 bullets each, ≤10 words per bullet.
+- CTA: one sentence + verb-first button ≤4 words.
+- Split dense copy into lists/cards; no walls of text.
 
-## Section archetypes (pick one per section via \`data-section\`)
+## Section archetypes (one \`data-section\` each)
 
-- \`hero-centered\` — large centered headline + subheadline + single CTA.
-- \`hero-split\` — copy left, product shot or illustration right.
-- \`hero-video\` — full-bleed loop + dark overlay + centered copy.
-- \`feature-grid-3\` — 3-column responsive cards (icon + title + body).
-- \`feature-alternating\` — image/text rows flipping L↔R every row.
-- \`logo-strip\` — horizontal monochrome row of customer logos.
-- \`quote-hero\` — oversized pull quote + attribution, calm background.
-- \`testimonial-grid\` — 2–3 column testimonial cards.
-- \`pricing-tiered\` — side-by-side tier cards, "popular" tier highlighted.
-- \`stats-row\` — 3–4 oversized numbers + labels, thin dividers.
-- \`faq-accordion\` — disclosure pattern using \`<details><summary>\`.
-- \`cta-banner\` — narrow band, one sentence + button, edge-to-edge.
-- \`footer-minimal\` — three-column logo / link groups / legal.
+- \`hero-centered\` — large centered headline, subheadline, one CTA.
+- \`hero-split\` — copy left; product image/illustration right.
+- \`hero-video\` — full-bleed loop, dark overlay, centered copy.
+- \`feature-grid-3\` — responsive 3-column icon/title/body cards.
+- \`feature-alternating\` — image/text rows alternating sides.
+- \`logo-strip\` — horizontal monochrome customer logos.
+- \`quote-hero\` — oversized quote, attribution, calm background.
+- \`testimonial-grid\` — testimonial cards, 2–3 columns.
+- \`pricing-tiered\` — adjacent tiers; highlight "popular".
+- \`stats-row\` — 3–4 large numbers/labels, thin dividers.
+- \`faq-accordion\` — \`<details><summary>\` disclosure.
+- \`cta-banner\` — edge-to-edge narrow band, sentence, button.
+- \`footer-minimal\` — three columns: logo, links, legal.
 
 ## Visual hierarchy
 
-- Prefer asymmetric layouts outside heroes; reveal detail progressively and
-  never hide primary value behind a scroll.
+- Prefer asymmetry outside heroes. Reveal detail gradually; keep primary value above the scroll.
+
+## Spatial layout vocabulary
+
+- \`scroll-owner\`: exactly one element owns each scroll axis; the page owns vertical by default.
+- Put \`overflow-x\`/\`overflow-y\` on that owner; ancestors must not share that axis.
+- Nested scroll needs explicit interaction intent and bounds, never just clipping.
+- \`wrap-first\`: try \`flex-wrap\` or Grid \`repeat(auto-fit, minmax(...))\` before breakpoints.
+- Let space and item minimums drive reflow.
+- Add a breakpoint only when reflow changes structure, not for ordinary wrapping.
+- \`load-bearing\`: name the CSS property enforcing each layout decision.
+- Mark nearby \`/* load-bearing: decision — property */\`, e.g. \`grid-template-columns\`, \`flex-wrap\`, or \`overflow-*\`.
+- Preserve it during edits or replace its enforcement deliberately.
 
 ## Interaction conventions
 
 - Use CSS for entrance/hover effects and smooth anchor scrolling.
-- For scroll reveals, one \`IntersectionObserver\` toggles \`[data-revealed]\`.
-- No external JS libraries unless explicitly requested; keep JS under ~100 lines.
+- One \`IntersectionObserver\` toggles \`[data-revealed]\` for reveals.
+- External JS requires explicit request; keep JS under ~100 lines.
 
 ## Node IDs (required for edit / comment modes)
 
-- Every visible text element carries
-  \`data-bg-node-id="<section>-<purpose>"\` — e.g. \`hero-headline\`,
-  \`hero-cta\`, \`feature-2-title\`, \`footer-copyright\`. No duplicates.
-- Parent sections get \`data-bg-node-id="<section>"\` (\`hero\`, \`features\`,
-  \`pricing\`).
+- Every visible text has unique \`data-bg-node-id="<section>-<purpose>"\`, e.g. \`hero-headline\`, \`hero-cta\`, \`feature-2-title\`, \`footer-copyright\`.
+- Parent sections use \`data-bg-node-id="<section>"\`, e.g. \`hero\`, \`features\`, \`pricing\`.
 
 ## Styling
 
-- All CSS inline in one top \`<style>\` block.
-- Reference \`colors_and_type.css\` tokens by CSS variable name. Do not
-  hardcode colours, font families, or scales that exist as tokens.
-- Do not introduce new palettes, font stacks, or typefaces. The design
-  system owns visual identity; archetypes describe STRUCTURE only.
-- Icons (LUCIDE_ICON_REFERENCE): on demand, Read \`packages/backend/src/harness/assets/lucide/reference.md\`. Use only its inline \`<svg>\`; keep \`stroke="currentColor"\` and size with \`--icon-size\`. Never use external URLs, sprites, or icon fonts.
-- Mobile first. \`@media (min-width: 640px)\` for tablet,
-  \`(min-width: 1024px)\` for desktop. Must not break below 360 px.
+- Keep all CSS in one top \`<style>\`.
+- Use \`colors_and_type.css\` variables; never hardcode tokenized colours, font families, or scales.
+- Add no palette/font stack/typeface. Design system owns identity; archetypes own STRUCTURE.
+- Icons (LUCIDE_ICON_REFERENCE): Read \`packages/backend/src/harness/assets/lucide/reference.md\` on demand; use only its inline \`<svg>\`, retain \`stroke="currentColor"\`, size via \`--icon-size\`; no URL, sprite, or icon font.
+- Mobile first: tablet \`@media (min-width: 640px)\`, desktop \`(min-width: 1024px)\`; work below 360px.
 
 ## Video & media
 
-- When requested, \`<video>\` / \`<iframe>\` must include a poster or inline
-  fallback; warn that external URLs may fail in canvas or capture.
+- Requested \`<video>\`/\`<iframe>\` needs poster/inline fallback; warn external URLs may fail in canvas/capture.
 - Never embed secrets or API keys.
 `;
