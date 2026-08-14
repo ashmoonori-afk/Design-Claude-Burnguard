@@ -4,63 +4,158 @@
 :root {
   color-scheme: dark;
 
-  /* Color */
+  /* Neutrals */
+  --gray-100: #C6D2FF;
+  --gray-90: #09002F;
+  --gray-80: #201948;
+  --gray-70: #363261;
+  --gray-60: #4D4C7A;
+  --gray-50: #646593;
+  --gray-40: #7A7EAC;
+  --gray-30: #8D93C1;
+  --gray-20: #A0A8D5;
+  --gray-10: #B3BDEA;
+
+  /* Brand and accents */
+  --primary-blue: #F861B4;
+  --action-blue: #F861B4;
+  --red-60: #EC8C78;
+  --red-50: #E59990;
+  --red-10: #CDC5E7;
+  --orange-50: #FF8904;
+  --orange-10: #D0C5D2;
+  --yellow-30: #FEDE1C;
+  --yellow-10: #D0D4D6;
+  --green-60: #00D3BB;
+  --green-50: #24D3C7;
+  --green-10: #A2D2F3;
+  --teal-50: #FF8904;
+  --teal-10: #D0C5D2;
+  --aqua-60: #00BAFE;
+  --aqua-10: #A2CEFF;
+  --blue-90: #09002F;
+  --blue-80: #B5468F;
+  --blue-70: #D753A1;
+  --blue-60: #F861B4;
+  --blue-50: #EF75C2;
+  --blue-30: #DC9FDD;
+  --blue-10: #CEC0F3;
+  --ultramarine-60: #F861B4;
+  --purple-60: #71D1FE;
+  --pink-60: #71D1FE;
+
+  /* Semantic */
+  --success: #00D3BB;
+  --warning-yellow: #FEDE1C;
+  --warning-orange: #FF8904;
+  --error: #EC8C78;
+  --info: #00BAFE;
+
+  /* Surface and text */
   --bg: #09002F;
   --bg-subtle: #120B3D;
   --bg-muted: #1C184B;
   --surface: #09002F;
+  --surface-inverse: #422AD5;
   --fg-1: #A1B1FF;
   --fg-2: #A1B1FF;
   --fg-3: #A1B1FF;
-  --primary-blue: #F861B4;
-  --action-blue: #F861B4;
+  --fg-4: #7A7EAC;
+  --fg-on-dark: #C6D2FF;
   --fg-on-brand: #500323;
+  --border: #1C184B;
+  --border-strong: #8D93C1;
+  --focus-ring: #F861B4;
+
+  /* Paired donor colors retained for accessible combinations */
   --secondary: #71D1FE;
   --fg-on-secondary: #042E49;
   --accent: #FF8904;
   --fg-on-accent: #421104;
-  --surface-inverse: #422AD5;
-  --fg-on-dark: #C6D2FF;
-  --info: #00BAFE;
   --fg-on-info: #042E49;
-  --success: #00D3BB;
   --fg-on-success: #002D2C;
-  --warning-yellow: #FEDE1C;
   --fg-on-warning: #733E0A;
-  --error: #EC8C78;
   --fg-on-error: #201047;
-  --border: #1C184B;
 
-  /* Type */
+  /* Charts */
+  --chart-1: #F861B4;
+  --chart-2: #71D1FE;
+  --chart-3: #FF8904;
+  --chart-4: #00BAFE;
+  --chart-5: #00D3BB;
+  --chart-6: #FEDE1C;
+  --chart-7: #EC8C78;
+  --chart-8: #B499D9;
+  --chart-9: #80A281;
+  --chart-10: #7C9AB8;
+
+  /* Type families */
   --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* Type scale */
   --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
   --fs-14: 0.875rem;
   --fs-16: 1rem;
+  --fs-18: 1.125rem;
   --fs-20: 1.25rem;
   --fs-24: 1.5rem;
+  --fs-28: 1.75rem;
   --fs-32: 2rem;
+  --fs-40: 2.5rem;
   --fs-48: 3rem;
   --fs-64: 4rem;
+  --fs-80: 5rem;
+
+  /* Weight, leading, and tracking */
+  --fw-light: 300;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
+  --fw-black: 900;
   --lh-tight: 1.1;
-  --lh-normal: 1.5;
+  --lh-snug: 1.25;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+  --ls-tight: -0.02em;
+  --ls-normal: 0em;
+  --ls-wide: 0.02em;
+  --ls-eyebrow: 0.14em;
 
-  /* Spacing and shape */
+  /* Spacing: 4px grid */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
+  --sp-5: 20px;
   --sp-6: 24px;
   --sp-8: 32px;
+  --sp-10: 40px;
   --sp-12: 48px;
-  --r-selector: 1rem;
-  --r-field: 0.5rem;
-  --r-box: 1rem;
-  --border-width: 1px;
-  --depth: 0;
+  --sp-16: 64px;
+  --sp-20: 80px;
+
+  /* Radii */
+  --r-0: 0px;
+  --r-2: 4px;
+  --r-4: 8px;
+  --r-8: 16px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 2px 8px rgba(248, 97, 180, 0.18);
+  --shadow-2: 0 6px 18px rgba(113, 209, 254, 0.20);
+  --shadow-3: 0 12px 30px rgba(248, 97, 180, 0.24);
+  --shadow-4: 0 20px 48px rgba(113, 209, 254, 0.28);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 100ms;
+  --dur-base: 180ms;
+  --dur-slow: 300ms;
 }

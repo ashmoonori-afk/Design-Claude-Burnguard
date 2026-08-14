@@ -4,63 +4,158 @@
 :root {
   color-scheme: light;
 
-  /* Color */
+  /* Neutrals */
+  --gray-100: #ECE3CA;
+  --gray-90: #56524C;
+  --gray-80: #68635B;
+  --gray-70: #7A756A;
+  --gray-60: #8C8679;
+  --gray-50: #9E9888;
+  --gray-40: #B0A998;
+  --gray-30: #BFB7A4;
+  --gray-20: #CEC6B1;
+  --gray-10: #DDD4BD;
+
+  /* Brand and accents */
+  --primary-blue: #FF9FA0;
+  --action-blue: #FF9FA0;
+  --red-60: #FF6266;
+  --red-50: #FC7978;
+  --red-10: #EFCCB8;
+  --orange-50: #D08700;
+  --orange-10: #E7D2A6;
+  --yellow-30: #F34700;
+  --yellow-10: #EDC7A6;
+  --green-60: #00776F;
+  --green-50: #2A8A7F;
+  --green-10: #C2D0BA;
+  --teal-50: #D08700;
+  --teal-10: #E7D2A6;
+  --aqua-60: #0082CE;
+  --aqua-10: #C2D2CB;
+  --blue-90: #56524C;
+  --blue-80: #D08988;
+  --blue-70: #E79494;
+  --blue-60: #FF9FA0;
+  --blue-50: #FCABA8;
+  --blue-30: #F5C4B7;
+  --blue-10: #EFD8C3;
+  --ultramarine-60: #FF9FA0;
+  --purple-60: #B7F6CD;
+  --pink-60: #B7F6CD;
+
+  /* Semantic */
+  --success: #00776F;
+  --warning-yellow: #F34700;
+  --warning-orange: #D08700;
+  --error: #FF6266;
+  --info: #0082CE;
+
+  /* Surface and text */
   --bg: #ECE3CA;
   --bg-subtle: #E4D8B4;
   --bg-muted: #DBCA9B;
   --surface: #ECE3CA;
+  --surface-inverse: #56524C;
   --fg-1: #793205;
   --fg-2: #793205;
   --fg-3: #793205;
-  --primary-blue: #FF9FA0;
-  --action-blue: #FF9FA0;
+  --fg-4: #B0A998;
+  --fg-on-dark: #D4D0CE;
   --fg-on-brand: #801518;
+  --border: #DBCA9B;
+  --border-strong: #BFB7A4;
+  --focus-ring: #FF9FA0;
+
+  /* Paired donor colors retained for accessible combinations */
   --secondary: #B7F6CD;
   --fg-on-secondary: #00642E;
   --accent: #D08700;
   --fg-on-accent: #793205;
-  --surface-inverse: #56524C;
-  --fg-on-dark: #D4D0CE;
-  --info: #0082CE;
   --fg-on-info: #FEF2C6;
-  --success: #00776F;
   --fg-on-success: #FEF2C6;
-  --warning-yellow: #F34700;
   --fg-on-warning: #FEF2C6;
-  --error: #FF6266;
   --fg-on-error: #7C2808;
-  --border: #DBCA9B;
 
-  /* Type */
-  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Charts */
+  --chart-1: #FF9FA0;
+  --chart-2: #B7F6CD;
+  --chart-3: #D08700;
+  --chart-4: #0082CE;
+  --chart-5: #00776F;
+  --chart-6: #F34700;
+  --chart-7: #FF6266;
+  --chart-8: #DBCAB6;
+  --chart-9: #688467;
+  --chart-10: #808B88;
+
+  /* Type families */
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-serif: Georgia, "Times New Roman", serif;
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* Type scale */
   --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
   --fs-14: 0.875rem;
   --fs-16: 1rem;
+  --fs-18: 1.125rem;
   --fs-20: 1.25rem;
   --fs-24: 1.5rem;
+  --fs-28: 1.75rem;
   --fs-32: 2rem;
+  --fs-40: 2.5rem;
   --fs-48: 3rem;
   --fs-64: 4rem;
+  --fs-80: 5rem;
+
+  /* Weight, leading, and tracking */
+  --fw-light: 300;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
+  --fw-black: 900;
   --lh-tight: 1.1;
-  --lh-normal: 1.5;
+  --lh-snug: 1.25;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+  --ls-tight: -0.02em;
+  --ls-normal: 0em;
+  --ls-wide: 0.02em;
+  --ls-eyebrow: 0.14em;
 
-  /* Spacing and shape */
+  /* Spacing: 4px grid */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
+  --sp-5: 20px;
   --sp-6: 24px;
   --sp-8: 32px;
+  --sp-10: 40px;
   --sp-12: 48px;
-  --r-selector: 0.25rem;
-  --r-field: 0.25rem;
-  --r-box: 0.5rem;
-  --border-width: 1px;
-  --depth: 0;
+  --sp-16: 64px;
+  --sp-20: 80px;
+
+  /* Radii */
+  --r-0: 0px;
+  --r-2: 2px;
+  --r-4: 4px;
+  --r-8: 8px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 1px 2px 0 rgba(121, 50, 5, 0.16);
+  --shadow-2: 2px 4px 0 rgba(121, 50, 5, 0.18);
+  --shadow-3: 4px 8px 0 rgba(121, 50, 5, 0.20);
+  --shadow-4: 8px 16px 0 rgba(121, 50, 5, 0.24);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+  --dur-slow: 380ms;
 }

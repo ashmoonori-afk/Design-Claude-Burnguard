@@ -4,63 +4,158 @@
 :root {
   color-scheme: dark;
 
-  /* Color */
+  /* Neutrals */
+  --gray-100: #E4E4E7;
+  --gray-90: #1D232A;
+  --gray-80: #353A41;
+  --gray-70: #4D5157;
+  --gray-60: #65686E;
+  --gray-50: #7D8085;
+  --gray-40: #94979B;
+  --gray-30: #A8AAAE;
+  --gray-20: #BCBDC1;
+  --gray-10: #D0D1D4;
+
+  /* Brand and accents */
+  --primary-blue: #605DFF;
+  --action-blue: #605DFF;
+  --red-60: #FF627D;
+  --red-50: #FA7990;
+  --red-10: #E9CDD4;
+  --orange-50: #00D3BB;
+  --orange-10: #BBE1DF;
+  --yellow-30: #FCB700;
+  --yellow-10: #E8DCBD;
+  --green-60: #00D390;
+  --green-50: #29D6A0;
+  --green-10: #BBE1D7;
+  --teal-50: #00D3BB;
+  --teal-10: #BBE1DF;
+  --aqua-60: #00BAFE;
+  --aqua-10: #BBDCEB;
+  --blue-90: #1D232A;
+  --blue-80: #4D4DC3;
+  --blue-70: #5755E1;
+  --blue-60: #605DFF;
+  --blue-50: #7875FB;
+  --blue-30: #A9A7F2;
+  --blue-10: #CFCEEB;
+  --ultramarine-60: #605DFF;
+  --purple-60: #F43098;
+  --pink-60: #F43098;
+
+  /* Semantic */
+  --success: #00D390;
+  --warning-yellow: #FCB700;
+  --warning-orange: #00D3BB;
+  --error: #FF627D;
+  --info: #00BAFE;
+
+  /* Surface and text */
   --bg: #1D232A;
   --bg-subtle: #191E24;
   --bg-muted: #15191E;
   --surface: #1D232A;
+  --surface-inverse: #09090B;
   --fg-1: #ECF9FF;
   --fg-2: #ECF9FF;
   --fg-3: #ECF9FF;
-  --primary-blue: #605DFF;
-  --action-blue: #605DFF;
+  --fg-4: #94979B;
+  --fg-on-dark: #E4E4E7;
   --fg-on-brand: #EDF1FE;
+  --border: #15191E;
+  --border-strong: #A8AAAE;
+  --focus-ring: #605DFF;
+
+  /* Paired donor colors retained for accessible combinations */
   --secondary: #F43098;
   --fg-on-secondary: #F9E4F0;
   --accent: #00D3BB;
   --fg-on-accent: #084D49;
-  --surface-inverse: #09090B;
-  --fg-on-dark: #E4E4E7;
-  --info: #00BAFE;
   --fg-on-info: #042E49;
-  --success: #00D390;
   --fg-on-success: #004C39;
-  --warning-yellow: #FCB700;
   --fg-on-warning: #793205;
-  --error: #FF627D;
   --fg-on-error: #4D0218;
-  --border: #15191E;
 
-  /* Type */
+  /* Charts */
+  --chart-1: #605DFF;
+  --chart-2: #F43098;
+  --chart-3: #00D3BB;
+  --chart-4: #00BAFE;
+  --chart-5: #00D390;
+  --chart-6: #FCB700;
+  --chart-7: #FF627D;
+  --chart-8: #AA46CC;
+  --chart-9: #00C6DC;
+  --chart-10: #3098C8;
+
+  /* Type families */
   --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* Type scale */
   --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
   --fs-14: 0.875rem;
   --fs-16: 1rem;
+  --fs-18: 1.125rem;
   --fs-20: 1.25rem;
   --fs-24: 1.5rem;
+  --fs-28: 1.75rem;
   --fs-32: 2rem;
+  --fs-40: 2.5rem;
   --fs-48: 3rem;
   --fs-64: 4rem;
+  --fs-80: 5rem;
+
+  /* Weight, leading, and tracking */
+  --fw-light: 300;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
+  --fw-black: 900;
   --lh-tight: 1.1;
-  --lh-normal: 1.5;
+  --lh-snug: 1.25;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+  --ls-tight: -0.02em;
+  --ls-normal: 0em;
+  --ls-wide: 0.02em;
+  --ls-eyebrow: 0.14em;
 
-  /* Spacing and shape */
+  /* Spacing: 4px grid */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
+  --sp-5: 20px;
   --sp-6: 24px;
   --sp-8: 32px;
+  --sp-10: 40px;
   --sp-12: 48px;
-  --r-selector: 0.5rem;
-  --r-field: 0.25rem;
-  --r-box: 0.5rem;
-  --border-width: 1px;
-  --depth: 1;
+  --sp-16: 64px;
+  --sp-20: 80px;
+
+  /* Radii */
+  --r-0: 0px;
+  --r-2: 2px;
+  --r-4: 4px;
+  --r-8: 8px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.10);
+  --shadow-2: 0 4px 10px rgba(0, 0, 0, 0.14);
+  --shadow-3: 0 10px 24px rgba(0, 0, 0, 0.18);
+  --shadow-4: 0 20px 40px rgba(0, 0, 0, 0.24);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.2, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 }

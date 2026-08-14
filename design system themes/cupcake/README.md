@@ -7,9 +7,9 @@ A warm pastel system with rounded controls and soft aqua, pink, and apricot acce
 - `colors_and_type.css` - canonical BurnGuard color, type, spacing, and shape tokens
 - `SKILL.md` - concise artifact-generation guidance
 
-## Token mapping
+## Design token contract
 
-The source theme's base surface ladder maps to `--bg`, `--bg-subtle`, and `--bg-muted`. Primary maps to `--primary-blue` and `--action-blue`; semantic colors retain direct paired `--fg-on-*` tokens. Selector, field, and box radii map to `--r-selector`, `--r-field`, and `--r-box`; the source border width maps to `--border-width` because BurnGuard reserves `--border` for a color.
+The donor palette is expressed through BurnGuard's canonical neutral, brand, semantic, surface, chart, type, spacing, radius, elevation, and motion tokens. Use the complete `--gray-*` and `--chart-*` ramps for hierarchy and data visualization, and use `--r-*`, `--shadow-*`, and `--dur-*` tokens rather than introducing component-local scales.
 
 ## Provenance
 
