@@ -222,6 +222,14 @@ Important backend routes today:
 Current enforcement:
 
 - server binds to `127.0.0.1`
+- each backend launch generates a new 256-bit API capability; the frontend
+  obtains it from the same-origin `/api/bootstrap` route and keeps it in memory
+- API middleware rejects unknown `Host` authorities, requires an exact
+  same-origin `Origin` plus the capability header for mutations, and uses an
+  HttpOnly, `SameSite=Strict` launch cookie for GET and SSE requests; only
+  `/api/health` is public
+- development explicitly trusts the fixed Vite authority at
+  `127.0.0.1:5173`, whose proxy preserves that authority
 - project file serving normalizes and bounds relative paths
 - file writing is delegated to the underlying CLI working inside the project directory
 - turn execution is serialized per session to avoid concurrent writes from overlapping prompts

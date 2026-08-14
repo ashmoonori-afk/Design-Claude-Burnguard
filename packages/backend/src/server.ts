@@ -1,5 +1,5 @@
-import path from "node:path";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { Hono } from "hono";
 import { APP_NAME } from "@bg/shared";
 import { healthRoutes } from "./routes/health";
@@ -12,60 +12,68 @@ import { sessionRoutes } from "./routes/session";
 import { settingsRoutes } from "./routes/settings";
 import { systemRoutes } from "./routes/system";
 import { resolveRepoRoot } from "./lib/paths";
+import {
+  createRequestAuthority,
+  type RequestAuthorityOptions,
+} from "./security/request-authority";
 
-export const app = new Hono();
-
-app.route("/", healthRoutes);
-app.route("/", artifactRoutes);
-app.route("/", commentRoutes);
-app.route("/", homeRoutes);
-app.route("/", projectRoutes);
-app.route("/", runtimeRoutes);
-app.route("/", sessionRoutes);
-app.route("/", settingsRoutes);
-app.route("/", systemRoutes);
-
-app.get("/assets/*", async (c) => {
-  const distDir = findFrontendDistDir();
-  // Hono 4.x does not expose the wildcard match via c.req.param("*") for a
-  // bare `/*` pattern — extract manually from the path.
-  const prefix = "/assets/";
-  const rawPath = new URL(c.req.url).pathname;
-  const assetPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!distDir || !assetPath || assetPath.includes("..")) {
-    return c.notFound();
+export function createApp(authority?: RequestAuthorityOptions): Hono {
+  const app = new Hono();
+  if (authority) {
+    app.use("/api/*", createRequestAuthority(authority));
   }
 
-  const absolutePath = path.join(distDir, "assets", assetPath);
-  if (!existsSync(absolutePath)) {
-    return c.notFound();
-  }
+  app.route("/", healthRoutes);
+  app.route("/", artifactRoutes);
+  app.route("/", commentRoutes);
+  app.route("/", homeRoutes);
+  app.route("/", projectRoutes);
+  app.route("/", runtimeRoutes);
+  app.route("/", sessionRoutes);
+  app.route("/", settingsRoutes);
+  app.route("/", systemRoutes);
 
-  return new Response(Bun.file(absolutePath));
-});
-
-app.get("*", async (c) => {
-  const pathname = new URL(c.req.url).pathname;
-  if (pathname.startsWith("/api/")) {
-    return c.notFound();
-  }
-
-  const distDir = findFrontendDistDir();
-  if (distDir) {
-    const indexPath = path.join(distDir, "index.html");
-    if (existsSync(indexPath)) {
-      return new Response(Bun.file(indexPath), {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache",
-        },
-      });
+  app.get("/assets/*", async (c) => {
+    const distDir = findFrontendDistDir();
+    // Hono 4.x does not expose the wildcard match via c.req.param("*") for a
+    // bare `/*` pattern — extract manually from the path.
+    const prefix = "/assets/";
+    const rawPath = new URL(c.req.url).pathname;
+    const assetPath = rawPath.startsWith(prefix)
+      ? decodeURIComponent(rawPath.slice(prefix.length))
+      : "";
+    if (!distDir || !assetPath || assetPath.includes("..")) {
+      return c.notFound();
     }
-  }
 
-  return c.html(`<!doctype html>
+    const absolutePath = path.join(distDir, "assets", assetPath);
+    if (!existsSync(absolutePath)) {
+      return c.notFound();
+    }
+
+    return new Response(Bun.file(absolutePath));
+  });
+
+  app.get("*", async (c) => {
+    const pathname = new URL(c.req.url).pathname;
+    if (pathname.startsWith("/api/")) {
+      return c.notFound();
+    }
+
+    const distDir = findFrontendDistDir();
+    if (distDir) {
+      const indexPath = path.join(distDir, "index.html");
+      if (existsSync(indexPath)) {
+        return new Response(Bun.file(indexPath), {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-cache",
+          },
+        });
+      }
+    }
+
+    return c.html(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -128,7 +136,10 @@ app.get("*", async (c) => {
   </script>
 </body>
 </html>`);
-});
+  });
+
+  return app;
+}
 
 function findFrontendDistDir() {
   const repoRoot = resolveRepoRoot();
