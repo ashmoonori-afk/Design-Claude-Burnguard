@@ -1,15 +1,15 @@
+import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, test } from "bun:test";
 import {
   LUCIDE_ICONS,
   renderLucideIconReference,
 } from "../src/harness/assets/lucide/icons";
-import { buildPrompt } from "../src/harness/prompt-builder";
+import { buildPrompt, MAX_SKILL_CHARS } from "../src/harness/prompt-builder";
 import { DECK_SKILL_MD } from "../src/harness/skills/deck-skill";
+import { DIAGRAM_SKILL_MD } from "../src/harness/skills/diagram-skill";
 import { PROTOTYPE_SKILL_MD } from "../src/harness/skills/prototype-skill";
 
-const MAX_SKILL_CHARS = 4000;
 const ICON_POINTER_SENTINEL = "LUCIDE_ICON_REFERENCE";
 const ASSET_DIR = path.resolve(import.meta.dir, "../src/harness/assets/lucide");
 
@@ -51,21 +51,27 @@ describe("bundled Lucide icon vocabulary", () => {
       readFile(path.join(ASSET_DIR, "LICENSE"), "utf8"),
     ]);
 
-    expect(reference).toBe(renderLucideIconReference());
-    expect(reference).toContain(ICON_POINTER_SENTINEL);
-    expect(reference).toContain('stroke="currentColor"');
-    expect(reference).toContain("var(--icon-size");
+    const normalizedReference = reference.replaceAll("\r\n", "\n");
+    expect(normalizedReference).toBe(renderLucideIconReference());
+    expect(normalizedReference).toContain(ICON_POINTER_SENTINEL);
+    expect(normalizedReference).toContain('stroke="currentColor"');
+    expect(normalizedReference).toContain("var(--icon-size");
     for (const [name, icon] of Object.entries(LUCIDE_ICONS)) {
-      expect(reference).toContain(`### ${name}`);
-      expect(reference).toContain(icon.pathData);
+      expect(normalizedReference).toContain(`### ${name}`);
+      expect(normalizedReference).toContain(icon.pathData);
     }
     expect(license).toContain("ISC License");
     expect(license).toContain("Lucide Contributors");
   });
 
-  test("keeps full artifact skills inside the per-turn budget", () => {
-    expect(PROTOTYPE_SKILL_MD.length).toBeLessThanOrEqual(MAX_SKILL_CHARS);
-    expect(DECK_SKILL_MD.length).toBeLessThanOrEqual(MAX_SKILL_CHARS);
+  test("keeps every full injected skill inside the per-turn budget", () => {
+    for (const skill of [
+      PROTOTYPE_SKILL_MD,
+      DECK_SKILL_MD,
+      DIAGRAM_SKILL_MD,
+    ]) {
+      expect(skill.length).toBeLessThanOrEqual(MAX_SKILL_CHARS);
+    }
   });
 
   test("ships the icon reference sentinel in prototype and deck prompts", async () => {

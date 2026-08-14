@@ -5,7 +5,7 @@
  * modes can all consume.
  *
  * Keep this tight — it ships on every turn for a slide_deck project. Current
- * size ~3 KB; re-measure before adding new sections.
+ * size ~4 KB; re-measure before adding new sections.
  *
  * Design-system boundary: STRUCTURE only — layout archetypes, content
  * strictness, node-id contracts. Colour, typography, and palette choices
@@ -34,7 +34,7 @@ export const DECK_SKILL_MD = `# Slide deck authoring conventions
   takeaway near the chart.
 - Never use the same \`data-layout\` on three consecutive slides.
 
-## Layout archetypes (one per \`data-layout\`)
+## Layout archetypes (pick one per slide via \`data-layout\`)
 
 - \`cover\` — oversized title + thin eyebrow; no bullets.
 - \`agenda\` — numbered list (01/02/03), thin dividers.

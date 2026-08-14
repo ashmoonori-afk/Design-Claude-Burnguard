@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { buildPrompt } from "../src/harness/prompt-builder";
+import { buildPrompt, MAX_SKILL_CHARS } from "../src/harness/prompt-builder";
 import { DIAGRAM_SKILL_MD } from "../src/harness/skills/diagram-skill";
 
-const MAX_SKILL_CHARS = 4000;
 type BuildContext = Parameters<typeof buildPrompt>[0];
 
 function makeContext(): BuildContext {

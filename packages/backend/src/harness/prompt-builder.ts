@@ -21,7 +21,7 @@ import {
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
 
 const MAX_FILES_LISTED = 60;
-const MAX_SKILL_CHARS = 4000;
+export const MAX_SKILL_CHARS = 5000;
 const MAX_TOKENS_CSS_LINES = 150;
 const MAX_README_LINES = 120;
 const MAX_ATTACHMENT_PAGES = 4;
