@@ -6,6 +6,7 @@ import { createExportJob, getExportJob, updateExportJob } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
 import { exportsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
+import { assertSafeName, resolveWithin } from "../security/path-boundary";
 import { renderDeckToPdf } from "./export-pdf";
 import { renderDeckToPptx } from "./export-pptx";
 import { renderHandoffBundle } from "./export-handoff";
@@ -65,12 +66,17 @@ async function runExport(jobId: string, options: ExportOptions = {}) {
     await mkdir(exportsDir, { recursive: true });
     const ext =
       job.format === "pdf" ? "pdf" : job.format === "pptx" ? "pptx" : "zip";
-    const outputPath = path.join(exportsDir, `${project.id}-${job.id}.${ext}`);
+    const safeProjectId = assertSafeName(project.id);
+    const safeJobId = assertSafeName(job.id);
+    const outputPath = resolveWithin(
+      exportsDir,
+      `${safeProjectId}-${safeJobId}.${ext}`,
+    );
     await rm(outputPath, { force: true });
     const stagingDir = await mkdtemp(path.join(os.tmpdir(), "burnguard-export-"));
 
     try {
-      const projectStageDir = path.join(stagingDir, project.id);
+      const projectStageDir = path.join(stagingDir, safeProjectId);
       await cp(project.dir_path, projectStageDir, { recursive: true });
 
       if (project.type === "slide_deck") {
@@ -106,7 +112,7 @@ async function runExport(jobId: string, options: ExportOptions = {}) {
           project.design_system_id,
           project.dir_path,
         );
-        const bundleDir = path.join(stagingDir, `${project.id}-handoff`);
+        const bundleDir = path.join(stagingDir, `${safeProjectId}-handoff`);
         await mkdir(bundleDir, { recursive: true });
         await renderHandoffBundle({
           // Full project mirror — renderHandoffBundle copies it into
@@ -181,12 +187,14 @@ async function resolveHandoffTokens(
   };
 }
 
-async function prepareSlideDeckExport(projectDir: string, entrypoint: string) {
+export async function prepareSlideDeckExport(
+  projectDir: string,
+  entrypoint: string,
+) {
+  const entrypointPath = resolveWithin(projectDir, entrypoint);
   const runtimeDir = path.join(projectDir, "runtime");
   await mkdir(runtimeDir, { recursive: true });
   await writeFile(path.join(runtimeDir, "deck-stage.js"), DECK_STAGE_JS, "utf8");
-
-  const entrypointPath = path.join(projectDir, entrypoint);
   const relativeRuntimePath = path
     .relative(path.dirname(entrypointPath), path.join(runtimeDir, "deck-stage.js"))
     .replaceAll("\\", "/");
