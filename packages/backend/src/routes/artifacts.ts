@@ -27,6 +27,7 @@ import {
 } from "../services/file-patch";
 import { getExportJob, listProjectExports } from "../db/exports";
 import { getProjectDetail } from "../db/seed";
+import { exportsDir, resolveManagedPath } from "../lib/paths";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -470,6 +471,17 @@ artifactRoutes.get("/api/exports/:id/download", async (c) => {
     return c.json(fail("export_not_ready", "Export is not ready for download", { id }), 409);
   }
 
+  let outputPath: string;
+  try {
+    outputPath = resolveManagedPath(exportsDir, job.output_path);
+    const info = await stat(outputPath);
+    if (!info.isFile()) {
+      return c.json(fail("export_not_found", "Export output file not found", { id }), 404);
+    }
+  } catch {
+    return c.json(fail("export_not_found", "Export output file not found", { id }), 404);
+  }
+
   // Friendly user-facing filename (project-slug-format-date.ext) and
   // the correct MIME type per format. Both fixes from the export audit:
   // the previous response always claimed application/zip, even for PDF
@@ -481,7 +493,7 @@ artifactRoutes.get("/api/exports/:id/download", async (c) => {
   });
   c.header("Content-Disposition", buildContentDisposition(filename));
   c.header("Content-Type", formatMime(job.format));
-  return new Response(Bun.file(job.output_path), {
+  return new Response(Bun.file(outputPath), {
     headers: c.res.headers,
   });
 });

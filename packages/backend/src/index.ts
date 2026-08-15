@@ -1,8 +1,9 @@
-import { app } from "./server";
-import { pickPort } from "./lib/port";
-import { openBrowser } from "./lib/browser";
 import { bootstrapLocalAppData } from "./bootstrap";
 import { loadConfig } from "./config";
+import { openBrowser } from "./lib/browser";
+import { pickPort } from "./lib/port";
+import { generateLaunchCapability } from "./security/request-authority";
+import { createApp } from "./server";
 
 await bootstrapLocalAppData();
 const config = await loadConfig();
@@ -18,6 +19,12 @@ const port =
   config.port ??
   (process.env.BG_SCAN_PORT === "1" ? await pickPort() : 14070);
 const host = "127.0.0.1";
+const isDev = process.env.BG_DEV === "1";
+const app = createApp({
+  capability: generateLaunchCapability(),
+  appAuthority: `${host}:${port}`,
+  devAuthority: isDev ? "127.0.0.1:5173" : undefined,
+});
 
 const server = Bun.serve({
   port,
@@ -35,7 +42,6 @@ console.log(`[burnguard] listening on ${url}`);
 // In dev (package.json sets BG_DEV=1), the React SPA is served by Vite on a
 // separate port (5173-ish) and this backend only serves /api/*. Auto-opening
 // 14070 would show the Phase 0 hello page instead of the app — skip it.
-const isDev = process.env.BG_DEV === "1";
 if (config.autoOpenBrowser && !isDev) {
   openBrowser(url);
 }

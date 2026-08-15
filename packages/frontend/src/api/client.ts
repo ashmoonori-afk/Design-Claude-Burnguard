@@ -1,5 +1,8 @@
 import type { ApiErrorBody, ApiSuccess } from "@bg/shared";
 
+const BURNGUARD_CAPABILITY_HEADER = "x-burnguard-capability";
+let launchCapability: string | null = null;
+
 export class ApiError extends Error {
   readonly code: string;
   readonly details?: unknown;
@@ -19,6 +22,28 @@ export class ApiError extends Error {
   }
 }
 
+export async function bootstrapApiAuthority(): Promise<void> {
+  launchCapability = null;
+  const res = await fetch("/api/bootstrap", {
+    credentials: "same-origin",
+    headers: { accept: "application/json" },
+  });
+  const body = (await res.json().catch(() => null)) as
+    | ApiSuccess<{ capability: string }>
+    | ApiErrorBody
+    | null;
+  if (
+    !res.ok ||
+    !body ||
+    "error" in body ||
+    typeof body.data.capability !== "string" ||
+    body.data.capability.length === 0
+  ) {
+    throw new Error("BurnGuard API authority bootstrap failed.");
+  }
+  launchCapability = body.data.capability;
+}
+
 /**
  * Thin typed wrapper over fetch that unwraps the shared API envelope and
  * throws a typed ApiError on either HTTP failure or `{error:...}` body.
@@ -34,11 +59,15 @@ export async function apiFetch<T>(
   if (!(init?.body instanceof FormData) && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
+  if (!launchCapability) {
+    throw new Error("BurnGuard API authority is not initialized.");
+  }
+  headers.set(BURNGUARD_CAPABILITY_HEADER, launchCapability);
 
   const res = await fetch(path, {
+    ...init,
     credentials: "same-origin",
     headers,
-    ...init,
   });
 
   const body = (await res.json().catch(() => null)) as

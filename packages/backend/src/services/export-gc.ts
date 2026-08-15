@@ -15,11 +15,14 @@
  * sessions can opt into a periodic timer later if needed.
  */
 import { stat, unlink } from "node:fs/promises";
+import path from "node:path";
 import type { ExportJob } from "@bg/shared";
 import {
   deleteExportJob,
   listStaleSucceededExports,
 } from "../db/exports";
+import { exportsDir } from "../lib/paths";
+import { resolveWithin } from "../security/path-boundary";
 
 export const DEFAULT_EXPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -39,6 +42,8 @@ export interface PruneResult {
   removedFiles: string[];
   /** Jobs whose output_path was already missing — DB row still pruned. */
   missingFiles: string[];
+  /** Unsafe output paths that were deliberately not touched. */
+  warnings: string[];
 }
 
 /**
@@ -51,6 +56,7 @@ export interface PruneDeps {
   deleteJob?: (id: string) => Promise<void>;
   statFile?: (path: string) => Promise<{ size: number }>;
   unlinkFile?: (path: string) => Promise<void>;
+  exportsRoot?: string;
 }
 
 export async function pruneOldExports(
@@ -66,6 +72,7 @@ export async function pruneOldExports(
       return { size: info.size };
     });
   const unlinkFile = deps.unlinkFile ?? unlink;
+  const exportsRoot = deps.exportsRoot ?? exportsDir;
 
   const retention = options.retentionMs ?? DEFAULT_EXPORT_RETENTION_MS;
   const now = options.now ?? Date.now();
@@ -77,21 +84,34 @@ export async function pruneOldExports(
     removedBytes: 0,
     removedFiles: [],
     missingFiles: [],
+    warnings: [],
   };
 
   for (const job of stale) {
     if (job.output_path) {
+      let safeOutputPath: string | null = null;
       try {
-        const info = await statFile(job.output_path);
-        if (!options.dryRun) {
-          await unlinkFile(job.output_path);
+        const relativeOutputPath = path.relative(exportsRoot, job.output_path);
+        safeOutputPath = resolveWithin(exportsRoot, relativeOutputPath);
+      } catch (error) {
+        result.warnings.push(
+          `Skipped unsafe output_path for export ${job.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      if (safeOutputPath) {
+        try {
+          const info = await statFile(safeOutputPath);
+          if (!options.dryRun) {
+            await unlinkFile(safeOutputPath);
+          }
+          result.removedBytes += info.size;
+          result.removedFiles.push(job.output_path);
+        } catch {
+          // File already gone — still drop the DB row so it doesn't
+          // forever advertise a non-existent download URL.
+          result.missingFiles.push(job.output_path);
         }
-        result.removedBytes += info.size;
-        result.removedFiles.push(job.output_path);
-      } catch {
-        // File already gone — still drop the DB row so it doesn't
-        // forever advertise a non-existent download URL.
-        result.missingFiles.push(job.output_path);
       }
     }
     if (!options.dryRun) {

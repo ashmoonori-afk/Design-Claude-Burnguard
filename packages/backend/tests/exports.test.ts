@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, stat, writeFile, mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type LaunchOptions } from "playwright-core";
@@ -12,6 +12,26 @@ import {
 import { DECK_STAGE_JS } from "../src/runtime/deck-stage";
 import { PdfExportError, renderDeckToPdf } from "../src/services/export-pdf";
 import { PptxExportError, renderDeckToPptx } from "../src/services/export-pptx";
+import { prepareSlideDeckExport } from "../src/services/exports";
+
+describe("export path boundary", () => {
+  test("rejects an entrypoint outside the staged project", async () => {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "bg-export-boundary-"));
+    const projectDir = path.join(tempRoot, "staging", "project");
+    const outsidePath = path.join(tempRoot, "outside.html");
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(outsidePath, "outside-original", "utf8");
+
+    try {
+      await expect(
+        prepareSlideDeckExport(projectDir, "../../outside.html"),
+      ).rejects.toThrow("outside boundary root");
+      expect(await readFile(outsidePath, "utf8")).toBe("outside-original");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("tutorial HTML contracts", () => {
   test("prototype tutorial is a standalone page with editable anchors", () => {

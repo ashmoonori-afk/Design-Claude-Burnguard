@@ -5,6 +5,7 @@ import { closeProjectWatcher } from "../services/watchers";
 import type { ApiErrorBody, ApiSuccess, ProjectDetail, SessionInfo } from "@bg/shared";
 import { getDb } from "../db/client";
 import { projectsTable } from "../db/schema";
+import { projectsDir, resolveManagedPath } from "../lib/paths";
 import {
   getLatestProjectSession,
   getProjectDetail,
@@ -65,9 +66,14 @@ projectRoutes.delete("/api/projects/:id", async (c) => {
   // freshly created project that re-uses the same id starts clean.
   closeProjectWatcher(id);
 
-  // Remove the filesystem directory (ignore errors so the DB row still
-  // gets cleaned up even if a file handle is held or the dir is gone).
-  await rm(project.dir_path, { recursive: true, force: true }).catch(() => {});
+  // Remove only managed project storage. Ignore filesystem errors so the DB
+  // row still gets cleaned up if a file handle is held or the dir is gone.
+  try {
+    const projectDir = resolveManagedPath(projectsDir, project.dir_path);
+    await rm(projectDir, { recursive: true, force: true });
+  } catch {
+    // Keep the route's existing best-effort deletion behavior.
+  }
 
   // ON DELETE CASCADE on sessions/events/attachments/files/comments/tweaks/exports
   // removes the rest.
