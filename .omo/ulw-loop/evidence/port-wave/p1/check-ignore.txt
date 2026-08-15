@@ -1,0 +1,3 @@
+git check-ignore output:
+.omo/plans/port-wave-plan.md
+exit=0

@@ -1,16 +1,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { UserEvent } from "@bg/shared";
-import type { buildSessionContext } from "../services/context";
 import {
   attachmentExtractedTextPath,
   attachmentSummaryPath,
 } from "../services/attachments";
+import type { buildSessionContext } from "../services/context";
 import {
   readUploadManifest,
   type UploadManifest,
 } from "../services/design-system-extract";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
+import { DIAGRAM_SKILL_MD } from "./skills/diagram-skill";
 import { PROTOTYPE_SKILL_MD } from "./skills/prototype-skill";
 import {
   summarizeDeckHtml,
@@ -20,7 +21,7 @@ import {
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
 
 const MAX_FILES_LISTED = 60;
-const MAX_SKILL_CHARS = 4000;
+export const MAX_SKILL_CHARS = 5000;
 const MAX_TOKENS_CSS_LINES = 150;
 const MAX_README_LINES = 120;
 const MAX_ATTACHMENT_PAGES = 4;
@@ -248,6 +249,12 @@ export async function buildPrompt(
     lines.push("");
   }
 
+  if (isDiagramRequest(userEvent.text)) {
+    lines.push("## Diagram skill");
+    lines.push(DIAGRAM_SKILL_MD.trim());
+    lines.push("");
+  }
+
   lines.push("## Delivery");
   lines.push(
     `- Write or edit files inside \`${project.project_dir}\`. Do not touch anything outside this directory.`,
@@ -273,6 +280,13 @@ export async function buildPrompt(
   lines.push(userEvent.text);
 
   return lines.join("\n");
+}
+
+const DIAGRAM_REQUEST_PATTERN =
+  /\b(?:diagram|flowchart|org(?:anization(?:al)?)? chart|process map|service topology|system topology)\b/i;
+
+function isDiagramRequest(request: string): boolean {
+  return DIAGRAM_REQUEST_PATTERN.test(request);
 }
 
 const COMPACT_DECK_SKILL_MD = `# Slide deck compact contract

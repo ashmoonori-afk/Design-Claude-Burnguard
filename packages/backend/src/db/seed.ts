@@ -12,6 +12,13 @@ import type {
   SessionInfo,
 } from "@bg/shared";
 import { APP_VERSION } from "@bg/shared";
+import {
+  bundledDesignSystemId,
+  bundledDesignSystems,
+} from "../data/bundled-design-systems";
+import { homeDesignSystemFixtures, homeProjectFixtures } from "../data/home";
+import { projectsDir, systemsDir } from "../lib/paths";
+import { DECK_STAGE_JS } from "../runtime/deck-stage";
 import { getDb } from "./client";
 import {
   designSystemsTable,
@@ -20,13 +27,10 @@ import {
   sessionsTable,
   usersTable,
 } from "./schema";
-import { homeDesignSystemFixtures, homeProjectFixtures } from "../data/home";
-import { projectsDir, systemsDir } from "../lib/paths";
-import { renderInitialArtifact } from "./templates";
-import type { SlideDeckOptions } from "./templates/slide-deck";
 import { PROMPT_SAMPLE_TAG, TUTORIAL_TAG } from "./seed-tutorials";
 import { SEEDED_PROJECT_HTML } from "./seeded-project-html";
-import { DECK_STAGE_JS } from "../runtime/deck-stage";
+import { renderInitialArtifact } from "./templates";
+import type { SlideDeckOptions } from "./templates/slide-deck";
 
 export async function seedCoreData() {
   const db = getDb();
@@ -49,11 +53,20 @@ export async function seedCoreData() {
       set: { value: APP_VERSION },
     });
 
-  for (const system of homeDesignSystemFixtures) {
-    const isSample = system.id === "northvale-capital";
-    const dirPath = isSample
-      ? path.join(systemsDir, "northvale-capital")
-      : path.join(systemsDir, system.id);
+  const bundledThemeFixtures = bundledDesignSystems.map(({ slug, name }) => ({
+    id: bundledDesignSystemId(slug),
+    name,
+    status: "published" as const,
+    is_template: false,
+    thumbnail_path: null,
+    updated_at: 1786665600000,
+  }));
+
+  for (const system of [...homeDesignSystemFixtures, ...bundledThemeFixtures]) {
+    const hasBundledFiles =
+      system.id === "northvale-capital" ||
+      system.id.startsWith("builtin-theme-");
+    const dirPath = path.join(systemsDir, system.id);
 
     await db
       .insert(designSystemsTable)
@@ -62,13 +75,15 @@ export async function seedCoreData() {
         name: system.name,
         description: null,
         status: system.status,
-        sourceType: isSample ? "sample" : "manual",
+        sourceType: hasBundledFiles ? "sample" : "manual",
         sourceUri: null,
         isTemplate: system.is_template,
         dirPath,
-        skillMdPath: isSample ? path.join(dirPath, "SKILL.md") : null,
-        tokensCssPath: isSample ? path.join(dirPath, "colors_and_type.css") : null,
-        readmeMdPath: isSample ? path.join(dirPath, "README.md") : null,
+        skillMdPath: hasBundledFiles ? path.join(dirPath, "SKILL.md") : null,
+        tokensCssPath: hasBundledFiles
+          ? path.join(dirPath, "colors_and_type.css")
+          : null,
+        readmeMdPath: hasBundledFiles ? path.join(dirPath, "README.md") : null,
         thumbnailPath: system.thumbnail_path,
         createdAt: system.updated_at,
         updatedAt: system.updated_at,
@@ -81,9 +96,11 @@ export async function seedCoreData() {
           status: system.status,
           isTemplate: system.is_template,
           dirPath,
-          skillMdPath: isSample ? path.join(dirPath, "SKILL.md") : null,
-          tokensCssPath: isSample ? path.join(dirPath, "colors_and_type.css") : null,
-          readmeMdPath: isSample ? path.join(dirPath, "README.md") : null,
+          skillMdPath: hasBundledFiles ? path.join(dirPath, "SKILL.md") : null,
+          tokensCssPath: hasBundledFiles
+            ? path.join(dirPath, "colors_and_type.css")
+            : null,
+          readmeMdPath: hasBundledFiles ? path.join(dirPath, "README.md") : null,
           thumbnailPath: system.thumbnail_path,
           updatedAt: system.updated_at,
         },

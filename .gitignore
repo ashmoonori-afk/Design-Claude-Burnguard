@@ -20,6 +20,7 @@ Thumbs.db
 
 # Local draft notes
 reddit-launch-post-draft.md
+.omo/plans/
 
 # Sample design-system uploads bucket — guards against committing
 # customer / IR / sensitive material dropped into this folder. Keep

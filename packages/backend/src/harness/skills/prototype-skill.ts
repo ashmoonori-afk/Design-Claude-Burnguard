@@ -6,7 +6,7 @@
  * inline CSS + vanilla JS, no framework, no bundler.
  *
  * Keep this tight — it ships on every turn for a prototype project.
- * Current size ~3.5 KB; re-measure before adding new sections.
+ * Current size ~5 KB; re-measure before adding new sections.
  *
  * Design-system boundary: STRUCTURE only — section archetypes, content
  * strictness, node-id contracts, interaction conventions. Colour,
@@ -62,19 +62,26 @@ bundler, no framework, no build step.
 
 ## Visual hierarchy
 
-- Prefer asymmetric layouts; avoid centered-everything outside heroes.
-- Whitespace is a feature; let oversized type and numbers breathe.
-- Progressive disclosure: \`<details>\` for FAQs, hover reveals for
-  secondary detail. Never hide primary value behind a scroll.
+- Prefer asymmetric layouts outside heroes; reveal detail progressively and
+  never hide primary value behind a scroll.
+
+## Spatial layout vocabulary
+
+- \`scroll-owner\`: exactly one element owns each scroll axis; the page owns vertical by default.
+- Put \`overflow-x\`/\`overflow-y\` on that owner; ancestors must not share that axis.
+- Nested scroll needs explicit interaction intent and bounds, never just clipping.
+- \`wrap-first\`: try \`flex-wrap\` or Grid \`repeat(auto-fit, minmax(...))\` before breakpoints.
+- Let space and item minimums drive reflow.
+- Add a breakpoint only when reflow changes structure, not for ordinary wrapping.
+- \`load-bearing\`: name the CSS property enforcing each layout decision.
+- Mark nearby \`/* load-bearing: decision — property */\`, e.g. \`grid-template-columns\`, \`flex-wrap\`, or \`overflow-*\`.
+- Preserve it during edits or replace its enforcement deliberately.
 
 ## Interaction conventions
 
-- CSS transitions and \`@keyframes\` for entrance/hover effects.
-- Scroll-triggered reveals: a single \`IntersectionObserver\` toggling a
-  \`[data-revealed]\` attribute; transition defined in CSS.
-- \`scroll-behavior: smooth\` on \`<html>\` and anchor links for in-page nav.
-- No external JS libraries (Framer Motion, GSAP, hls.js, AOS, etc.) without
-  an explicit user request. Keep total JS under ~100 lines.
+- Use CSS for entrance/hover effects and smooth anchor scrolling.
+- For scroll reveals, one \`IntersectionObserver\` toggles \`[data-revealed]\`.
+- No external JS libraries unless explicitly requested; keep JS under ~100 lines.
 
 ## Node IDs (required for edit / comment modes)
 
@@ -91,17 +98,15 @@ bundler, no framework, no build step.
   hardcode colours, font families, or scales that exist as tokens.
 - Do not introduce new palettes, font stacks, or typefaces. The design
   system owns visual identity; archetypes describe STRUCTURE only.
+- Icons (LUCIDE_ICON_REFERENCE): on demand, Read \`packages/backend/src/harness/assets/lucide/reference.md\`. Use only its inline \`<svg>\`; keep \`stroke="currentColor"\` and size with \`--icon-size\`. Never use external URLs, sprites, or icon fonts.
 - Mobile first. \`@media (min-width: 640px)\` for tablet,
   \`(min-width: 1024px)\` for desktop. Must not break below 360 px.
 
-## Video & media (allowed, with guards)
+## Video & media
 
-- \`<video>\` and \`<iframe>\` are allowed when the user asks. Prefer
-  \`<video autoplay muted playsinline loop>\` for background loops.
-- Always provide a \`poster\` and an inline \`<style>\` fallback background
-  so the section renders before media loads.
-- Warn the user when a URL is external: it may fail to load in the
-  canvas iframe or during screenshot capture.
+- When requested, \`<video>\` / \`<iframe>\` must include a poster or inline
+  fallback; warn that external URLs may fail in canvas or capture.
+- Never embed secrets or API keys.
 
 ## Don'ts
 

@@ -5,7 +5,7 @@
  * modes can all consume.
  *
  * Keep this tight — it ships on every turn for a slide_deck project. Current
- * size ~3 KB; re-measure before adding new sections.
+ * size ~4 KB; re-measure before adding new sections.
  *
  * Design-system boundary: STRUCTURE only — layout archetypes, content
  * strictness, node-id contracts. Colour, typography, and palette choices
@@ -13,9 +13,7 @@
  */
 export const DECK_SKILL_MD = `# Slide deck authoring conventions
 
-\`deck.html\` powers three consumers: the in-app canvas runtime, a PDF
-exporter, and a PPTX exporter. Deviations break the runtime or strip
-content from exports.
+\`deck.html\` serves canvas, PDF, and PPTX exports. Deviations break them.
 
 ## Structure
 
@@ -57,6 +55,13 @@ content from exports.
 - Whitespace is a feature. Let oversized type / numbers breathe.
 - Progressive disclosure: overview slide first, then 2–3 detail slides.
 
+## Projection scale
+
+- Declare and use \`--deck-type-hero: 80px; --deck-type-heading: 52px; --deck-type-body: 32px; --deck-type-caption: 24px\` and \`--deck-pad-slide: 72px; --deck-pad-block: 32px\`.
+- At 1920x1080, no rendered text may be below \`24px\`.
+- In self-review, do not shrink type or tighten spacing toward web density.
+  Projection readability wins.
+
 ## Runtime contract
 
 - Keep \`<script src="/runtime/deck-stage.js" defer></script>\` right before
@@ -79,6 +84,7 @@ content from exports.
   hardcode colours, font families, or scales that exist as tokens.
 - Do not introduce new palettes, font stacks, or typefaces. The design
   system owns visual identity; archetypes above describe STRUCTURE only.
+- Icons (LUCIDE_ICON_REFERENCE): Read \`packages/backend/src/harness/assets/lucide/reference.md\`. Use its inline \`<svg>\` with \`stroke="currentColor"\` and \`--icon-size\`; no external sources.
 - Keep \`.deck-slide { aspect-ratio: 16 / 9 }\` unless the user requests
   otherwise.
 

@@ -1,0 +1,5 @@
+$ cd packages/backend && bun run typecheck
+
+$ tsc --noEmit
+
+exit code: 0

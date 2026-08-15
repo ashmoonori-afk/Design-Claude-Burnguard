@@ -1,0 +1,161 @@
+/* Derived from daisyUI (https://github.com/saadeghi/daisyui) - MIT License, Copyright (c) 2020 Pouya Saadeghi. Converted for BurnGuard. */
+/* OKLCH values were converted offline to sRGB, gamut-clipped, and rounded to the nearest 8-bit channel. */
+
+:root {
+  color-scheme: dark;
+
+  /* Neutrals */
+  --gray-100: #CECFD0;
+  --gray-90: #202020;
+  --gray-80: #353535;
+  --gray-70: #4A4A4A;
+  --gray-60: #5F5F5F;
+  --gray-50: #747474;
+  --gray-40: #88898A;
+  --gray-30: #9A9A9B;
+  --gray-20: #ABACAD;
+  --gray-10: #BDBEBE;
+
+  /* Brand and accents */
+  --primary-blue: #1C4E80;
+  --action-blue: #1C4E80;
+  --red-60: #AC3E31;
+  --red-50: #B2584E;
+  --red-10: #C8B5B3;
+  --orange-50: #EA6947;
+  --orange-10: #D3BDB7;
+  --yellow-30: #DBAE5A;
+  --yellow-10: #D0C9BB;
+  --green-60: #6BB187;
+  --green-50: #7DB694;
+  --green-10: #BCCAC3;
+  --teal-50: #EA6947;
+  --teal-10: #D3BDB7;
+  --aqua-60: #0291D5;
+  --aqua-10: #A9C4D1;
+  --blue-90: #202020;
+  --blue-80: #1D4165;
+  --blue-70: #1D4873;
+  --blue-60: #1C4E80;
+  --blue-50: #3C658E;
+  --blue-30: #7E95AC;
+  --blue-10: #B2BAC3;
+  --ultramarine-60: #1C4E80;
+  --purple-60: #7C909A;
+  --pink-60: #7C909A;
+
+  /* Semantic */
+  --success: #6BB187;
+  --warning-yellow: #DBAE5A;
+  --warning-orange: #EA6947;
+  --error: #AC3E31;
+  --info: #0291D5;
+
+  /* Surface and text */
+  --bg: #202020;
+  --bg-subtle: #1C1C1C;
+  --bg-muted: #181818;
+  --surface: #202020;
+  --surface-inverse: #23282E;
+  --fg-1: #CDCDCD;
+  --fg-2: #CDCDCD;
+  --fg-3: #CDCDCD;
+  --fg-4: #88898A;
+  --fg-on-dark: #CECFD0;
+  --fg-on-brand: #D0DAE5;
+  --border: #181818;
+  --border-strong: #9A9A9B;
+  --focus-ring: #1C4E80;
+
+  /* Paired donor colors retained for accessible combinations */
+  --secondary: #7C909A;
+  --fg-on-secondary: #050708;
+  --accent: #EA6947;
+  --fg-on-accent: #130402;
+  --fg-on-info: #000710;
+  --fg-on-success: #040B07;
+  --fg-on-warning: #110B03;
+  --fg-on-error: #F2D8D4;
+
+  /* Charts */
+  --chart-1: #1C4E80;
+  --chart-2: #7C909A;
+  --chart-3: #EA6947;
+  --chart-4: #0291D5;
+  --chart-5: #6BB187;
+  --chart-6: #DBAE5A;
+  --chart-7: #AC3E31;
+  --chart-8: #4C6F8D;
+  --chart-9: #767D8E;
+  --chart-10: #448084;
+
+  /* Type families */
+  --font-display: Arial, Helvetica, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  /* Type scale */
+  --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-20: 1.25rem;
+  --fs-24: 1.5rem;
+  --fs-28: 1.75rem;
+  --fs-32: 2rem;
+  --fs-40: 2.5rem;
+  --fs-48: 3rem;
+  --fs-64: 4rem;
+  --fs-80: 5rem;
+
+  /* Weight, leading, and tracking */
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 900;
+  --lh-tight: 1.1;
+  --lh-snug: 1.25;
+  --lh-normal: 1.45;
+  --lh-relaxed: 1.6;
+  --ls-tight: -0.02em;
+  --ls-normal: 0em;
+  --ls-wide: 0.02em;
+  --ls-eyebrow: 0.14em;
+
+  /* Spacing: 4px grid */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+  --sp-20: 80px;
+
+  /* Radii */
+  --r-0: 0px;
+  --r-2: 2px;
+  --r-4: 4px;
+  --r-8: 4px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --shadow-2: 0 3px 8px rgba(0, 0, 0, 0.24);
+  --shadow-3: 0 8px 20px rgba(0, 0, 0, 0.28);
+  --shadow-4: 0 16px 32px rgba(0, 0, 0, 0.34);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasis: cubic-bezier(0.2, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+}
