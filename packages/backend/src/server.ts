@@ -16,6 +16,7 @@ import {
   createRequestAuthority,
   type RequestAuthorityOptions,
 } from "./security/request-authority";
+import { PathBoundaryError, resolveWithin } from "./security/path-boundary";
 
 export function createApp(authority?: RequestAuthorityOptions): Hono {
   const app = new Hono();
@@ -42,16 +43,21 @@ export function createApp(authority?: RequestAuthorityOptions): Hono {
     const assetPath = rawPath.startsWith(prefix)
       ? decodeURIComponent(rawPath.slice(prefix.length))
       : "";
-    if (!distDir || !assetPath || assetPath.includes("..")) {
+    if (!distDir || !assetPath) {
       return c.notFound();
     }
 
-    const absolutePath = path.join(distDir, "assets", assetPath);
-    if (!existsSync(absolutePath)) {
-      return c.notFound();
+    try {
+      const assetsDir = resolveWithin(distDir, "assets");
+      const absolutePath = resolveWithin(assetsDir, assetPath);
+      if (!existsSync(absolutePath)) {
+        return c.notFound();
+      }
+      return new Response(Bun.file(absolutePath));
+    } catch (error) {
+      if (error instanceof PathBoundaryError) return c.notFound();
+      throw error;
     }
-
-    return new Response(Bun.file(absolutePath));
   });
 
   app.get("*", async (c) => {

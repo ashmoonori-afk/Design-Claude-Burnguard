@@ -2,12 +2,19 @@ import { cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CheckpointRef } from "@bg/shared";
 import { getProjectDetail } from "../db/seed";
+import { assertSafeName, resolveWithin } from "../security/path-boundary";
 import { listIndexedProjectFiles } from "./files";
 
 const EXCLUDED_DIR_NAMES = new Set([".meta", ".attachments"]);
 
 function snapshotDir(projectDir: string, turnId: string): string {
-  return path.join(projectDir, ".meta", "checkpoints", "snapshots", turnId);
+  return resolveWithin(
+    projectDir,
+    ".meta",
+    "checkpoints",
+    "snapshots",
+    assertSafeName(turnId),
+  );
 }
 
 /**
@@ -21,6 +28,7 @@ export async function writePreTurnSnapshot(
   projectId: string,
   turnId: string,
 ): Promise<CheckpointRef | null> {
+  assertSafeName(turnId);
   const project = await getProjectDetail(projectId);
   if (!project) return null;
 
@@ -53,6 +61,7 @@ export async function hasSnapshot(
   projectId: string,
   turnId: string,
 ): Promise<boolean> {
+  assertSafeName(turnId);
   const project = await getProjectDetail(projectId);
   if (!project) return false;
   const dest = snapshotDir(project.dir_path, turnId);
@@ -82,6 +91,7 @@ export async function restoreFromSnapshot(
   projectId: string,
   turnId: string,
 ): Promise<RestoreResult | null> {
+  assertSafeName(turnId);
   const project = await getProjectDetail(projectId);
   if (!project) return null;
 
@@ -127,14 +137,20 @@ export async function writeTurnCheckpoint(
   projectId: string,
   turnId: string,
 ): Promise<CheckpointRef | null> {
+  const safeTurnId = assertSafeName(turnId);
   const project = await getProjectDetail(projectId);
   if (!project) {
     return null;
   }
 
   const files = await listIndexedProjectFiles(projectId);
-  const checkpointDir = path.join(project.dir_path, ".meta", "checkpoints");
-  const checkpointPath = path.join(checkpointDir, `${turnId}.json`);
+  const checkpointDir = resolveWithin(project.dir_path, ".meta", "checkpoints");
+  const checkpointPath = resolveWithin(
+    project.dir_path,
+    ".meta",
+    "checkpoints",
+    `${safeTurnId}.json`,
+  );
   const createdAt = Date.now();
 
   await mkdir(checkpointDir, { recursive: true });

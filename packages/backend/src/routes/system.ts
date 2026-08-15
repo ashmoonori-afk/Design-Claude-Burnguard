@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import { Hono } from "hono";
 import type {
   ApiErrorBody,
@@ -26,10 +26,11 @@ import {
   extractDesignSystemFromSource,
   extractDesignSystemFromUpload,
   readDesignSystemTokens,
-  resolveDesignSystemFile,
   uploadDesignSystemFont,
   upsertDesignSystemColorToken,
 } from "../services/design-system-extract";
+import { resolveManagedPath, systemsDir } from "../lib/paths";
+import { assertSafeName, resolveWithin } from "../security/path-boundary";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -321,10 +322,13 @@ systemRoutes.delete("/api/design-systems/:id", async (c) => {
   }
 
   await deleteDesignSystemRecord(id);
-  await rm(existing.dir_path, { recursive: true, force: true }).catch(() => {
-    // The DB row is already gone; failing to delete the directory
-    // leaves stale bytes on disk but keeps the UI consistent.
-  });
+  try {
+    const systemDir = resolveManagedPath(systemsDir, existing.dir_path);
+    await rm(systemDir, { recursive: true, force: true });
+  } catch {
+    // The DB row is already gone; an unsafe path or failed deletion leaves
+    // stale bytes on disk but keeps the UI consistent.
+  }
   return c.json(ok({ id, deleted: true } satisfies DeleteDesignSystemResponse));
 });
 
@@ -335,7 +339,19 @@ systemRoutes.get("/api/design-systems/:id/files/*", async (c) => {
   const relPath = rawPath.startsWith(prefix)
     ? decodeURIComponent(rawPath.slice(prefix.length))
     : "";
-  const absolutePath = await resolveDesignSystemFile(id, relPath);
+  const detail = await getDesignSystemDetail(id);
+  let absolutePath: string | null = null;
+  if (detail) {
+    try {
+      const segments = relPath.replaceAll("\\", "/").split("/").map(assertSafeName);
+      const candidate = resolveWithin(detail.dir_path, ...segments);
+      const info = await stat(candidate);
+      if (info.isFile()) absolutePath = candidate;
+    } catch {
+      // Preserve this endpoint's file-not-found response for invalid paths,
+      // escaping links, and inaccessible or missing files.
+    }
+  }
   if (!absolutePath) {
     return c.json(
       fail("design_system_file_not_found", "Design system file not found", {

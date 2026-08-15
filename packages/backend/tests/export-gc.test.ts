@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { ExportJob } from "@bg/shared";
 import {
   DEFAULT_EXPORT_RETENTION_MS,
@@ -6,6 +9,15 @@ import {
 } from "../src/services/export-gc";
 
 const NOW = Date.UTC(2026, 3, 25); // 2026-04-25 00:00 UTC
+const EXPORTS_ROOT = mkdtempSync(path.join(tmpdir(), "bg-export-gc-"));
+
+function exportPath(name: string): string {
+  return path.join(EXPORTS_ROOT, name);
+}
+
+afterAll(() => {
+  rmSync(EXPORTS_ROOT, { recursive: true, force: true });
+});
 
 function makeJob(overrides: Partial<ExportJob>): ExportJob {
   return {
@@ -13,7 +25,7 @@ function makeJob(overrides: Partial<ExportJob>): ExportJob {
     project_id: "proj-1",
     format: "html_zip",
     status: "succeeded",
-    output_path: "/exports/job-1.zip",
+    output_path: exportPath("job-1.zip"),
     error_message: null,
     size_bytes: 1024,
     created_at: NOW - DEFAULT_EXPORT_RETENTION_MS - 86400_000, // 8 days ago
@@ -31,6 +43,7 @@ interface FakeDeps {
 
 function makeDeps(state: FakeDeps) {
   return {
+    exportsRoot: EXPORTS_ROOT,
     listStale: async (cutoffMs: number) =>
       state.jobs.filter(
         (j) =>
@@ -55,14 +68,16 @@ function makeDeps(state: FakeDeps) {
 
 describe("pruneOldExports", () => {
   test("removes succeeded jobs older than the retention window", async () => {
+    const old1 = exportPath("old-1.zip");
+    const old2 = exportPath("old-2.zip");
     const state: FakeDeps = {
       jobs: [
-        makeJob({ id: "old-1", output_path: "/exports/old-1.zip" }),
-        makeJob({ id: "old-2", output_path: "/exports/old-2.zip" }),
+        makeJob({ id: "old-1", output_path: old1 }),
+        makeJob({ id: "old-2", output_path: old2 }),
       ],
       fileSizes: new Map([
-        ["/exports/old-1.zip", 2048],
-        ["/exports/old-2.zip", 4096],
+        [old1, 2048],
+        [old2, 4096],
       ]),
       deletedIds: [],
       unlinkedPaths: [],
@@ -70,22 +85,37 @@ describe("pruneOldExports", () => {
     const result = await pruneOldExports({ now: NOW }, makeDeps(state));
     expect(result.removedJobs).toBe(2);
     expect(result.removedBytes).toBe(2048 + 4096);
-    expect(result.removedFiles).toEqual([
-      "/exports/old-1.zip",
-      "/exports/old-2.zip",
-    ]);
+    expect(result.removedFiles).toEqual([old1, old2]);
     expect(result.missingFiles).toEqual([]);
+    expect(result.warnings).toEqual([]);
     expect(state.deletedIds).toEqual(["old-1", "old-2"]);
-    expect(state.unlinkedPaths).toEqual([
-      "/exports/old-1.zip",
-      "/exports/old-2.zip",
-    ]);
+    expect(state.unlinkedPaths).toEqual([old1, old2]);
+  });
+
+  test("skips and warns about an output_path outside the exports root", async () => {
+    const outsidePath = path.join(path.dirname(EXPORTS_ROOT), "victim.zip");
+    const state: FakeDeps = {
+      jobs: [makeJob({ id: "hostile", output_path: outsidePath })],
+      fileSizes: new Map([[outsidePath, 4096]]),
+      deletedIds: [],
+      unlinkedPaths: [],
+    };
+
+    const result = await pruneOldExports({ now: NOW }, makeDeps(state));
+
+    expect(state.unlinkedPaths).toEqual([]);
+    expect(result.removedFiles).toEqual([]);
+    expect(result.missingFiles).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("Skipped unsafe output_path");
+    expect(state.deletedIds).toEqual(["hostile"]);
   });
 
   test("dryRun reports the work but does not unlink or delete anything", async () => {
+    const old1 = exportPath("old-1.zip");
     const state: FakeDeps = {
-      jobs: [makeJob({ id: "old-1", output_path: "/exports/old-1.zip" })],
-      fileSizes: new Map([["/exports/old-1.zip", 2048]]),
+      jobs: [makeJob({ id: "old-1", output_path: old1 })],
+      fileSizes: new Map([[old1, 2048]]),
       deletedIds: [],
       unlinkedPaths: [],
     };
@@ -100,8 +130,9 @@ describe("pruneOldExports", () => {
   });
 
   test("missing files still drop the DB row so dead download URLs do not linger", async () => {
+    const missing = exportPath("missing.zip");
     const state: FakeDeps = {
-      jobs: [makeJob({ id: "old-1", output_path: "/exports/missing.zip" })],
+      jobs: [makeJob({ id: "old-1", output_path: missing })],
       fileSizes: new Map(), // no file exists
       deletedIds: [],
       unlinkedPaths: [],
@@ -110,7 +141,7 @@ describe("pruneOldExports", () => {
     expect(result.removedJobs).toBe(1);
     expect(result.removedBytes).toBe(0);
     expect(result.removedFiles).toEqual([]);
-    expect(result.missingFiles).toEqual(["/exports/missing.zip"]);
+    expect(result.missingFiles).toEqual([missing]);
     // DB row still pruned even though no file was on disk.
     expect(state.deletedIds).toEqual(["old-1"]);
     // No unlink attempted because stat failed first.
@@ -120,22 +151,24 @@ describe("pruneOldExports", () => {
   test("respects a custom retention window", async () => {
     // Set retention to 1 hour. A 2-hour-old succeeded job is stale;
     // a 30-minute-old job is fresh.
+    const twoHoursOld = exportPath("two-hours-old.zip");
+    const halfHourOld = exportPath("half-hour-old.zip");
     const state: FakeDeps = {
       jobs: [
         makeJob({
           id: "two-hours-old",
           completed_at: NOW - 2 * 60 * 60 * 1000,
-          output_path: "/exports/two-hours-old.zip",
+          output_path: twoHoursOld,
         }),
         makeJob({
           id: "half-hour-old",
           completed_at: NOW - 30 * 60 * 1000,
-          output_path: "/exports/half-hour-old.zip",
+          output_path: halfHourOld,
         }),
       ],
       fileSizes: new Map([
-        ["/exports/two-hours-old.zip", 1024],
-        ["/exports/half-hour-old.zip", 1024],
+        [twoHoursOld, 1024],
+        [halfHourOld, 1024],
       ]),
       deletedIds: [],
       unlinkedPaths: [],
@@ -153,13 +186,14 @@ describe("pruneOldExports", () => {
     // assert here that pruneOldExports doesn't try to second-guess
     // the query — feeding in a mixed list, only the succeeded one
     // should be processed.
+    const defaultPath = exportPath("job-1.zip");
     const state: FakeDeps = {
       jobs: [
         makeJob({ id: "succeeded-old", status: "succeeded" }),
         makeJob({ id: "failed-old", status: "failed" }),
         makeJob({ id: "running-old", status: "running" }),
       ],
-      fileSizes: new Map([["/exports/job-1.zip", 1024]]),
+      fileSizes: new Map([[defaultPath, 1024]]),
       deletedIds: [],
       unlinkedPaths: [],
     };

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { writePreTurnSnapshot } from "../src/services/checkpoints";
 
 /**
  * Checkpoint / restore round-trip test. The production helpers live in
@@ -67,6 +68,14 @@ function restoreSnapshot(projectDir: string, turnId: string) {
   }
   return { restoredAt: Date.now() };
 }
+
+describe("checkpoint path boundary", () => {
+  test("rejects a traversing turnId before touching project storage", async () => {
+    await expect(
+      writePreTurnSnapshot("project-does-not-matter", "../../victim"),
+    ).rejects.toThrow("Unsafe path component");
+  });
+});
 
 describe("checkpoint snapshot / restore round-trip", () => {
   let projectDir: string;
