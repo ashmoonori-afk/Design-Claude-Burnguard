@@ -61,6 +61,7 @@ import type {
 import { getProjectDraws, putProjectDraws } from "@/api/draws";
 import PresentOverlay from "@/components/present/PresentOverlay";
 import ModePanel from "@/components/modes/ModePanel";
+import { selectedNodeToTweaksTarget } from "@/components/modes/SelectorReadOnlyPanel";
 import type { CanvasMode } from "@/components/modes/types";
 import ArtifactTabs from "@/components/project/ArtifactTabs";
 import ProjectTopBar from "@/components/project/ProjectTopBar";
@@ -775,7 +776,7 @@ export default function ProjectView() {
           />
         }
       />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 overflow-hidden max-[900px]:flex-col max-[900px]:overflow-y-auto">
         <ChatPane
           events={events}
           session={session}
@@ -894,6 +895,12 @@ export default function ProjectView() {
             <ModePanel
               mode={mode}
               selection={selection}
+              onPromoteToTweaks={() => {
+                const target = selectedNodeToTweaksTarget(selection);
+                if (!target) return;
+                setTweaksTarget(target);
+                setMode("tweaks");
+              }}
               comments={comments}
               activeRelPath={activeRelPath}
               activeSlideIdx={activeSlideIdx}

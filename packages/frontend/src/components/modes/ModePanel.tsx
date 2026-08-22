@@ -21,6 +21,7 @@ import TweaksPanel from "./TweaksPanel";
 export default function ModePanel({
   mode,
   selection,
+  onPromoteToTweaks,
   comments,
   activeRelPath,
   activeSlideIdx,
@@ -50,6 +51,7 @@ export default function ModePanel({
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
+  onPromoteToTweaks: () => void;
   comments: Comment[];
   activeRelPath: string | null;
   activeSlideIdx: number | null;
@@ -83,8 +85,13 @@ export default function ModePanel({
   if (!mode) return null;
 
   return (
-    <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0">
-      {mode === "select" && <SelectorReadOnlyPanel selection={selection} />}
+    <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:max-h-[48vh] max-[900px]:border-l-0 max-[900px]:border-t">
+      {mode === "select" && (
+        <SelectorReadOnlyPanel
+          selection={selection}
+          onPromoteToTweaks={onPromoteToTweaks}
+        />
+      )}
       {mode === "tweaks" && (
         <TweaksPanel
           target={tweaksTarget}
