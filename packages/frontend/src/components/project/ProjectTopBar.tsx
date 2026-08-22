@@ -18,8 +18,8 @@ export default function ProjectTopBar({
 }) {
   const displayName = stripInternalProjectTag(project.name);
   return (
-    <header className="h-12 border-b border-border bg-background flex items-stretch shrink-0">
-      <div className="flex items-center gap-3 px-4 shrink-0 border-r border-border">
+    <header className="h-12 border-b border-border bg-background flex items-stretch shrink-0 overflow-hidden">
+      <div className="flex items-center gap-3 px-4 shrink-0 border-r border-border max-[900px]:gap-2 max-[900px]:px-2">
         <Link
           to="/"
           className="text-muted-foreground hover:text-foreground"
@@ -29,7 +29,7 @@ export default function ProjectTopBar({
         </Link>
         <div className="flex items-center min-w-0">
           <div
-            className="text-sm font-medium w-[180px] truncate"
+            className="text-sm font-medium w-[180px] truncate max-[900px]:w-[96px]"
             title={displayName}
           >
             {displayName}
@@ -37,11 +37,11 @@ export default function ProjectTopBar({
         </div>
       </div>
       <div className="flex-1 min-w-0 overflow-x-auto">{tabsSlot}</div>
-      <div className="px-3 flex items-center gap-2 shrink-0">
+      <div className="px-3 flex items-center gap-2 shrink-0 max-[900px]:px-2 max-[900px]:gap-1">
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5"
+          className="gap-1.5 max-[900px]:w-8 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
           onClick={onPresent}
           disabled={!canPresent || !onPresent}
           title={

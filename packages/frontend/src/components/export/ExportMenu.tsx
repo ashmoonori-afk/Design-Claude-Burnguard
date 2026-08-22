@@ -167,7 +167,12 @@ export default function ExportMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 max-[900px]:w-8 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
+          aria-label="Export"
+        >
           <Download className="h-3.5 w-3.5" /> Export
         </Button>
       </DropdownMenuTrigger>
