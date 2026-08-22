@@ -12,6 +12,7 @@ import DrawPanel from "./DrawPanel";
 import EditPanel from "./EditPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 import TweaksPanel from "./TweaksPanel";
+import type { TweakChangePreview } from "./TweaksPanel";
 
 /**
  * Right-side mode pane. Renders nothing when no mode is active so the canvas
@@ -21,6 +22,7 @@ import TweaksPanel from "./TweaksPanel";
 export default function ModePanel({
   mode,
   selection,
+  onPromoteToTweaks,
   comments,
   activeRelPath,
   activeSlideIdx,
@@ -37,6 +39,7 @@ export default function ModePanel({
   onApplyTweak,
   onResetTweaks,
   onClearTweaks,
+  tweakReview,
   drawTool,
   drawColor,
   drawStrokeWidth,
@@ -50,6 +53,7 @@ export default function ModePanel({
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
+  onPromoteToTweaks: () => void;
   comments: Comment[];
   activeRelPath: string | null;
   activeSlideIdx: number | null;
@@ -69,6 +73,7 @@ export default function ModePanel({
   onApplyTweak: (patch: Partial<Record<TweaksStyleKey, string | null>>) => void;
   onResetTweaks: () => void;
   onClearTweaks: () => void;
+  tweakReview: TweakChangePreview | null;
   drawTool: DrawTool;
   drawColor: string;
   drawStrokeWidth: number;
@@ -83,8 +88,13 @@ export default function ModePanel({
   if (!mode) return null;
 
   return (
-    <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0">
-      {mode === "select" && <SelectorReadOnlyPanel selection={selection} />}
+    <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:max-h-[48vh] max-[900px]:border-l-0 max-[900px]:border-t">
+      {mode === "select" && (
+        <SelectorReadOnlyPanel
+          selection={selection}
+          onPromoteToTweaks={onPromoteToTweaks}
+        />
+      )}
       {mode === "tweaks" && (
         <TweaksPanel
           target={tweaksTarget}
@@ -92,6 +102,7 @@ export default function ModePanel({
           onApply={onApplyTweak}
           onResetAll={onResetTweaks}
           onClear={onClearTweaks}
+          review={tweakReview}
         />
       )}
       {mode === "comment" && (

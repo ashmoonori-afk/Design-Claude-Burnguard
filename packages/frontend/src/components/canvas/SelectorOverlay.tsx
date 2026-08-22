@@ -79,6 +79,8 @@ export default function SelectorOverlay({
       setSelectedKey(hit.selector);
       onSelect({
         nodeId: hit.selector,
+        bgId: hit.bgId,
+        tag: hit.tag,
         rect: {
           x: hit.rect.left,
           y: hit.rect.top,
@@ -86,6 +88,7 @@ export default function SelectorOverlay({
           h: hit.rect.height,
         },
         computed: hit.computed,
+        inline: hit.inline,
         file: activeRelPath ?? "",
       });
     });

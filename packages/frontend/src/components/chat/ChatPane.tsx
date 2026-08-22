@@ -65,7 +65,7 @@ export default function ChatPane({
   const sessionRunning = session.status === "running";
 
   return (
-    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0">
+    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:h-[300px] max-[900px]:border-r-0 max-[900px]:border-b">
       <div className="flex items-stretch gap-1 px-3 pt-2 border-b border-border">
         <ChatTab
           id="chat"

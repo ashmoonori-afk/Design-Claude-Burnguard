@@ -83,6 +83,29 @@ artifactRoutes.post("/api/projects/:id/refresh", async (c) => {
   return c.json(ok(artifacts satisfies ArtifactSummary));
 });
 
+// Hono matches routes in declaration order. Keep the specific undo-info
+// route before the generic file route so its suffix is not treated as part
+// of the relative file path.
+artifactRoutes.get("/api/projects/:id/fs/*/undo-info", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(
+      fail("project_not_found", "Project not found", { projectId }),
+      404,
+    );
+  }
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path.replace(/\/undo-info$/, "");
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+  return c.json(ok(getFileUndoState(projectId, relPath)));
+});
+
 artifactRoutes.get("/api/projects/:id/fs/*", async (c) => {
   const projectId = c.req.param("id");
   // Hono 4.x does not expose the wildcard match via c.req.param("*") for a
@@ -221,28 +244,7 @@ artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
 });
 
 // Single-step file-level undo for the GUI patch path (audit fix #7).
-// GET reports whether the active file has an undo entry; POST restores
-// the pre-patch content and clears the entry.
-artifactRoutes.get("/api/projects/:id/fs/*/undo-info", async (c) => {
-  const projectId = c.req.param("id");
-  const project = await getProjectDetail(projectId);
-  if (!project) {
-    return c.json(
-      fail("project_not_found", "Project not found", { projectId }),
-      404,
-    );
-  }
-  const prefix = `/api/projects/${projectId}/fs/`;
-  const rawPath = c.req.path.replace(/\/undo-info$/, "");
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!relPath) {
-    return c.json(fail("invalid_path", "File path is required"), 400);
-  }
-  return c.json(ok(getFileUndoState(projectId, relPath)));
-});
-
+// POST restores the pre-patch content and clears the entry.
 artifactRoutes.post("/api/projects/:id/fs/*/undo", async (c) => {
   const projectId = c.req.param("id");
   const project = await getProjectDetail(projectId);

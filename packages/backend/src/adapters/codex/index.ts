@@ -2,6 +2,18 @@ import { ulid } from "ulid";
 import type { AdapterRunInput, AdapterRunResult } from "../types";
 import { parseCodexLine, type CodexParserContext } from "./parser";
 
+export function buildCodexCommand(binaryPath: string): string[] {
+  return [
+    binaryPath,
+    "exec",
+    "--json",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "workspace-write",
+    "-",
+  ];
+}
+
 /**
  * Codex adapter — streams stdout through `parseCodexLine`.
  *
@@ -17,10 +29,12 @@ export async function runCodexTurn(
 ): Promise<AdapterRunResult> {
   const ctx: CodexParserContext = {
     turnId: input.turnId,
+    projectDir: input.projectDir,
     toolNames: new Map(),
   };
 
   let sawIdle = false;
+  let sawMessageEnd = false;
 
   // Same story as claude-code: register the sink for future mode
   // upgrades where decisions can be piped into the running CLI.
@@ -33,12 +47,9 @@ export async function runCodexTurn(
   });
 
   const proc = Bun.spawn({
-    // FIXME(codex): prompt is passed as a positional CLI arg — visible
-    // in `ps` listings. Move to stdin once the Codex CLI documents a
-    // stdin-reading mode (claude-code uses `claude -p` + stdin pipe).
-    cmd: [input.binaryPath, "-p", input.prompt],
+    cmd: buildCodexCommand(input.binaryPath),
     cwd: input.projectDir,
-    stdin: "ignore",
+    stdin: new Blob([input.prompt]),
     stdout: "pipe",
     stderr: "pipe",
     signal: input.signal,
@@ -66,6 +77,7 @@ export async function runCodexTurn(
         }
         for (const event of events) {
           if (event.type === "status.idle") sawIdle = true;
+          if (event.type === "chat.message_end") sawMessageEnd = true;
           await input.onEvent(event);
         }
       }),
@@ -81,12 +93,14 @@ export async function runCodexTurn(
     unsubscribeDecision?.();
   }
 
-  await input.onEvent({
-    id: ulid(),
-    ts: Date.now(),
-    type: "chat.message_end",
-    turnId: input.turnId,
-  });
+  if (!sawMessageEnd) {
+    await input.onEvent({
+      id: ulid(),
+      ts: Date.now(),
+      type: "chat.message_end",
+      turnId: input.turnId,
+    });
+  }
 
   if (!sawIdle) {
     // The CLI exited without emitting a structured `done` line — emit

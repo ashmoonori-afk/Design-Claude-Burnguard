@@ -34,9 +34,11 @@ export interface FrameRect {
 export interface FrameSelectHit {
   rect: FrameRect | null;
   selector: string | null;
+  bgId: string | null;
   tag: string | null;
   text: string | null;
   computed: Record<string, string>;
+  inline: Record<string, string>;
 }
 
 export interface FrameCommentHit {
@@ -462,12 +464,18 @@ const BRIDGE_SCRIPT = String.raw`(function () {
 
     if (data.action === "hit-select") {
       var selectNode = resolveTargetAtPoint(payload.x, payload.y);
-      response = selectNode ? {
-        rect: toRect(selectNode),
-        selector: selectorOf(selectNode),
-        tag: String(selectNode.tagName || "").toLowerCase(),
-        text: String(selectNode.textContent || ""),
-        computed: readComputed(selectNode)
+      var selectAnchor = selectNode && selectNode.closest
+        ? selectNode.closest("[data-bg-node-id]")
+        : null;
+      var inspectNode = selectAnchor || selectNode;
+      response = inspectNode ? {
+        rect: toRect(inspectNode),
+        selector: selectorOf(inspectNode),
+        bgId: selectAnchor ? selectAnchor.getAttribute("data-bg-node-id") : null,
+        tag: String(inspectNode.tagName || "").toLowerCase(),
+        text: String(inspectNode.textContent || ""),
+        computed: readComputed(inspectNode),
+        inline: readInline(inspectNode)
       } : null;
     } else if (data.action === "hit-comment") {
       var commentNode = resolveTargetAtPoint(payload.x, payload.y);
