@@ -6,6 +6,7 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import {
+  TWEAKS_STYLE_KEYS,
   type TweaksStyleKey,
   type TweaksTarget,
 } from "@/components/canvas/TweaksLayer";
@@ -19,6 +20,28 @@ import {
 } from "./tweaks-utils";
 
 type ApplyFn = (patch: Partial<Record<TweaksStyleKey, string | null>>) => void;
+
+export interface TweakChangePreview {
+  property: TweaksStyleKey;
+  from: string;
+  to: string;
+}
+
+export function buildTweakChangePreview(
+  target: TweaksTarget,
+  patch: Partial<Record<TweaksStyleKey, string | null>>,
+): TweakChangePreview | null {
+  for (const property of TWEAKS_STYLE_KEYS) {
+    const next = patch[property];
+    if (next === undefined) continue;
+    return {
+      property,
+      from: target.inline[property] ?? target.computed[property] ?? "unset",
+      to: next ?? "unset",
+    };
+  }
+  return null;
+}
 
 const FONT_WEIGHTS: Array<{ value: string; label: string }> = [
   { value: "300", label: "Light (300)" },
@@ -59,12 +82,14 @@ export default function TweaksPanel({
   onApply,
   onResetAll,
   onClear,
+  review,
 }: {
   target: TweaksTarget | null;
   saving: boolean;
   onApply: ApplyFn;
   onResetAll: () => void;
   onClear: () => void;
+  review: TweakChangePreview | null;
 }) {
   if (!target) {
     return (
@@ -112,6 +137,26 @@ export default function TweaksPanel({
           data-bg-node-id="{target.bg_id}"
         </div>
       </div>
+      {review && (
+        <section
+          aria-label="Last inline patch"
+          className="border-b border-border bg-muted/30 px-3 py-2"
+        >
+          <SectionHeader>Last patch</SectionHeader>
+          <pre className="mt-1.5 overflow-x-auto rounded border border-border bg-background px-2 py-1.5 font-mono text-[10px] leading-relaxed">
+            <span className="text-muted-foreground">
+              - {review.property}: {review.from}
+            </span>
+            {"\n"}
+            <span className="text-foreground">
+              + {review.property}: {review.to}
+            </span>
+          </pre>
+          <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+            Saved as a reversible inline style override.
+          </p>
+        </section>
+      )}
 
       <section className="border-b border-border px-3 py-2">
         <SectionHeader>Typography</SectionHeader>

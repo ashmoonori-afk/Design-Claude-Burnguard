@@ -62,6 +62,10 @@ import { getProjectDraws, putProjectDraws } from "@/api/draws";
 import PresentOverlay from "@/components/present/PresentOverlay";
 import ModePanel from "@/components/modes/ModePanel";
 import { selectedNodeToTweaksTarget } from "@/components/modes/SelectorReadOnlyPanel";
+import {
+  buildTweakChangePreview,
+  type TweakChangePreview,
+} from "@/components/modes/TweaksPanel";
 import type { CanvasMode } from "@/components/modes/types";
 import ArtifactTabs from "@/components/project/ArtifactTabs";
 import ProjectTopBar from "@/components/project/ProjectTopBar";
@@ -115,6 +119,9 @@ export default function ProjectView() {
   const [activeSlideIdx, setActiveSlideIdx] = useState<number | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [tweaksTarget, setTweaksTarget] = useState<TweaksTarget | null>(null);
+  const [tweakReview, setTweakReview] = useState<TweakChangePreview | null>(
+    null,
+  );
   const tweaksUndoRef = useRef<TweaksUndoFrame[]>([]);
   const tweaksRedoRef = useRef<TweaksUndoFrame[]>([]);
   const [presentOpen, setPresentOpen] = useState(false);
@@ -705,6 +712,10 @@ export default function ProjectView() {
           queryKey: ["project", id, "artifacts"],
         }),
       ]);
+      setSelection(null);
+      setTweaksTarget(null);
+      setTweakReview(null);
+      setMode(null);
       setRefreshTick((value) => value + 1);
       pushToast({ title: "Last save undone", tone: "success" });
     },
@@ -847,7 +858,10 @@ export default function ProjectView() {
               src={canvasSrc}
               frameKey={`${canvasSrc ?? "entrypoint"}:${refreshTick}`}
               onModeChange={setMode}
-              onSelect={setSelection}
+              onSelect={(next) => {
+                setSelection(next);
+                if (!next) setTweakReview(null);
+              }}
               onRefresh={() => {
                 if (!id) return;
                 refreshMutation.mutate();
@@ -932,9 +946,11 @@ export default function ProjectView() {
               }}
               onClearEdit={() => setEditTarget(null)}
               tweaksTarget={tweaksTarget}
+              tweakReview={tweakReview}
               tweaksSaving={tweaksMutation.isPending}
               onApplyTweak={(patch) => {
                 if (!activeRelPath || !tweaksTarget) return;
+                setTweakReview(buildTweakChangePreview(tweaksTarget, patch));
                 const frame = buildTweaksUndoFrame(
                   tweaksTarget,
                   activeRelPath,
@@ -971,7 +987,10 @@ export default function ProjectView() {
                   },
                 });
               }}
-              onClearTweaks={() => setTweaksTarget(null)}
+              onClearTweaks={() => {
+                setTweaksTarget(null);
+                setTweakReview(null);
+              }}
               drawTool={drawTool}
               drawColor={drawColor}
               drawStrokeWidth={drawStrokeWidth}

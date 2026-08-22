@@ -12,6 +12,7 @@ import DrawPanel from "./DrawPanel";
 import EditPanel from "./EditPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 import TweaksPanel from "./TweaksPanel";
+import type { TweakChangePreview } from "./TweaksPanel";
 
 /**
  * Right-side mode pane. Renders nothing when no mode is active so the canvas
@@ -38,6 +39,7 @@ export default function ModePanel({
   onApplyTweak,
   onResetTweaks,
   onClearTweaks,
+  tweakReview,
   drawTool,
   drawColor,
   drawStrokeWidth,
@@ -71,6 +73,7 @@ export default function ModePanel({
   onApplyTweak: (patch: Partial<Record<TweaksStyleKey, string | null>>) => void;
   onResetTweaks: () => void;
   onClearTweaks: () => void;
+  tweakReview: TweakChangePreview | null;
   drawTool: DrawTool;
   drawColor: string;
   drawStrokeWidth: number;
@@ -99,6 +102,7 @@ export default function ModePanel({
           onApply={onApplyTweak}
           onResetAll={onResetTweaks}
           onClear={onClearTweaks}
+          review={tweakReview}
         />
       )}
       {mode === "comment" && (
