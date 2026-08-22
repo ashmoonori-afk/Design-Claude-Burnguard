@@ -123,25 +123,23 @@ The Codex adapter is intentionally minimal today.
 Current command shape:
 
 ```text
-codex -p {prompt}
+codex exec --json --skip-git-repo-check --sandbox workspace-write -
 ```
 
 Behavior:
-- stdout is streamed directly as `chat.delta`
+- prompt text is piped through stdin so it is not exposed in process listings
+- stdout JSONL is normalized into chat, tool, file-change, usage, and completion events
 - stderr is consumed in parallel and traced
-- at process exit the adapter emits `chat.message_end`
-- then it emits `status.idle` based on the exit code
+- completed file-change paths are normalized against the project boundary
+- the adapter emits one `chat.message_end` and terminal `status.idle` sequence
 
 ### 6.2 Limitations
 
 The current Codex path does **not** provide:
-- structured tool events
-- structured file change events
-- token usage extraction
 - cancellation
 - replayable backend session identity
 
-It is effectively a raw text backend with shared session persistence around it.
+It remains a per-turn subprocess backend with shared session persistence around it.
 
 ## 7. Broker and Persistence
 

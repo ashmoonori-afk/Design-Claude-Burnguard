@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import {
   parseCodexLine,
   type CodexParserContext,
@@ -138,6 +139,89 @@ describe("parseCodexLine — structured path", () => {
       expect(e.message).toBe("boom");
       expect(e.recoverable).toBe(true);
     }
+  });
+
+  test("Codex item.completed agent messages become readable chat deltas", () => {
+    const c = ctx();
+    const [event] = parseCodexLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "agent_message", text: "Changed only the headline." },
+      }),
+      c,
+    );
+    expect(event.type).toBe("chat.delta");
+    if (event.type === "chat.delta") {
+      expect(event.text).toBe("Changed only the headline.");
+    }
+  });
+
+  test("Codex recoverable item errors remain visible without poisoning a successful turn", () => {
+    const c = ctx();
+    const [event] = parseCodexLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "error", message: "Skills were trimmed for this turn." },
+      }),
+      c,
+    );
+    expect(event.type).toBe("chat.delta");
+    if (event.type === "chat.delta") {
+      expect(event.text).toBe("Skills were trimmed for this turn.");
+    }
+  });
+
+  test("Codex turn.completed emits usage and one terminal status sequence", () => {
+    const c = ctx();
+    const events = parseCodexLine(
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 12, cached_input_tokens: 5, output_tokens: 7 },
+      }),
+      c,
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "usage.delta",
+      "chat.message_end",
+      "status.idle",
+    ]);
+    const usage = events[0];
+    if (usage.type === "usage.delta") {
+      expect(usage.input).toBe(12);
+      expect(usage.output).toBe(7);
+      expect(usage.cached).toBe(5);
+    }
+  });
+
+  test("Codex file changes stay project-relative and reject outside paths", () => {
+    const c = { ...ctx(), projectDir: process.cwd() };
+    const [inside] = parseCodexLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          type: "file_change",
+          changes: [{ path: path.join(process.cwd(), "index.html"), kind: "update" }],
+          status: "completed",
+        },
+      }),
+      c,
+    );
+    expect(inside.type).toBe("file.changed");
+    if (inside.type === "file.changed") expect(inside.path).toBe("index.html");
+
+    expect(
+      parseCodexLine(
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "file_change",
+            changes: [{ path: "/tmp/outside.html", kind: "update" }],
+            status: "completed",
+          },
+        }),
+        c,
+      ),
+    ).toHaveLength(0);
   });
 });
 
