@@ -15,8 +15,11 @@ export type SessionInfoLocal = SessionInfo;
 /** UI state only — not a backend concept. */
 export interface SelectedNode {
   nodeId: string;
+  bgId?: string | null;
+  tag?: string | null;
   rect: { x: number; y: number; w: number; h: number };
   computed: Record<string, string>;
+  inline: Record<string, string>;
   file: string;
 }
 

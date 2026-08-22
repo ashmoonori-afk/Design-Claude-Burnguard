@@ -10,7 +10,7 @@ import {
   publishFileChangeFromWatcher,
   shouldEmitFileChange,
 } from "./file-change-broker";
-import { indexProjectFiles } from "./files";
+import { indexProjectFiles, isTransientFilePath } from "./files";
 import { appendSessionTrace } from "./trace";
 
 const IGNORED_TOP_LEVEL = new Set([".meta", ".attachments"]);
@@ -19,6 +19,10 @@ const watchers = new Map<string, FSWatcher>();
 const pendingReindex = new Map<string, Timer>();
 const pendingEmit = new Map<string, Timer>();
 const sessionIdCache = new Map<string, string>();
+
+type ErrorAwareWatcher = FSWatcher & {
+  on(event: "error", listener: (error: Error) => void): ErrorAwareWatcher;
+};
 
 export async function ensureProjectWatcher(projectId: string) {
   if (watchers.has(projectId)) {
@@ -36,7 +40,7 @@ export async function ensureProjectWatcher(projectId: string) {
   // real watcher below; on failure we delete it so a retry can run.
   watchers.set(projectId, RESERVED_WATCHER);
 
-  let watcher: FSWatcher;
+  let watcher: ErrorAwareWatcher;
   try {
     await indexProjectFiles(projectId);
 
@@ -50,7 +54,7 @@ export async function ensureProjectWatcher(projectId: string) {
         if (shouldSkipPath(relPath)) return;
         scheduleEmit(projectId, project.dir_path, relPath);
       },
-    );
+    ) as ErrorAwareWatcher;
   } catch (err) {
     watchers.delete(projectId);
     throw err;
@@ -116,9 +120,9 @@ export async function ensureAllProjectWatchers() {
   await Promise.all(projectIds.map((projectId) => ensureProjectWatcher(projectId)));
 }
 
-function shouldSkipPath(relPath: string): boolean {
+export function shouldSkipPath(relPath: string): boolean {
   const top = relPath.split("/")[0];
-  return IGNORED_TOP_LEVEL.has(top);
+  return IGNORED_TOP_LEVEL.has(top) || isTransientFilePath(relPath);
 }
 
 function scheduleReindex(projectId: string) {

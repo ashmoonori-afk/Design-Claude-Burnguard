@@ -1,9 +1,16 @@
 import type { SelectedNode } from "@/types/project";
+import {
+  TWEAKS_STYLE_KEYS,
+  type TweaksStyleKey,
+  type TweaksTarget,
+} from "@/components/canvas/TweaksLayer";
 
 export default function SelectorReadOnlyPanel({
   selection,
+  onPromoteToTweaks,
 }: {
   selection: SelectedNode | null;
+  onPromoteToTweaks: () => void;
 }) {
   if (!selection) {
     return (
@@ -15,7 +22,7 @@ export default function SelectorReadOnlyPanel({
           Click an element in the canvas to inspect its computed styles.
         </p>
         <p className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
-          Read-only in Phase 1. Editable CSS fields ship in Phase 3 (Tweaks).
+          Select an authored element to carry its context into inline Tweaks.
         </p>
       </div>
     );
@@ -73,10 +80,44 @@ export default function SelectorReadOnlyPanel({
       ))}
 
       <p className="text-[10px] text-muted-foreground px-1 mt-3 leading-relaxed">
-        Read-only in Phase 1. Editable CSS fields ship in Phase 3 (Tweaks).
+        Computed values come from the live canvas. Inline changes are saved as
+        reversible file patches.
       </p>
+      {selection.bgId && (
+        <button
+          type="button"
+          onClick={onPromoteToTweaks}
+          className="mx-1 mt-3 w-[calc(100%-0.5rem)] rounded-md bg-accent px-3 py-2 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Open in Tweaks
+        </button>
+      )}
     </div>
   );
+}
+
+export function selectedNodeToTweaksTarget(
+  selection: SelectedNode | null,
+): TweaksTarget | null {
+  if (!selection?.bgId) return null;
+
+  const computed: Partial<Record<TweaksStyleKey, string>> = {};
+  const inline: Partial<Record<TweaksStyleKey, string>> = {};
+  for (const key of TWEAKS_STYLE_KEYS) {
+    if (selection.computed[key] !== undefined) {
+      computed[key] = selection.computed[key];
+    }
+    if (selection.inline[key] !== undefined) {
+      inline[key] = selection.inline[key];
+    }
+  }
+
+  return {
+    bg_id: selection.bgId,
+    tag: selection.tag ?? "div",
+    computed,
+    inline,
+  };
 }
 
 function Row({ k, v, last }: { k: string; v: string; last: boolean }) {

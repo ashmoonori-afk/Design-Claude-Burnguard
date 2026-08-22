@@ -173,6 +173,9 @@ async function walk(rootDir: string, currentDir: string, output: FileInfo[]) {
     const relPath = path
       .relative(rootDir, path.join(currentDir, entry.name))
       .replaceAll("\\", "/");
+    if (isTransientFilePath(relPath)) {
+      continue;
+    }
     let absolute: string;
     try {
       absolute = resolveWithin(rootDir, relPath);
@@ -200,6 +203,11 @@ async function walk(rootDir: string, currentDir: string, output: FileInfo[]) {
       updated_at: stats.mtimeMs,
     });
   }
+}
+
+export function isTransientFilePath(relPath: string): boolean {
+  const baseName = path.posix.basename(relPath);
+  return /^\..+\.\d+\.\d+\.tmp$/.test(baseName);
 }
 
 function categorize(relPath: string): FileInfo["category"] {

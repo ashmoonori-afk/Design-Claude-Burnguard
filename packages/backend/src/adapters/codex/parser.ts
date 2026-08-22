@@ -1,8 +1,10 @@
 import { ulid } from "ulid";
 import type { NormalizedEvent } from "@bg/shared";
+import { mapCodexEnvelope } from "./event-mapping";
 
 export interface CodexParserContext {
   turnId: string;
+  projectDir?: string;
   /** Correlates a tool_result line to the tool name set at tool_start. */
   toolNames: Map<string, string>;
 }
@@ -36,7 +38,9 @@ export function parseCodexLine(
     try {
       const parsed = JSON.parse(trimmed) as unknown;
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const mapped = mapStructured(parsed as Record<string, unknown>, ctx);
+        const record = parsed as Record<string, unknown>;
+        const mapped =
+          mapCodexEnvelope(record, ctx) ?? mapStructured(record, ctx);
         if (mapped) return mapped;
       }
     } catch {
