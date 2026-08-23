@@ -21,6 +21,7 @@ import {
   systemsDir,
 } from "./lib/paths";
 import { pruneOldExports } from "./services/export-gc";
+import { reconcileExtractionState } from "./services/extraction-recovery";
 import { ensureAllProjectWatchers } from "./services/watchers";
 
 async function exists(target: string): Promise<boolean> {
@@ -101,6 +102,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await seedCoreData();
   await seedTutorialsOnce();
   reconcilePipelineRows(getDb());
+  await reconcileExtractionState();
   await ensureAllProjectWatchers();
   // Best-effort export GC — never block startup on it.
   void pruneOldExports().catch(() => {

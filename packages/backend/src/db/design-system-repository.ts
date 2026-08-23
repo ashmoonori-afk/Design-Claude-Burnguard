@@ -77,7 +77,7 @@ export function prepareDesignSystemReceipt(db: PipelineDatabase, input: ReceiptI
 export function commitDesignSystemReceipt(db: PipelineDatabase, input: { readonly id: string; readonly digest: string; readonly updatedAt: number }): Receipt {
   db.update(designSystemReceiptsTable).set({ status: "committed", updatedAt: input.updatedAt }).where(and(
     eq(designSystemReceiptsTable.id, input.id),
-    eq(designSystemReceiptsTable.status, "prepared"),
+    sql`${designSystemReceiptsTable.status} IN ('prepared','recovering')`,
     eq(designSystemReceiptsTable.digest, input.digest),
   )).run();
   const changed = db.get<readonly [number]>(sql`SELECT changes()`);
@@ -85,6 +85,14 @@ export function commitDesignSystemReceipt(db: PipelineDatabase, input: { readonl
   const row = db.select().from(designSystemReceiptsTable).where(eq(designSystemReceiptsTable.id, input.id)).limit(1).all()[0];
   if (row === undefined) throw new PipelineRepositoryError("not_found", input.id);
   return parseReceipt(row);
+}
+
+export function getDesignSystemReceiptById(db: PipelineDatabase, id: string): Receipt | null {
+  const row = db.select().from(designSystemReceiptsTable).where(and(
+    eq(designSystemReceiptsTable.id, id),
+    eq(designSystemReceiptsTable.status, "committed"),
+  )).limit(1).all()[0];
+  return row === undefined ? null : parseReceipt(row);
 }
 
 export function getDesignSystemPipeline(db: PipelineDatabase, id: string): { readonly metadataRevision: number; readonly tags: readonly string[]; readonly receipt: Receipt | null } {

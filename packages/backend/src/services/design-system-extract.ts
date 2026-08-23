@@ -3,13 +3,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  readdir,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse } from "node-html-parser";
@@ -21,9 +18,49 @@ import {
   type DesignSystemDetail,
   type DesignSystemSourceType,
 } from "@bg/shared";
-import { createDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
-import { systemsDir } from "../lib/paths";
+import { commitDesignSystemReceipt, getDesignSystemReceiptById, prepareDesignSystemReceipt } from "../db/design-system-repository";
+import { getDb } from "../db/client";
+import { createDesignSystemRecord, deleteDesignSystemRecord, getDesignSystemDetail } from "../db/seed";
+import { resolveManagedPath, systemsDir } from "../lib/paths";
+import { resolveWithin } from "../security/path-boundary";
+import {
+  completeExtractionPublication,
+  ExtractionPublicationError,
+  publishExtractionBundle,
+  reconcileExtractionPublications,
+  reserveExtractionBundle,
+  rollbackExtractionPublication,
+  validateExtractionBundle,
+  type ExtractionReservation,
+} from "./extraction-publication";
+import {
+  buildExtractionProvenance,
+  discoveriesFromAnalysis,
+  selectCanonicalToken,
+  type ExtractionProvenanceSidecar,
+} from "./extraction-provenance";
+import {
+  assertAcquirableSourceMarkup,
+  assertInertSourceMarkup,
+  ExtractionSafetyError,
+  removeSourceMarkupReferences,
+  safeSourceReference,
+} from "./extraction-safety";
+
+export {
+  assertInertSourceMarkup,
+  buildExtractionProvenance,
+  publishExtractionBundle,
+  reconcileExtractionPublications,
+  selectCanonicalToken,
+  validateExtractionBundle,
+};
 import { detectComponentSamples } from "./upload-component-detect";
+import { DesignSystemAssetEditError } from "./extraction-asset-errors";
+import { DesignSystemExtractError } from "./extraction-errors";
+import { assertAggregateAssetBytes, assertAssetCount, fetchWebsiteResource } from "./extraction-website";
+
+export { DesignSystemAssetEditError, DesignSystemExtractError };
 import { loadConfig } from "../config";
 import {
   extractFigmaTokens,
@@ -34,6 +71,65 @@ import {
   parseFigmaUrl,
 } from "./figma";
 import { UPLOAD_EXTRACTOR_PY } from "./upload-extractor-py";
+import {
+  awaitChildWithAbort,
+  createAcquisitionBudget,
+  AcquisitionLimitError,
+  ExtractionAcquisitionError,
+  MAX_CSS_BYTES,
+  MAX_HTML_BYTES,
+  DEFAULT_ACQUISITION_LIMITS,
+  throwIfAcquisitionAborted,
+  type AcquisitionLimits,
+} from "./extraction-acquisition";
+import {
+  ensureTokensCssImportsFonts,
+  extractCssCustomProperties,
+  extractCssStyleSignals,
+  fontFamiliesFromDeclarations,
+  parseCssSource,
+  styleSignalsFromDeclarations,
+  isColorTokenValue,
+  upsertCssCustomProperty,
+} from "./extraction-css";
+import { collectCandidateWebsitePages, extractHtmlComponentSamples } from "./extraction-html";
+import { analyzeLocalTree, type SourceAnalysis } from "./extraction-local-tree";
+import {
+  contentTypeForDesignSystemFile,
+  inferExtractionSourceType,
+  isUnsafeImportHostname,
+  normalizeImportHostname,
+  parseExtractionSourceUrl,
+} from "./extraction-path";
+import { isOwnedQaAdapterEntryUrl, isOwnedQaAdapterResourceUrl, qaAdapterConfiguration } from "./extraction-qa-adapter";
+import {
+  ExtractionUploadManifestError,
+  inferUploadKind,
+  normalizeUploadPages,
+  normalizeUploadStringList,
+  assertUploadSize,
+  readBoundedUpload,
+  readUploadManifest,
+  type SupportedUploadKind,
+  type UploadManifest,
+  type UploadManifestPage,
+} from "./extraction-upload";
+
+export {
+  contentTypeForDesignSystemFile,
+  ensureTokensCssImportsFonts,
+  extractCssCustomProperties,
+  extractCssStyleSignals,
+  extractHtmlComponentSamples,
+  inferExtractionSourceType as inferSourceType,
+  inferUploadKind,
+  isUnsafeImportHostname,
+  normalizeUploadPages,
+  normalizeUploadStringList,
+  readUploadManifest,
+  upsertCssCustomProperty,
+};
+export type { UploadManifest, UploadManifestPage };
 
 const PREVIEW_FILE_IDS = [
   "brand-logos",
@@ -54,172 +150,64 @@ const PREVIEW_FILE_IDS = [
   "components-badges-table",
 ] as const;
 
-const IGNORE_DIRS = new Set([
-  ".git",
-  "node_modules",
-  ".next",
-  ".turbo",
-  "dist",
-  "build",
-  "coverage",
-]);
-
-const TEXT_FILE_EXTENSIONS = new Set([
-  ".css",
-  ".scss",
-  ".sass",
-  ".less",
-  ".json",
-  ".html",
-  ".js",
-  ".jsx",
-  ".ts",
-  ".tsx",
-  ".md",
-]);
-
-const UI_KIT_EXTENSIONS = new Set([".html", ".jsx", ".tsx", ".css"]);
-const LOGO_EXTENSIONS = new Set([".svg", ".png", ".jpg", ".jpeg", ".webp"]);
-const MAX_LINKED_PAGES = 4;
-const MAX_HTML_BYTES = 900_000;
-const MAX_CSS_BYTES = 700_000;
 const MAX_LOGO_BYTES = 2_500_000;
 const MAX_TOTAL_DOWNLOAD_BYTES = 8_000_000;
-const MAX_FETCH_REDIRECTS = 5;
-const MAX_UPLOAD_BYTES = 48_000_000;
 const MAX_FONT_UPLOAD_BYTES = 16_000_000;
 const MAX_UPLOAD_UI_KIT_PAGES = 8;
-const BLOCKED_IMPORT_HOSTS = new Set([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-  "::1",
-  "metadata",
-  "metadata.google.internal",
-  "169.254.169.254",
-]);
-
-const SUPPORTED_UPLOAD_EXTENSIONS = new Map([
-  [".pdf", "pdf"],
-  [".pptx", "pptx"],
-] as const);
 const SUPPORTED_FONT_EXTENSIONS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 
 type SupportedExtractionSource = Extract<
   DesignSystemSourceType,
   "github" | "website" | "figma" | "upload"
 >;
-type SupportedUploadKind = "pdf" | "pptx";
-
-interface SourceArtifact {
-  absolutePath: string;
-  relPath: string;
-}
-
-interface SourceAnalysis {
-  brandName: string;
-  cssVars: Map<string, string>;
-  fontFamilies: string[];
-  colors: string[];
-  fontSizes: string[];
-  fontWeights: string[];
-  spacingValues: string[];
-  radii: string[];
-  shadows: string[];
-  notes: string[];
-  logoFiles: Array<{ absolutePath: string; fileName: string }>;
-  uiKitFiles: Array<{ absolutePath: string; fileName: string }>;
-  rawFiles: string[];
-  homepageHtml: string | null;
-  fetchedPageCount: number;
-  componentSamples: {
-    buttons: string[];
-    cards: string[];
-    forms: string[];
-    tables: string[];
-    badges: string[];
-    headings: string[];
-    body: string[];
+function validateExtractionLineage(
+  lineage: CreateDesignSystemExtractionRequest["lineage"],
+): NonNullable<CreateDesignSystemExtractionRequest["lineage"]> | null {
+  if (lineage === undefined) return null;
+  if (
+    (lineage.operation !== "override" && lineage.operation !== "re-extraction") ||
+    !lineage.parent_receipt_id.trim() ||
+    !/^[0-9a-f]{64}$/.test(lineage.parent_content_digest) ||
+    !lineage.reason.trim() ||
+    Object.entries(lineage.metadata).some(([key, value]) => !key.trim() || !value.trim())
+  ) {
+    throw new DesignSystemExtractError("invalid_lineage", "Extraction lineage is malformed");
+  }
+  const parent = getDesignSystemReceiptById(getDb(), lineage.parent_receipt_id);
+  if (parent === null || parent.digest !== lineage.parent_content_digest) {
+    throw new DesignSystemExtractError("lineage_parent_mismatch", "Extraction lineage parent is missing or stale");
+  }
+  return {
+    operation: lineage.operation,
+    parent_receipt_id: lineage.parent_receipt_id,
+    parent_content_digest: lineage.parent_content_digest,
+    reason: lineage.reason.trim(),
+    metadata: Object.fromEntries(Object.entries(lineage.metadata).sort(([left], [right]) => left.localeCompare(right))),
   };
-  artifactCopies: SourceArtifact[];
-}
-
-export interface UploadManifestPage {
-  index: number;
-  title: string;
-  summary: string;
-  text_excerpt: string;
-}
-
-export interface UploadManifest {
-  kind: SupportedUploadKind;
-  brand_name?: string;
-  page_count: number;
-  fonts: string[];
-  colors: string[];
-  font_sizes: string[];
-  font_weights: string[];
-  spacing_values: string[];
-  radii: string[];
-  shadows: string[];
-  notes: string[];
-  /**
-   * Slice 4 (P4.2 follow-up): Python emits raw text lines now instead
-   * of pre-classified component buckets. `detectComponentSamples` on
-   * the TS side does the locale-aware classification.
-   */
-  headings: string[];
-  bodies: string[];
-  misc_lines: string[];
-  pages: UploadManifestPage[];
-}
-
-export class DesignSystemExtractError extends Error {
-  constructor(
-    readonly code:
-      | "invalid_source_url"
-      | "invalid_upload"
-      | "unsupported_source_type"
-      | "git_clone_failed"
-      | "upload_extract_failed"
-      | "website_fetch_failed"
-      | "figma_token_missing"
-      | "figma_fetch_failed"
-      | "system_id_conflict",
-    message: string,
-  ) {
-    super(message);
-    this.name = "DesignSystemExtractError";
-  }
-}
-
-export class DesignSystemAssetEditError extends Error {
-  constructor(
-    readonly code:
-      | "design_system_not_found"
-      | "tokens_file_missing"
-      | "invalid_color_token"
-      | "invalid_color_value"
-      | "invalid_font_upload",
-    message: string,
-  ) {
-    super(message);
-    this.name = "DesignSystemAssetEditError";
-  }
 }
 
 export async function extractDesignSystemFromSource(
   input: CreateDesignSystemExtractionRequest,
+  options: { readonly signal?: AbortSignal; readonly timeoutMs?: number } = {},
 ): Promise<CreateDesignSystemExtractionResponse> {
-  const sourceUrl = input.source_url?.trim();
+  const sourceUrl = typeof input.source_url === "string" ? input.source_url.trim() : "";
   if (!sourceUrl) {
     throw new DesignSystemExtractError(
       "invalid_source_url",
       "source_url is required",
     );
   }
+  try {
+    parseExtractionSourceUrl(sourceUrl);
+  } catch (error) {
+    if (error instanceof ExtractionSafetyError) {
+      throw new DesignSystemExtractError("invalid_source_url", error.message);
+    }
+    throw error;
+  }
 
-  const inferredSourceType = inferSourceType(sourceUrl);
+  const lineage = validateExtractionLineage(input.lineage);
+  const inferredSourceType = inferExtractionSourceType(sourceUrl);
   const sourceType = input.source_type ?? inferredSourceType;
   if (
     sourceType !== "github" &&
@@ -232,60 +220,42 @@ export async function extractDesignSystemFromSource(
     );
   }
 
+  const configuredTimeout = Number.parseInt(process.env.BG_EXTRACTION_TIMEOUT_MS ?? "30000", 10);
+  const adapter = qaAdapterConfiguration();
+  const source = new URL(sourceUrl);
+  const configuredStallTimeout = Number.parseInt(process.env.BG_EXTRACTION_QA_STALL_TIMEOUT_MS ?? "1000", 10);
+  const stallTimeout = Number.isFinite(configuredStallTimeout) && configuredStallTimeout > 0 && configuredStallTimeout <= 5_000
+    ? configuredStallTimeout
+    : 1_000;
+  const timeout = options.timeoutMs ?? (adapter !== null && source.toString() === adapter.stallUrl.toString() ? stallTimeout : configuredTimeout);
+  const budget = createAcquisitionBudget(options.signal, timeout);
   const tmpRoot = await mkdtemp(path.join(tmpdir(), "burnguard-ds-extract-"));
   try {
     const ingestDir = path.join(tmpRoot, "ingest");
     await mkdir(ingestDir, { recursive: true });
     const analysis =
       sourceType === "github"
-        ? await ingestGitSource(sourceUrl, ingestDir, input.name)
+        ? await ingestGitSource(sourceUrl, ingestDir, budget.signal, input.name)
         : sourceType === "figma"
-          ? await ingestFigmaSource(sourceUrl, ingestDir, input.name)
-          : await ingestWebsiteSource(sourceUrl, ingestDir, input.name);
+          ? await ingestFigmaSource(sourceUrl, ingestDir, budget.signal, input.name)
+          : await ingestWebsiteSource(sourceUrl, ingestDir, budget.signal, input.name);
 
     const brandName = input.name?.trim() || analysis.brandName;
-    const systemId = await allocateSystemId(input.system_id ?? slugify(brandName));
-    const systemDir = path.join(systemsDir, systemId);
-
-    const generatedFiles = await writeCanonicalDesignSystem({
-      systemDir,
-      systemId,
+    return await persistCanonicalExtraction({
+      requestedId: input.system_id ?? slugify(brandName),
       brandName,
       sourceType,
-      sourceUrl,
+      sourceReference: isOwnedQaAdapterEntryUrl(source) ? `qa-adapter:${source.pathname}` : safeSourceReference(sourceUrl),
+      lineage,
       analysis,
+      signal: budget.signal,
     });
-
-    const created = await createDesignSystemRecord({
-      id: systemId,
-      name: brandName,
-      description: `${capitalize(sourceType)} extraction scaffold from ${sourceUrl}`,
-      status: "draft",
-      sourceType,
-      sourceUri: sourceUrl,
-      dirPath: systemDir,
-      skillMdPath: path.join(systemDir, "SKILL.md"),
-      tokensCssPath: path.join(systemDir, "colors_and_type.css"),
-      readmeMdPath: path.join(systemDir, "README.md"),
-      thumbnailPath: null,
-    });
-    if (!created) {
-      throw new Error("createDesignSystemRecord returned null");
-    }
-
-    return {
-      system: created satisfies DesignSystemDetail,
-      extraction: {
-        inferred_source_type: sourceType,
-        brand_name: brandName,
-        generated_files: generatedFiles,
-        copied_logo_count: analysis.logoFiles.length,
-        detected_css_var_count: analysis.cssVars.size,
-        detected_font_family_count: analysis.fontFamilies.length,
-        notes: analysis.notes,
-      },
-    };
+  } catch (error) {
+    if (error instanceof ExtractionAcquisitionError) throw new DesignSystemExtractError("acquisition_timeout", error.message);
+    if (error instanceof AcquisitionLimitError) throw new DesignSystemExtractError("acquisition_limit", error.message);
+    throw error;
   } finally {
+    budget.dispose();
     await rm(tmpRoot, { recursive: true, force: true });
   }
 }
@@ -293,6 +263,9 @@ export async function extractDesignSystemFromSource(
 export async function extractDesignSystemFromUpload(input: {
   file: File;
   body?: CreateDesignSystemUploadRequest;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  limits?: AcquisitionLimits;
 }): Promise<CreateDesignSystemExtractionResponse> {
   const uploadName = input.file.name?.trim();
   if (!uploadName) {
@@ -307,12 +280,8 @@ export async function extractDesignSystemFromUpload(input: {
       "Uploaded file is empty",
     );
   }
-  if (input.file.size > MAX_UPLOAD_BYTES) {
-    throw new DesignSystemExtractError(
-      "invalid_upload",
-      `Upload exceeds ${MAX_UPLOAD_BYTES} bytes`,
-    );
-  }
+  const limits = input.limits ?? DEFAULT_ACQUISITION_LIMITS;
+  assertUploadSize(input.file, limits);
 
   const uploadKind = inferUploadKind(uploadName, input.file.type);
   if (!uploadKind) {
@@ -322,13 +291,15 @@ export async function extractDesignSystemFromUpload(input: {
     );
   }
 
+  const configuredTimeout = Number.parseInt(process.env.BG_EXTRACTION_TIMEOUT_MS ?? "30000", 10);
+  const budget = createAcquisitionBudget(input.signal, input.timeoutMs ?? configuredTimeout, limits);
   const tmpRoot = await mkdtemp(path.join(tmpdir(), "burnguard-ds-upload-"));
   try {
     const ingestDir = path.join(tmpRoot, "ingest");
     await mkdir(ingestDir, { recursive: true });
     const sourceFileName = safeFileName(uploadName);
     const sourcePath = path.join(ingestDir, sourceFileName);
-    await writeFile(sourcePath, Buffer.from(await input.file.arrayBuffer()));
+    await writeFile(sourcePath, await readBoundedUpload(input.file, budget.signal, limits));
 
     const analysis = await ingestUploadSource({
       ingestDir,
@@ -336,56 +307,180 @@ export async function extractDesignSystemFromUpload(input: {
       sourceFileName,
       uploadKind,
       preferredName: input.body?.name,
+      signal: budget.signal,
     });
 
     const brandName = input.body?.name?.trim() || analysis.brandName;
-    const systemId = await allocateSystemId(
-      input.body?.system_id ?? slugify(brandName),
-    );
-    const systemDir = path.join(systemsDir, systemId);
-    const sourceUrl = `upload://${sourceFileName}`;
-
-    const generatedFiles = await writeCanonicalDesignSystem({
-      systemDir,
-      systemId,
+    return await persistCanonicalExtraction({
+      requestedId: input.body?.system_id ?? slugify(brandName),
       brandName,
       sourceType: "upload",
-      sourceUrl,
+      sourceReference: uploadName,
+      lineage: null,
       analysis,
+      signal: budget.signal,
     });
+  } catch (error) {
+    if (error instanceof ExtractionAcquisitionError) throw new DesignSystemExtractError("acquisition_timeout", error.message);
+    if (error instanceof AcquisitionLimitError) throw new DesignSystemExtractError("acquisition_limit", error.message);
+    throw error;
+  } finally {
+    budget.dispose();
+    await rm(tmpRoot, { recursive: true, force: true });
+  }
+}
 
+type CanonicalExtractionInput = {
+  readonly requestedId: string;
+  readonly brandName: string;
+  readonly sourceType: SupportedExtractionSource;
+  readonly sourceReference: string;
+  readonly lineage: NonNullable<CreateDesignSystemExtractionRequest["lineage"]> | null;
+  readonly analysis: SourceAnalysis;
+  readonly signal: AbortSignal;
+};
+
+type CanonicalWriteResult = {
+  readonly generatedFiles: readonly string[];
+  readonly provenance: ExtractionProvenanceSidecar;
+};
+
+async function persistCanonicalExtraction(
+  input: CanonicalExtractionInput,
+): Promise<CreateDesignSystemExtractionResponse> {
+  throwIfAcquisitionAborted(input.signal);
+  const reservation = await reserveAvailableSystemId(input.requestedId);
+  const analysis = stabilizeSourceAnalysis(input.analysis);
+  let rowCreated = false;
+  try {
+    const written = await writeCanonicalDesignSystem({
+      systemDir: reservation.stagingDir,
+      systemId: reservation.id,
+      brandName: input.brandName,
+      sourceType: input.sourceType,
+      sourceUrl: input.sourceReference,
+      lineage: input.lineage,
+      analysis,
+      signal: input.signal,
+    });
+    throwIfAcquisitionAborted(input.signal);
+    await validateExtractionBundle(reservation, input.signal);
+    const systemDir = reservation.destinationDir;
     const created = await createDesignSystemRecord({
-      id: systemId,
-      name: brandName,
-      description: `Upload extraction scaffold from ${uploadName}`,
+      id: reservation.id,
+      name: input.brandName,
+      description: `${capitalize(input.sourceType)} extraction scaffold from ${input.sourceReference}`,
       status: "draft",
-      sourceType: "upload",
-      sourceUri: uploadName,
+      sourceType: input.sourceType,
+      sourceUri: input.sourceReference,
       dirPath: systemDir,
       skillMdPath: path.join(systemDir, "SKILL.md"),
       tokensCssPath: path.join(systemDir, "colors_and_type.css"),
       readmeMdPath: path.join(systemDir, "README.md"),
       thumbnailPath: null,
     });
-    if (!created) {
-      throw new Error("createDesignSystemRecord returned null");
+    if (!created) throw new DesignSystemExtractError("publication_failed", "Design system reservation was not persisted");
+    rowCreated = true;
+    const receiptId = `extraction-${reservation.id}-1-${written.provenance.content_digest.slice(0, 12)}`;
+    prepareDesignSystemReceipt(getDb(), {
+      id: receiptId,
+      designSystemId: reservation.id,
+      contentRevision: 1,
+      schemaVersion: written.provenance.schema_version,
+      digest: written.provenance.content_digest,
+      manifest: { files: written.generatedFiles, publication_state: "validated" },
+      provenance: written.provenance,
+      createdAt: Date.now(),
+    });
+    throwIfAcquisitionAborted(input.signal);
+    await publishExtractionBundle(reservation, input.signal);
+    if (
+      process.env.BG_EXTRACTION_FAULT === "after_publish" ||
+      process.env.BG_EXTRACTION_FAULT_AFTER_PUBLISH_ID === reservation.id
+    ) {
+      throw new DesignSystemExtractError("publication_failed", "Injected extraction publication fault");
     }
-
+    commitDesignSystemReceipt(getDb(), { id: receiptId, digest: written.provenance.content_digest, updatedAt: Date.now() });
+    await completeExtractionPublication(reservation);
     return {
-      system: created satisfies DesignSystemDetail,
+      system: {
+        ...created,
+        dir_path: reservation.id,
+        skill_md_path: "SKILL.md",
+        tokens_css_path: "colors_and_type.css",
+        readme_md_path: "README.md",
+      } satisfies DesignSystemDetail,
       extraction: {
-        inferred_source_type: "upload",
-        brand_name: brandName,
-        generated_files: generatedFiles,
+        inferred_source_type: input.sourceType,
+        brand_name: input.brandName,
+        generated_files: [...written.generatedFiles],
         copied_logo_count: analysis.logoFiles.length,
         detected_css_var_count: analysis.cssVars.size,
         detected_font_family_count: analysis.fontFamilies.length,
         notes: analysis.notes,
+        provenance: written.provenance,
       },
     };
-  } finally {
-    await rm(tmpRoot, { recursive: true, force: true });
+  } catch (error) {
+    await Promise.all([
+      rollbackExtractionPublication(reservation),
+      rowCreated ? deleteDesignSystemRecord(reservation.id) : Promise.resolve(),
+    ]);
+    if (error instanceof ExtractionPublicationError) {
+      throw new DesignSystemExtractError(error.code === "system_id_conflict" ? "system_id_conflict" : "publication_failed", error.message);
+    }
+    if (error instanceof ExtractionSafetyError) {
+      throw new DesignSystemExtractError("unsafe_source_content", error.message);
+    }
+    throw error;
   }
+}
+
+function stabilizeSourceAnalysis(analysis: SourceAnalysis): SourceAnalysis {
+  const sorted = (values: readonly string[]): string[] => [...new Set(values)].sort();
+  return {
+    ...analysis,
+    cssDeclarations: [...analysis.cssDeclarations].sort((left, right) => left.fileOrder - right.fileOrder || left.declarationOrder - right.declarationOrder || left.sourceLocator.localeCompare(right.sourceLocator)),
+    cssParseIssues: [...analysis.cssParseIssues].sort((left, right) => left.sourceLocator.localeCompare(right.sourceLocator) || left.reason.localeCompare(right.reason)),
+    cssVars: new Map([...analysis.cssVars.entries()].sort(([left], [right]) => left.localeCompare(right))),
+    fontFamilies: sorted(analysis.fontFamilies),
+    colors: sorted(analysis.colors),
+    fontSizes: sorted(analysis.fontSizes),
+    fontWeights: sorted(analysis.fontWeights),
+    spacingValues: sorted(analysis.spacingValues),
+    radii: sorted(analysis.radii),
+    shadows: sorted(analysis.shadows),
+    borders: sorted(analysis.borders),
+    notes: sorted(analysis.notes),
+    logoFiles: [...analysis.logoFiles].sort((left, right) => left.fileName.localeCompare(right.fileName)),
+    uiKitFiles: [...analysis.uiKitFiles].sort((left, right) => left.fileName.localeCompare(right.fileName)),
+    rawFiles: sorted(analysis.rawFiles),
+    componentSamples: {
+      buttons: sorted(analysis.componentSamples.buttons),
+      cards: sorted(analysis.componentSamples.cards),
+      forms: sorted(analysis.componentSamples.forms),
+      tables: sorted(analysis.componentSamples.tables),
+      badges: sorted(analysis.componentSamples.badges),
+      headings: sorted(analysis.componentSamples.headings),
+      body: sorted(analysis.componentSamples.body),
+    },
+    artifactCopies: [...analysis.artifactCopies].sort((left, right) => left.relPath.localeCompare(right.relPath)),
+  };
+}
+
+async function reserveAvailableSystemId(baseSlug: string): Promise<ExtractionReservation> {
+  const safeBase = slugify(baseSlug || "design-system");
+  for (let ordinal = 1; ordinal < 10_000; ordinal += 1) {
+    const candidate = ordinal === 1 ? safeBase : `${safeBase}-${ordinal}`;
+    if (await getDesignSystemDetail(candidate)) continue;
+    try {
+      return await reserveExtractionBundle(systemsDir, candidate);
+    } catch (error) {
+      if (error instanceof ExtractionPublicationError && error.code === "system_id_conflict") continue;
+      throw error;
+    }
+  }
+  throw new DesignSystemExtractError("system_id_conflict", "Could not allocate a unique design system id");
 }
 
 export async function readDesignSystemTokens(systemId: string) {
@@ -400,16 +495,17 @@ export async function readDesignSystemTokens(systemId: string) {
     return { colors: [], token_file_path: null };
   }
 
-  const css = await readFile(detail.tokens_css_path, "utf8").catch(() => null);
+  const tokenPath = resolveDesignSystemRecordPath(systemId, detail.dir_path, detail.tokens_css_path);
+  const css = await readFile(tokenPath, "utf8").catch(() => null);
   if (css === null) {
-    return { colors: [], token_file_path: detail.tokens_css_path };
+    return { colors: [], token_file_path: tokenPath };
   }
 
-  const colors = [...extractCssCustomProperties(css).entries()]
+  const colors = [...(await extractCssCustomProperties(css)).entries()]
     .filter(([, value]) => isColorTokenValue(value))
     .map(([name, value]) => ({ name, value }));
 
-  return { colors, token_file_path: detail.tokens_css_path };
+  return { colors, token_file_path: tokenPath };
 }
 
 export async function upsertDesignSystemColorToken(
@@ -446,11 +542,12 @@ export async function upsertDesignSystemColorToken(
     );
   }
 
-  const existingCss = await readFile(detail.tokens_css_path, "utf8").catch(
+  const tokenPath = resolveDesignSystemRecordPath(systemId, detail.dir_path, detail.tokens_css_path);
+  const existingCss = await readFile(tokenPath, "utf8").catch(
     () => "",
   );
   const nextCss = upsertCssCustomProperty(existingCss, tokenName, colorValue);
-  await writeFile(detail.tokens_css_path, nextCss, "utf8");
+  await writeFile(tokenPath, nextCss, "utf8");
   return await readDesignSystemTokens(systemId);
 }
 
@@ -489,7 +586,8 @@ export async function uploadDesignSystemFont(input: {
     );
   }
 
-  const fontsDir = path.join(detail.dir_path, "fonts");
+  const managedSystemDir = resolveDesignSystemRecordPath(input.systemId, detail.dir_path, detail.dir_path);
+  const fontsDir = resolveWithin(managedSystemDir, "fonts");
   await mkdir(fontsDir, { recursive: true });
   const fileName = safeFileName(originalName);
   const fontPath = path.join(fontsDir, fileName);
@@ -500,7 +598,8 @@ export async function uploadDesignSystemFont(input: {
   await appendFontFaceRule(path.join(fontsDir, "fonts.css"), family, fileName);
 
   if (role && detail.tokens_css_path) {
-    const existingCss = await readFile(detail.tokens_css_path, "utf8").catch(
+    const tokenPath = resolveDesignSystemRecordPath(input.systemId, detail.dir_path, detail.tokens_css_path);
+    const existingCss = await readFile(tokenPath, "utf8").catch(
       () => "",
     );
     const fallback =
@@ -516,7 +615,7 @@ export async function uploadDesignSystemFont(input: {
       `font-${role}`,
       `${cssString(family)}, ${fallback}`,
     );
-    await writeFile(detail.tokens_css_path, nextCss, "utf8");
+    await writeFile(tokenPath, nextCss, "utf8");
   }
 
   return {
@@ -527,168 +626,10 @@ export async function uploadDesignSystemFont(input: {
   };
 }
 
-export function inferSourceType(sourceUrl: string): SupportedExtractionSource {
-  const trimmed = sourceUrl.trim();
-  if (
-    /^git@/i.test(trimmed) ||
-    /^ssh:\/\//i.test(trimmed) ||
-    /\.git(?:[#?].*)?$/i.test(trimmed)
-  ) {
-    return "github";
-  }
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      const host = url.hostname.toLowerCase();
-      if (host === "figma.com" || host === "www.figma.com") {
-        return "figma";
-      }
-      if (
-        host === "github.com" ||
-        host === "www.github.com" ||
-        host === "gitlab.com" ||
-        host === "www.gitlab.com" ||
-        host === "bitbucket.org" ||
-        host === "www.bitbucket.org"
-      ) {
-        const parts = url.pathname.split("/").filter(Boolean);
-        if (parts.length >= 2) return "github";
-      }
-      return "website";
-    }
-  } catch {
-    // fall through
-  }
-  throw new DesignSystemExtractError(
-    "invalid_source_url",
-    `Could not infer extraction source from "${sourceUrl}"`,
-  );
-}
-
-export function inferUploadKind(
-  fileName: string,
-  contentType?: string | null,
-): SupportedUploadKind | null {
-  const ext = path.extname(fileName).toLowerCase();
-  const fromExtension = SUPPORTED_UPLOAD_EXTENSIONS.get(
-    ext as ".pdf" | ".pptx",
-  );
-  if (fromExtension) return fromExtension;
-
-  const normalized = (contentType ?? "").toLowerCase();
-  if (normalized.includes("application/pdf")) return "pdf";
-  if (
-    normalized.includes(
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    )
-  ) {
-    return "pptx";
-  }
-  return null;
-}
-
-export function extractCssCustomProperties(content: string): Map<string, string> {
-  const out = new Map<string, string>();
-  const regex = /--([a-zA-Z0-9-_]+)\s*:\s*([^;}{]+);/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content))) {
-    out.set(match[1].trim(), match[2].trim());
-  }
-  return out;
-}
-
-export function extractCssStyleSignals(content: string) {
-  return {
-    colors: extractCssDeclarationValues(
-      content,
-      /(?:^|[;{\s])(color|background(?:-color)?|border(?:-[a-z-]+)?-color)\s*:\s*([^;}{]+)/gi,
-      24,
-    ),
-    fontSizes: extractCssDeclarationValues(
-      content,
-      /(?:^|[;{\s])font-size\s*:\s*([^;}{]+)/gi,
-      16,
-      1,
-    ),
-    fontWeights: extractCssDeclarationValues(
-      content,
-      /(?:^|[;{\s])font-weight\s*:\s*([^;}{]+)/gi,
-      12,
-      1,
-    ),
-    spacingValues: extractCssDeclarationValues(
-      content,
-      /(?:^|[;{\s])(?:margin|padding|gap|column-gap|row-gap)\s*:\s*([^;}{]+)/gi,
-      24,
-      1,
-    ),
-    radii: extractCssDeclarationValues(
-      content,
-      /(?:^|[;{\s])border-radius\s*:\s*([^;}{]+)/gi,
-      12,
-      1,
-    ),
-    shadows: extractCssDeclarationValues(
-      content,
-      /(?:^|[;{\s])box-shadow\s*:\s*([^;}{]+)/gi,
-      12,
-      1,
-    ),
-  };
-}
-
-function extractFontFamilies(content: string): string[] {
-  const families = new Set<string>();
-  const regex = /font-family\s*:\s*([^;]+);/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content))) {
-    const parts = match[1]
-      .split(",")
-      .map((part) => part.trim().replace(/^['"]|['"]$/g, ""))
-      .filter(Boolean);
-    if (parts[0]) families.add(parts[0]);
-  }
-  return [...families];
-}
-
-export function extractHtmlComponentSamples(html: string) {
-  const root = parse(html);
-  return {
-    buttons: collectHtmlTextSamples(root, [
-      "button",
-      'a[class*="btn"]',
-      '[role="button"]',
-      'input[type="button"]',
-      'input[type="submit"]',
-    ]),
-    cards: collectHtmlTextSamples(root, [
-      'article',
-      'section[class*="card"]',
-      'div[class*="card"]',
-      '[data-card]',
-    ]),
-    forms: collectHtmlTextSamples(root, [
-      "form",
-      "label",
-      "input",
-      "select",
-      "textarea",
-    ]),
-    tables: collectHtmlTextSamples(root, ["table"]),
-    badges: collectHtmlTextSamples(root, [
-      '[class*="badge"]',
-      '[class*="pill"]',
-      '[class*="tag"]',
-      '[class*="label"]',
-    ]),
-    headings: collectHtmlTextSamples(root, ["h1", "h2", "h3"]),
-    body: collectHtmlTextSamples(root, ["p", "li", "blockquote"]),
-  };
-}
-
 async function ingestGitSource(
   sourceUrl: string,
   ingestDir: string,
+  signal: AbortSignal,
   preferredName?: string,
 ): Promise<SourceAnalysis> {
   const repoDir = path.join(ingestDir, "repo");
@@ -697,8 +638,10 @@ async function ingestGitSource(
     stdout: "ignore",
     stderr: "pipe",
   });
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  const [stderr, exitCode] = await Promise.all([
+    new Response(proc.stderr).text(),
+    awaitChildWithAbort(proc, signal).then((receipt) => receipt.exitCode),
+  ]);
   if (exitCode !== 0) {
     throw new DesignSystemExtractError(
       "git_clone_failed",
@@ -709,6 +652,7 @@ async function ingestGitSource(
   const analysis = await analyzeLocalTree(
     repoDir,
     preferredName ?? deriveBrandNameFromGitUrl(sourceUrl),
+    signal,
   );
   analysis.notes.unshift("Raw source ingested from git clone.");
   analysis.rawFiles.push("uploads/source-url.txt", "uploads/extraction-report.json");
@@ -718,6 +662,7 @@ async function ingestGitSource(
 async function ingestWebsiteSource(
   sourceUrl: string,
   ingestDir: string,
+  signal: AbortSignal,
   preferredName?: string,
 ): Promise<SourceAnalysis> {
   let url: URL;
@@ -729,21 +674,17 @@ async function ingestWebsiteSource(
       `Invalid website URL: ${sourceUrl}`,
     );
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new DesignSystemExtractError(
-      "invalid_source_url",
-      `Website URL must be http(s): ${sourceUrl}`,
-    );
+  const ownedQaAdapter = isOwnedQaAdapterEntryUrl(url);
+  if (url.protocol !== "https:" && !ownedQaAdapter) {
+    throw new DesignSystemExtractError("invalid_source_url", "Website URL must use HTTPS");
   }
 
   let totalDownloadedBytes = 0;
+  let assetBytes = 0;
   const noteBytes = (bytes: number) => {
     totalDownloadedBytes += bytes;
     if (totalDownloadedBytes > MAX_TOTAL_DOWNLOAD_BYTES) {
-      throw new DesignSystemExtractError(
-        "website_fetch_failed",
-        `Website import exceeded ${MAX_TOTAL_DOWNLOAD_BYTES} bytes total download budget`,
-      );
+      throw new AcquisitionLimitError("aggregate_source_bytes", MAX_TOTAL_DOWNLOAD_BYTES, totalDownloadedBytes);
     }
   };
 
@@ -751,18 +692,26 @@ async function ingestWebsiteSource(
     maxBytes: MAX_HTML_BYTES,
     kind: "html",
     noteBytes,
+    signal,
+    userAgent: `BurnGuard/${APP_VERSION} design-system-import`,
   });
   url = homepage.finalUrl;
   const html = homepage.text;
+  assertAcquirableSourceMarkup(html, "html");
+  const storedHomepageHtml = removeSourceMarkupReferences(html);
+  assertInertSourceMarkup(storedHomepageHtml, "html");
 
   const websiteDir = path.join(ingestDir, "website");
   const uploadsDir = path.join(websiteDir, "uploads", "linked-css");
   const pagesDir = path.join(websiteDir, "uploads", "pages");
   await mkdir(uploadsDir, { recursive: true });
   await mkdir(pagesDir, { recursive: true });
-  await writeFile(path.join(websiteDir, "index.html"), html, "utf8");
+  await writeFile(path.join(websiteDir, "index.html"), storedHomepageHtml, "utf8");
 
   const cssVars = new Map<string, string>();
+  const cssDeclarations: import("./extraction-css").CssDeclarationEvidence[] = [];
+  const cssParseIssues: import("./extraction-css").CssParseIssue[] = [];
+  let cssFileOrder = 0;
   const fontFamilies = new Set<string>();
   const colors = new Set<string>();
   const fontSizes = new Set<string>();
@@ -773,24 +722,29 @@ async function ingestWebsiteSource(
   const notes: string[] = ["Homepage HTML fetched from website URL."];
   const logoFiles: Array<{ absolutePath: string; fileName: string }> = [];
   const pageHtmlByUrl = new Map<string, string>([[url.toString(), html]]);
-  const pageQueue = await collectCandidateWebsitePages(url, html);
+  const pageQueue = collectCandidateWebsitePages(url, html, signal);
 
   for (const page of pageQueue) {
+    throwIfAcquisitionAborted(signal);
     if (pageHtmlByUrl.has(page.toString())) continue;
     try {
       const pageFetch = await fetchWebsiteResource(page, {
         maxBytes: MAX_HTML_BYTES,
         kind: "html",
         noteBytes,
+        signal,
+        userAgent: `BurnGuard/${APP_VERSION} design-system-import`,
       });
       if (pageHtmlByUrl.has(pageFetch.finalUrl.toString())) continue;
+      assertAcquirableSourceMarkup(pageFetch.text, "html");
       pageHtmlByUrl.set(pageFetch.finalUrl.toString(), pageFetch.text);
       const fileName = `page-${pageHtmlByUrl.size}.html`;
-      await writeFile(path.join(pagesDir, fileName), pageFetch.text, "utf8");
+      const storedPageHtml = removeSourceMarkupReferences(pageFetch.text);
+      assertInertSourceMarkup(storedPageHtml, "html");
+      await writeFile(path.join(pagesDir, fileName), storedPageHtml, "utf8");
     } catch (error) {
-      notes.push(
-        `Skipped linked page: ${page.toString()} (${error instanceof Error ? error.message : "fetch failed"})`,
-      );
+      if (error instanceof ExtractionAcquisitionError) throw error;
+      notes.push(`Skipped linked page: ${page.toString()} (${error instanceof Error ? error.message : "fetch failed"})`);
     }
   }
 
@@ -807,8 +761,10 @@ async function ingestWebsiteSource(
   let stylesheetIndex = 1;
 
   for (const [pageUrl, pageHtml] of pageHtmlByUrl) {
+    throwIfAcquisitionAborted(signal);
     const root = parse(pageHtml);
-    const sampleSet = extractHtmlComponentSamples(pageHtml);
+    throwIfAcquisitionAborted(signal);
+    const sampleSet = extractHtmlComponentSamples(pageHtml, signal);
     mergeStringSamples(componentSamples.buttons, sampleSet.buttons, 6);
     mergeStringSamples(componentSamples.cards, sampleSet.cards, 6);
     mergeStringSamples(componentSamples.forms, sampleSet.forms, 6);
@@ -817,6 +773,8 @@ async function ingestWebsiteSource(
     mergeStringSamples(componentSamples.headings, sampleSet.headings, 6);
     mergeStringSamples(componentSamples.body, sampleSet.body, 6);
 
+    const pageSourceUrl = new URL(pageUrl);
+    const pageSourceId = isOwnedQaAdapterResourceUrl(pageSourceUrl) ? `qa-adapter:${pageSourceUrl.pathname}` : pageUrl;
     const inlineCssChunks: string[] = [];
     for (const style of root.querySelectorAll("style")) {
       inlineCssChunks.push(style.textContent);
@@ -827,12 +785,15 @@ async function ingestWebsiteSource(
     }
     if (inlineCssChunks.length > 0) {
       const inlineCss = inlineCssChunks.join("\n");
-      mergeMap(cssVars, extractCssCustomProperties(inlineCss));
+      const parsedCss = await parseCssSource({ content: inlineCss, sourceId: `${pageSourceId}#inline-style`, fileOrder: cssFileOrder, signal });
+      cssFileOrder += 1;
+      cssDeclarations.push(...parsedCss.declarations);
+      cssParseIssues.push(...parsedCss.issues);
       mergeSignals(
         { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
-        extractCssStyleSignals(inlineCss),
+        styleSignalsFromDeclarations(parsedCss.declarations),
       );
-      for (const family of extractFontFamilies(inlineCss)) {
+      for (const family of fontFamiliesFromDeclarations(parsedCss.declarations)) {
         fontFamilies.add(family);
       }
     }
@@ -840,6 +801,7 @@ async function ingestWebsiteSource(
     const pageBase = new URL(pageUrl);
     const links = root.querySelectorAll('link[rel="stylesheet"]');
     for (let idx = 0; idx < links.length; idx += 1) {
+      throwIfAcquisitionAborted(signal);
       const href = links[idx].getAttribute("href");
       if (!href) continue;
       try {
@@ -849,6 +811,8 @@ async function ingestWebsiteSource(
           maxBytes: MAX_CSS_BYTES,
           kind: "css",
           noteBytes,
+          signal,
+          userAgent: `BurnGuard/${APP_VERSION} design-system-import`,
         });
         if (seenStylesheets.has(cssFetch.finalUrl.toString())) continue;
         seenStylesheets.add(cssFetch.finalUrl.toString());
@@ -857,22 +821,28 @@ async function ingestWebsiteSource(
         stylesheetIndex += 1;
         const absolute = path.join(uploadsDir, fileName);
         await writeFile(absolute, cssText, "utf8");
-        mergeMap(cssVars, extractCssCustomProperties(cssText));
+        const cssSourceId = isOwnedQaAdapterResourceUrl(cssFetch.finalUrl) ? `qa-adapter:${cssFetch.finalUrl.pathname}` : cssFetch.finalUrl.toString();
+        const parsedCss = await parseCssSource({ content: cssText, sourceId: cssSourceId, fileOrder: cssFileOrder, signal });
+        cssFileOrder += 1;
+        cssDeclarations.push(...parsedCss.declarations);
+        cssParseIssues.push(...parsedCss.issues);
         mergeSignals(
           { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
-          extractCssStyleSignals(cssText),
+          styleSignalsFromDeclarations(parsedCss.declarations),
         );
-        for (const family of extractFontFamilies(cssText)) {
+        for (const family of fontFamiliesFromDeclarations(parsedCss.declarations)) {
           fontFamilies.add(family);
         }
       } catch (error) {
-        notes.push(
-          `Skipped linked stylesheet: ${href} (${error instanceof Error ? error.message : "fetch failed"})`,
-        );
+        if (error instanceof ExtractionAcquisitionError) throw error;
+        notes.push(`Skipped linked stylesheet: ${href} (${error instanceof Error ? error.message : "fetch failed"})`);
       }
     }
 
-    for (const image of root.querySelectorAll("img")) {
+    const images = root.querySelectorAll("img");
+    assertAssetCount(images.length);
+    for (const image of images) {
+      throwIfAcquisitionAborted(signal);
       const src = image.getAttribute("src");
       if (!src || !/logo|brand/i.test(src)) continue;
       try {
@@ -885,14 +855,17 @@ async function ingestWebsiteSource(
           maxBytes: MAX_LOGO_BYTES,
           kind: "asset",
           noteBytes,
+          signal,
+          userAgent: `BurnGuard/${APP_VERSION} design-system-import`,
         });
+        assetBytes += logoFetch.buffer.byteLength;
+        assertAggregateAssetBytes(assetBytes);
         const absolutePath = path.join(websiteDir, dedupedName);
         await writeFile(absolutePath, logoFetch.buffer);
         logoFiles.push({ absolutePath, fileName: dedupedName });
       } catch (error) {
-        notes.push(
-          `Skipped logo candidate: ${src} (${error instanceof Error ? error.message : "fetch failed"})`,
-        );
+        if (error instanceof ExtractionAcquisitionError) throw error;
+        notes.push(`Skipped logo candidate: ${src} (${error instanceof Error ? error.message : "fetch failed"})`);
       }
     }
   }
@@ -908,8 +881,14 @@ async function ingestWebsiteSource(
     );
   }
 
+  for (const declaration of [...cssDeclarations].sort((left, right) => left.property.localeCompare(right.property) || left.value.localeCompare(right.value) || left.sourceLocator.localeCompare(right.sourceLocator))) {
+    if (declaration.property.startsWith("--") && !cssVars.has(declaration.property.slice(2))) cssVars.set(declaration.property.slice(2), declaration.value);
+  }
+
   return {
     brandName: preferredName?.trim() || deriveBrandNameFromHtml(url, html),
+    cssDeclarations,
+    cssParseIssues,
     cssVars,
     fontFamilies: [...fontFamilies],
     colors: [...colors],
@@ -918,6 +897,7 @@ async function ingestWebsiteSource(
     spacingValues: [...spacingValues],
     radii: [...radii],
     shadows: [...shadows],
+    borders: [...new Set(cssDeclarations.filter((item) => item.property === "border" || item.property.startsWith("border-")).map((item) => item.value))],
     notes,
     logoFiles: logoFiles.slice(0, 8),
     uiKitFiles: [...pageHtmlByUrl.keys()].map((_pageUrl, index) => ({
@@ -934,7 +914,7 @@ async function ingestWebsiteSource(
       "uploads/pages/",
       "uploads/linked-css/",
     ],
-    homepageHtml: html,
+    homepageHtml: storedHomepageHtml,
     fetchedPageCount: pageHtmlByUrl.size,
     componentSamples,
     artifactCopies: [],
@@ -955,6 +935,7 @@ async function ingestWebsiteSource(
 async function ingestFigmaSource(
   sourceUrl: string,
   ingestDir: string,
+  signal: AbortSignal,
   preferredName?: string,
 ): Promise<SourceAnalysis> {
   void ingestDir;
@@ -978,14 +959,15 @@ async function ingestFigmaSource(
   }
 
   try {
-    const meta = await fetchFigmaFileMeta(fileKey, token);
-    const styles = await fetchFigmaPublishedStyles(fileKey, token);
+    const meta = await fetchFigmaFileMeta(fileKey, token, signal);
+    const styles = await fetchFigmaPublishedStyles(fileKey, token, signal);
     const nodes = await fetchFigmaNodes(
       fileKey,
       styles.map((s) => s.nodeId),
       token,
+      signal,
     );
-    const tokens = extractFigmaTokens(styles, nodes);
+    const tokens = extractFigmaTokens(styles, nodes, { signal });
 
     const cssVars = new Map<string, string>();
     for (const [name, hex] of tokens.colors) {
@@ -1015,6 +997,8 @@ async function ingestFigmaSource(
 
     return {
       brandName,
+      cssDeclarations: [],
+      cssParseIssues: [],
       cssVars,
       fontFamilies: tokens.fontFamilies,
       colors,
@@ -1023,6 +1007,7 @@ async function ingestFigmaSource(
       spacingValues: [],
       radii: [],
       shadows: [],
+      borders: [],
       notes,
       logoFiles: [],
       uiKitFiles: [],
@@ -1041,7 +1026,7 @@ async function ingestFigmaSource(
       artifactCopies: [],
     };
   } catch (err) {
-    if (err instanceof DesignSystemExtractError) throw err;
+    if (err instanceof DesignSystemExtractError || err instanceof ExtractionAcquisitionError || err instanceof AcquisitionLimitError) throw err;
     if (err instanceof FigmaApiError) {
       throw new DesignSystemExtractError(
         "figma_fetch_failed",
@@ -1073,14 +1058,24 @@ async function ingestUploadSource(input: {
   sourceFileName: string;
   uploadKind: SupportedUploadKind;
   preferredName?: string;
+  signal: AbortSignal;
 }): Promise<SourceAnalysis> {
   const manifestPath = path.join(input.ingestDir, "upload-manifest.json");
   await runPythonUploadExtractor({
     sourcePath: input.sourcePath,
     manifestPath,
+    signal: input.signal,
   });
 
-  const manifest = await readUploadManifest(manifestPath);
+  let manifest: UploadManifest;
+  try {
+    manifest = await readUploadManifest(manifestPath, input.signal);
+  } catch (error) {
+    if (error instanceof ExtractionUploadManifestError) {
+      throw new DesignSystemExtractError("upload_extract_failed", error.message);
+    }
+    throw error;
+  }
   if (manifest.kind !== input.uploadKind) {
     throw new DesignSystemExtractError(
       "upload_extract_failed",
@@ -1114,6 +1109,8 @@ async function ingestUploadSource(input: {
       input.preferredName?.trim() ||
       manifest.brand_name?.trim() ||
       humanizeSlug(path.basename(input.sourceFileName, path.extname(input.sourceFileName))),
+    cssDeclarations: [],
+    cssParseIssues: [],
     cssVars: new Map<string, string>(),
     fontFamilies: normalizeUploadStringList(manifest.fonts, 8),
     colors: normalizeUploadStringList(manifest.colors, 24),
@@ -1122,6 +1119,7 @@ async function ingestUploadSource(input: {
     spacingValues: normalizeUploadStringList(manifest.spacing_values, 24),
     radii: normalizeUploadStringList(manifest.radii, 12),
     shadows: normalizeUploadStringList(manifest.shadows, 12),
+    borders: [],
     notes,
     logoFiles: [],
     uiKitFiles,
@@ -1150,78 +1148,10 @@ async function ingestUploadSource(input: {
   };
 }
 
-async function analyzeLocalTree(
-  rootDir: string,
-  fallbackBrandName: string,
-): Promise<SourceAnalysis> {
-  const allFiles = await listFilesRecursive(rootDir);
-  const cssVars = new Map<string, string>();
-  const fontFamilies = new Set<string>();
-  const colors = new Set<string>();
-  const fontSizes = new Set<string>();
-  const fontWeights = new Set<string>();
-  const spacingValues = new Set<string>();
-  const radii = new Set<string>();
-  const shadows = new Set<string>();
-  const logoFiles: Array<{ absolutePath: string; fileName: string }> = [];
-  const uiKitFiles: Array<{ absolutePath: string; fileName: string }> = [];
-  const notes: string[] = [];
-
-  for (const absolutePath of allFiles) {
-    const base = path.basename(absolutePath);
-    const ext = path.extname(base).toLowerCase();
-    if (LOGO_EXTENSIONS.has(ext) && /logo|brand/i.test(base)) {
-      logoFiles.push({ absolutePath, fileName: base });
-    }
-    if (UI_KIT_EXTENSIONS.has(ext) && uiKitFiles.length < 8) {
-      uiKitFiles.push({ absolutePath, fileName: base });
-    }
-    if (!TEXT_FILE_EXTENSIONS.has(ext)) continue;
-    try {
-      const content = await readFile(absolutePath, "utf8");
-      mergeMap(cssVars, extractCssCustomProperties(content));
-      mergeSignals(
-        { colors, fontSizes, fontWeights, spacingValues, radii, shadows },
-        extractCssStyleSignals(content),
-      );
-      for (const family of extractFontFamilies(content)) fontFamilies.add(family);
-    } catch {
-      notes.push(`Skipped unreadable text file: ${absolutePath}`);
-    }
-  }
-
-  return {
-    brandName: fallbackBrandName,
-    cssVars,
-    fontFamilies: [...fontFamilies],
-    colors: [...colors],
-    fontSizes: [...fontSizes],
-    fontWeights: [...fontWeights],
-    spacingValues: [...spacingValues],
-    radii: [...radii],
-    shadows: [...shadows],
-    notes,
-    logoFiles: logoFiles.slice(0, 8),
-    uiKitFiles,
-    rawFiles: ["uploads/source-url.txt", "uploads/extraction-report.json"],
-    homepageHtml: null,
-    fetchedPageCount: 0,
-    componentSamples: {
-      buttons: [],
-      cards: [],
-      forms: [],
-      tables: [],
-      badges: [],
-      headings: [],
-      body: [],
-    },
-    artifactCopies: [],
-  };
-}
-
 export async function runPythonUploadExtractor(input: {
   sourcePath: string;
   manifestPath: string;
+  signal?: AbortSignal;
 }) {
   // Write the embedded Python source to a per-call tmp dir so the
   // script path resolves cleanly in dev AND inside a `bun build
@@ -1262,7 +1192,9 @@ export async function runPythonUploadExtractor(input: {
         const [stdout, stderr, exitCode] = await Promise.all([
           new Response(proc.stdout).text(),
           new Response(proc.stderr).text(),
-          proc.exited,
+          input.signal === undefined
+            ? proc.exited
+            : awaitChildWithAbort(proc, input.signal).then((receipt) => receipt.exitCode),
         ]);
         if (exitCode === 0) {
           return;
@@ -1283,102 +1215,6 @@ export async function runPythonUploadExtractor(input: {
   } finally {
     await rm(scriptDir, { recursive: true, force: true }).catch(() => {});
   }
-}
-
-export async function readUploadManifest(manifestPath: string): Promise<UploadManifest> {
-  const raw = await readFile(manifestPath, "utf8").catch(() => null);
-  if (!raw) {
-    throw new DesignSystemExtractError(
-      "upload_extract_failed",
-      "Python upload extractor did not produce a manifest",
-    );
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new DesignSystemExtractError(
-      "upload_extract_failed",
-      "Upload manifest was not valid JSON",
-    );
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    throw new DesignSystemExtractError(
-      "upload_extract_failed",
-      "Upload manifest had an invalid shape",
-    );
-  }
-
-  const manifest = parsed as Partial<UploadManifest>;
-  if (
-    manifest.kind !== "pdf" &&
-    manifest.kind !== "pptx"
-  ) {
-    throw new DesignSystemExtractError(
-      "upload_extract_failed",
-      "Upload manifest is missing a supported kind",
-    );
-  }
-
-  return {
-    kind: manifest.kind,
-    brand_name:
-      typeof manifest.brand_name === "string" ? manifest.brand_name : undefined,
-    page_count:
-      typeof manifest.page_count === "number" && Number.isFinite(manifest.page_count)
-        ? Math.max(0, Math.trunc(manifest.page_count))
-        : 0,
-    fonts: normalizeUploadStringList(manifest.fonts, 8),
-    colors: normalizeUploadStringList(manifest.colors, 24),
-    font_sizes: normalizeUploadStringList(manifest.font_sizes, 16),
-    font_weights: normalizeUploadStringList(manifest.font_weights, 12),
-    spacing_values: normalizeUploadStringList(manifest.spacing_values, 24),
-    radii: normalizeUploadStringList(manifest.radii, 12),
-    shadows: normalizeUploadStringList(manifest.shadows, 12),
-    notes: normalizeUploadStringList(manifest.notes, 16),
-    headings: normalizeUploadStringList(manifest.headings, 32),
-    bodies: normalizeUploadStringList(manifest.bodies, 32),
-    misc_lines: normalizeUploadStringList(manifest.misc_lines, 64),
-    pages: normalizeUploadPages(manifest.pages),
-  };
-}
-
-export function normalizeUploadStringList(value: unknown, limit: number): string[] {
-  if (!Array.isArray(value)) return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const entry of value) {
-    if (typeof entry !== "string") continue;
-    const normalized = entry.replace(/\s+/g, " ").trim();
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
-    out.push(normalized);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
-export function normalizeUploadPages(value: unknown): UploadManifestPage[] {
-  if (!Array.isArray(value)) return [];
-  const out: UploadManifestPage[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== "object") continue;
-    const page = entry as Record<string, unknown>;
-    out.push({
-      index:
-        typeof page.index === "number" && Number.isFinite(page.index)
-          ? Math.max(1, Math.trunc(page.index))
-          : out.length + 1,
-      title: typeof page.title === "string" ? page.title.trim() : "",
-      summary: typeof page.summary === "string" ? page.summary.trim() : "",
-      text_excerpt:
-        typeof page.text_excerpt === "string" ? page.text_excerpt.trim() : "",
-    });
-    if (out.length >= MAX_UPLOAD_UI_KIT_PAGES) break;
-  }
-  return out;
 }
 
 async function buildUploadUiKitFiles(input: {
@@ -1497,8 +1333,11 @@ async function writeCanonicalDesignSystem(input: {
   brandName: string;
   sourceType: SupportedExtractionSource;
   sourceUrl: string;
+  lineage: NonNullable<CreateDesignSystemExtractionRequest["lineage"]> | null;
   analysis: SourceAnalysis;
-}): Promise<string[]> {
+  signal: AbortSignal;
+}): Promise<CanonicalWriteResult> {
+  throwIfAcquisitionAborted(input.signal);
   const generated = new Set<string>();
   const fontsDir = path.join(input.systemDir, "fonts");
   const logosDir = path.join(input.systemDir, "assets", "logos");
@@ -1512,6 +1351,7 @@ async function writeCanonicalDesignSystem(input: {
     mkdir(uiKitDir, { recursive: true }),
     mkdir(uploadsDir, { recursive: true }),
   ]);
+  throwIfAcquisitionAborted(input.signal);
 
   await writeText(
     path.join(input.systemDir, "README.md"),
@@ -1546,6 +1386,27 @@ async function writeCanonicalDesignSystem(input: {
   await writeText(
     path.join(uploadsDir, "source-url.txt"),
     `${input.sourceUrl}\n`,
+    generated,
+    input.systemDir,
+  );
+  const provenance = buildExtractionProvenance(discoveriesFromAnalysis({
+    cssDeclarations: input.analysis.cssDeclarations,
+    cssParseIssues: input.analysis.cssParseIssues,
+    cssVars: input.analysis.cssVars,
+    fontFamilies: input.analysis.fontFamilies,
+    colors: input.analysis.colors,
+    fontSizes: input.analysis.fontSizes,
+    fontWeights: input.analysis.fontWeights,
+    spacingValues: input.analysis.spacingValues,
+    radii: input.analysis.radii,
+    shadows: input.analysis.shadows,
+    borders: input.analysis.borders,
+    assets: input.analysis.logoFiles.map((item) => `assets/logos/${safeFileName(item.fileName)}`),
+    components: input.analysis.componentSamples,
+  }), Date.now(), input.lineage);
+  await writeText(
+    path.join(input.systemDir, "extraction-provenance.json"),
+    `${JSON.stringify(provenance, null, 2)}\n`,
     generated,
     input.systemDir,
   );
@@ -1585,6 +1446,7 @@ async function writeCanonicalDesignSystem(input: {
   }
 
   for (const artifact of input.analysis.artifactCopies) {
+    throwIfAcquisitionAborted(input.signal);
     const normalizedRelPath = artifact.relPath.replaceAll("\\", "/");
     const dest = path.join(input.systemDir, normalizedRelPath);
     await mkdir(path.dirname(dest), { recursive: true });
@@ -1593,6 +1455,7 @@ async function writeCanonicalDesignSystem(input: {
   }
 
   for (const fileId of PREVIEW_FILE_IDS) {
+    throwIfAcquisitionAborted(input.signal);
     await writeText(
       path.join(previewDir, `${fileId}.html`),
       buildPreviewHtml(fileId, input.brandName, input.analysis),
@@ -1610,6 +1473,7 @@ async function writeCanonicalDesignSystem(input: {
     );
   } else {
     for (const file of input.analysis.uiKitFiles.slice(0, MAX_UPLOAD_UI_KIT_PAGES)) {
+      throwIfAcquisitionAborted(input.signal);
       const dest = path.join(uiKitDir, safeFileName(file.fileName));
       await copyFile(file.absolutePath, dest);
       generated.add(toSystemRelPath(input.systemDir, dest));
@@ -1617,12 +1481,13 @@ async function writeCanonicalDesignSystem(input: {
   }
 
   for (const logo of input.analysis.logoFiles.slice(0, 8)) {
+    throwIfAcquisitionAborted(input.signal);
     const dest = path.join(logosDir, safeFileName(logo.fileName));
     await copyFile(logo.absolutePath, dest);
     generated.add(toSystemRelPath(input.systemDir, dest));
   }
 
-  return [...generated].sort();
+  return { generatedFiles: [...generated].sort(), provenance };
 }
 
 function buildReadme(
@@ -2077,41 +1942,6 @@ function previewBody(
   }
 }
 
-async function listFilesRecursive(rootDir: string): Promise<string[]> {
-  const out: string[] = [];
-  async function walk(dir: string) {
-    const entries = await readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const absolute = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (IGNORE_DIRS.has(entry.name)) continue;
-        await walk(absolute);
-      } else if (entry.isFile()) {
-        out.push(absolute);
-      }
-    }
-  }
-  await walk(rootDir);
-  return out;
-}
-
-async function allocateSystemId(baseSlug: string): Promise<string> {
-  const safeBase = slugify(baseSlug || "design-system");
-  let candidate = safeBase;
-  let n = 2;
-  while (await getDesignSystemDetail(candidate)) {
-    candidate = `${safeBase}-${n}`;
-    n += 1;
-    if (n > 9999) {
-      throw new DesignSystemExtractError(
-        "system_id_conflict",
-        `Could not allocate a unique design system id for ${safeBase}`,
-      );
-    }
-  }
-  return candidate;
-}
-
 async function writeText(
   absolutePath: string,
   content: string,
@@ -2125,12 +1955,6 @@ async function writeText(
 
 function toSystemRelPath(rootDir: string, absolutePath: string): string {
   return path.relative(rootDir, absolutePath).replaceAll("\\", "/");
-}
-
-function mergeMap(target: Map<string, string>, next: Map<string, string>) {
-  for (const [key, value] of next) {
-    if (!target.has(key)) target.set(key, value);
-  }
 }
 
 function mergeSignals(
@@ -2159,223 +1983,6 @@ function mergeSignals(
   for (const value of next.shadows) target.shadows.add(value);
 }
 
-function extractCssDeclarationValues(
-  content: string,
-  regex: RegExp,
-  limit: number,
-  valueGroup = 2,
-): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content)) && out.length < limit) {
-    const value = (match[valueGroup] ?? "").trim();
-    if (!value || value.length > 120 || seen.has(value)) continue;
-    seen.add(value);
-    out.push(value);
-  }
-  return out;
-}
-
-function collectHtmlTextSamples(
-  root: ReturnType<typeof parse>,
-  selectors: string[],
-): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const selector of selectors) {
-    for (const node of root.querySelectorAll(selector)) {
-      const text = node.text
-        .replace(/\s+/g, " ")
-        .trim();
-      if (!text || text.length < 2 || text.length > 140 || seen.has(text)) continue;
-      seen.add(text);
-      out.push(text);
-      if (out.length >= 6) return out;
-    }
-  }
-  return out;
-}
-
-interface WebsiteFetchOptions {
-  maxBytes: number;
-  kind: "html" | "css" | "asset";
-  noteBytes: (bytes: number) => void;
-}
-
-async function fetchWebsiteResource(
-  inputUrl: URL,
-  options: WebsiteFetchOptions,
-): Promise<{ finalUrl: URL; text: string; buffer: Buffer }> {
-  let current = new URL(inputUrl.toString());
-
-  for (let redirectCount = 0; redirectCount <= MAX_FETCH_REDIRECTS; redirectCount += 1) {
-    await assertSafeImportUrl(current);
-    const response = await fetch(current, {
-      redirect: "manual",
-      headers: { "user-agent": `BurnGuard/${APP_VERSION} design-system-import` },
-    });
-
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) {
-        throw new DesignSystemExtractError(
-          "website_fetch_failed",
-          `Redirect missing Location header for ${current.toString()}`,
-        );
-      }
-      current = new URL(location, current);
-      continue;
-    }
-
-    if (!response.ok) {
-      throw new DesignSystemExtractError(
-        "website_fetch_failed",
-        `Website fetch failed with HTTP ${response.status}`,
-      );
-    }
-
-    const buffer = await readResponseWithinLimit(response, options.maxBytes);
-    options.noteBytes(buffer.byteLength);
-    return {
-      finalUrl: current,
-      text:
-        options.kind === "asset" ? "" : buffer.toString("utf8"),
-      buffer,
-    };
-  }
-
-  throw new DesignSystemExtractError(
-    "website_fetch_failed",
-    `Too many redirects while fetching ${inputUrl.toString()}`,
-  );
-}
-
-async function readResponseWithinLimit(
-  response: Response,
-  maxBytes: number,
-): Promise<Buffer> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return Buffer.alloc(0);
-  }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      throw new DesignSystemExtractError(
-        "website_fetch_failed",
-        `Fetched resource exceeded ${maxBytes} bytes`,
-      );
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
-}
-
-async function assertSafeImportUrl(url: URL) {
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new DesignSystemExtractError(
-      "invalid_source_url",
-      `Website URL must be http(s): ${url.toString()}`,
-    );
-  }
-
-  const host = normalizeHost(url.hostname);
-  if (isUnsafeImportHostname(host)) {
-    throw new DesignSystemExtractError(
-      "invalid_source_url",
-      `Blocked private or local website host: ${url.hostname}`,
-    );
-  }
-
-  if (isIP(host) !== 0) {
-    return;
-  }
-
-  const resolved = await lookup(host, { all: true, verbatim: true }).catch(
-    () => [],
-  );
-  for (const entry of resolved) {
-    if (isUnsafeImportHostname(normalizeHost(entry.address))) {
-      throw new DesignSystemExtractError(
-        "invalid_source_url",
-        `Blocked hostname resolved to a private or local address: ${url.hostname}`,
-      );
-    }
-  }
-}
-
-export function isUnsafeImportHostname(hostname: string): boolean {
-  const host = normalizeHost(hostname);
-  if (!host) return true;
-  if (BLOCKED_IMPORT_HOSTS.has(host)) return true;
-  if (
-    host.endsWith(".local") ||
-    host.endsWith(".internal") ||
-    host.endsWith(".home") ||
-    host.endsWith(".lan") ||
-    host.endsWith(".arpa")
-  ) {
-    return true;
-  }
-
-  const ipVersion = isIP(host);
-  if (ipVersion === 4) {
-    const parts = host.split(".").map((part) => Number.parseInt(part, 10));
-    const [a, b] = parts;
-    if (
-      a === 10 ||
-      a === 127 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
-    ) {
-      return true;
-    }
-    return false;
-  }
-  if (ipVersion === 6) {
-    if (host === "::1") return true;
-    if (host.startsWith("fc") || host.startsWith("fd")) return true;
-    if (host.startsWith("fe80:")) return true;
-  }
-  return false;
-}
-
-function normalizeHost(hostname: string): string {
-  return hostname.trim().replace(/^\[|\]$/g, "").toLowerCase();
-}
-
-async function collectCandidateWebsitePages(baseUrl: URL, html: string) {
-  const root = parse(html);
-  const candidates: URL[] = [];
-  const seen = new Set<string>([baseUrl.toString()]);
-  for (const anchor of root.querySelectorAll("a[href]")) {
-    const href = anchor.getAttribute("href");
-    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
-      continue;
-    }
-    try {
-      const next = new URL(href, baseUrl);
-      if (next.origin !== baseUrl.origin) continue;
-      if (seen.has(next.toString())) continue;
-      if (/\.(pdf|png|jpg|jpeg|svg|zip)$/i.test(next.pathname)) continue;
-      seen.add(next.toString());
-      candidates.push(next);
-      if (candidates.length >= MAX_LINKED_PAGES) break;
-    } catch {
-      // ignore malformed href
-    }
-  }
-  return candidates;
-}
-
 function mergeStringSamples(target: string[], next: string[], limit: number) {
   const seen = new Set(target);
   for (const value of next) {
@@ -2391,11 +1998,18 @@ function firstValue(
   candidates: string[],
   fallback: string,
 ): string {
-  for (const key of candidates) {
-    const value = vars.get(key);
-    if (value) return value;
-  }
-  return fallback;
+  return selectCanonicalToken(
+    [...vars.entries()].map(([key, value]) => ({
+      domain: "token",
+      key,
+      value,
+      sourceLocator: `css-custom-property:${key}`,
+      confidence: 1,
+      state: "observed",
+    })),
+    candidates,
+    fallback,
+  ).value;
 }
 
 function deriveBrandNameFromGitUrl(sourceUrl: string): string {
@@ -2461,66 +2075,6 @@ function normalizeFontFamily(value: string | undefined): string | null {
   return normalized;
 }
 
-function isColorTokenValue(value: string): boolean {
-  const trimmed = value.trim();
-  if (
-    !trimmed ||
-    trimmed.length > 140 ||
-    /[;{}<>\n\r]/.test(trimmed)
-  ) {
-    return false;
-  }
-  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(trimmed)) {
-    return true;
-  }
-  if (
-    /^(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color|color-mix)\(/i.test(
-      trimmed,
-    )
-  ) {
-    return true;
-  }
-  if (/^var\(--[a-zA-Z0-9_-]+\)$/.test(trimmed)) {
-    return true;
-  }
-  return /^[a-zA-Z]+$/.test(trimmed);
-}
-
-export function upsertCssCustomProperty(
-  css: string,
-  tokenName: string,
-  value: string,
-): string {
-  const declaration = `  --${tokenName}: ${value};`;
-  const existing = new RegExp(
-    `(^\\s*--${escapeRegExp(tokenName)}\\s*:\\s*)[^;]+(;\\s*$)`,
-    "m",
-  );
-  if (existing.test(css)) {
-    return css.replace(existing, `$1${value}$2`);
-  }
-
-  const rootMatch = /:root\s*\{[\s\S]*?\n\}/.exec(css);
-  if (rootMatch) {
-    const closeIndex = rootMatch.index + rootMatch[0].lastIndexOf("\n}");
-    return `${css.slice(0, closeIndex)}\n${declaration}${css.slice(closeIndex)}`;
-  }
-
-  const prefix = css.endsWith("\n") || css.length === 0 ? css : `${css}\n`;
-  return `${prefix}:root {\n${declaration}\n}\n`;
-}
-
-export function ensureTokensCssImportsFonts(css: string): string {
-  if (/fonts\/fonts\.css/i.test(css)) return css;
-
-  const importLine = "@import url('./fonts/fonts.css');";
-  const charsetMatch = /^@charset\s+["'][^"']+["'];\s*\n?/i.exec(css);
-  if (charsetMatch) {
-    return `${charsetMatch[0]}${importLine}\n${css.slice(charsetMatch[0].length)}`;
-  }
-  return `${importLine}\n${css}`;
-}
-
 async function appendFontFaceRule(
   fontsCssPath: string,
   family: string,
@@ -2558,16 +2112,26 @@ function fontFormatForFile(fileName: string): string {
   }
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function resolveDesignSystemRecordPath(systemId: string, dirPath: string, target: string): string {
+  const managedDir = resolveManagedPath(systemsDir, dirPath);
+  const expectedDir = path.join(systemsDir, systemId);
+  if (managedDir !== expectedDir) {
+    throw new DesignSystemAssetEditError("unsafe_managed_path", "Design system path is outside its canonical managed directory");
+  }
+  const managedTarget = resolveManagedPath(systemsDir, target);
+  const relative = path.relative(managedDir, managedTarget);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new DesignSystemAssetEditError("unsafe_managed_path", "Design system asset path escapes its managed directory");
+  }
+  return managedTarget;
 }
 
 export async function resolveDesignSystemFile(
@@ -2585,46 +2149,9 @@ export async function resolveDesignSystemFile(
   ) {
     return null;
   }
-  const absolute = path.join(detail.dir_path, normalized);
+  const managedDir = resolveDesignSystemRecordPath(systemId, detail.dir_path, detail.dir_path);
+  const absolute = resolveWithin(managedDir, ...normalized.split("/"));
   const info = await stat(absolute).catch(() => null);
   if (!info?.isFile()) return null;
   return absolute;
-}
-
-export function contentTypeForDesignSystemFile(relPath: string): string {
-  const ext = path.extname(relPath).toLowerCase();
-  switch (ext) {
-    case ".html":
-      return "text/html; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".md":
-      return "text/markdown; charset=utf-8";
-    case ".json":
-      return "application/json; charset=utf-8";
-    case ".svg":
-      return "image/svg+xml";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".webp":
-      return "image/webp";
-    case ".woff2":
-      return "font/woff2";
-    case ".ttf":
-      return "font/ttf";
-    case ".otf":
-      return "font/otf";
-    case ".js":
-    case ".jsx":
-    case ".ts":
-    case ".tsx":
-      return "text/plain; charset=utf-8";
-    default:
-      return "application/octet-stream";
-  }
 }

@@ -3,6 +3,7 @@ import * as shared from "@bg/shared";
 
 type ParserName =
   | "parseExtractionProvenance"
+  | "parseExtractionDomain"
   | "parseCatalogContract"
   | "parseLearningContract"
   | "parseArtifactOperation"
@@ -70,6 +71,11 @@ const exportAttempt = {
 };
 
 describe("strict upgrade contract boundaries", () => {
+  test("Given border and an unknown domain When runtime contract parsing runs Then only border is accepted", () => {
+    // Given / When / Then
+    expect(parseWith("parseExtractionDomain", "border")).toBe("border");
+    expect(parseWith("parseExtractionDomain", "outline")).toEqual({ code: "unknown_discriminant" });
+  });
   test("rejects defaulted provenance without evidence", () => {
     expect(parseWith("parseExtractionProvenance", { ...provenance, state: "defaulted", evidence: [] }))
       .toEqual({ code: "missing_provenance_evidence" });

@@ -1,3 +1,4 @@
+import type { ExtractionDomain } from "./extraction-domain";
 import type { DesignSystemSummary } from "./home";
 
 export type DesignSystemSourceType =
@@ -19,11 +20,20 @@ export interface DesignSystemDetail extends DesignSystemSummary {
   archived_at: number | null;
 }
 
+export interface DesignSystemExtractionLineageRequest {
+  operation: "override" | "re-extraction";
+  parent_receipt_id: string;
+  parent_content_digest: string;
+  reason: string;
+  metadata: Readonly<Record<string, string>>;
+}
+
 export interface CreateDesignSystemExtractionRequest {
   source_url: string;
   source_type?: Extract<DesignSystemSourceType, "github" | "website" | "figma">;
   name?: string;
   system_id?: string;
+  lineage?: DesignSystemExtractionLineageRequest;
 }
 
 export interface CreateDesignSystemUploadRequest {
@@ -53,6 +63,27 @@ export interface DesignSystemFontUploadResponse {
   rel_path: string;
 }
 
+export interface DesignSystemProvenanceEntry {
+  readonly domain: ExtractionDomain;
+  readonly key: string;
+  readonly state: "observed" | "inferred" | "defaulted" | "unknown" | "conflicted";
+  readonly confidence: number;
+  readonly source_locators: readonly string[];
+  readonly candidates: readonly { readonly value: string; readonly source_locator: string; readonly confidence: number }[];
+  readonly conflicts: readonly string[];
+  readonly unknown_reason: string | null;
+  readonly lineage: readonly string[];
+}
+
+export interface DesignSystemProvenanceDocument {
+  readonly schema_version: 1;
+  readonly digest_algorithm: "sha256";
+  readonly content_digest: string;
+  readonly content: { readonly entries: readonly DesignSystemProvenanceEntry[] };
+  readonly generated_at: number;
+  readonly lineage: DesignSystemExtractionLineageRequest | null;
+}
+
 export interface DesignSystemExtractionSummary {
   inferred_source_type: Extract<
     DesignSystemSourceType,
@@ -64,6 +95,7 @@ export interface DesignSystemExtractionSummary {
   detected_css_var_count: number;
   detected_font_family_count: number;
   notes: string[];
+  provenance: DesignSystemProvenanceDocument;
 }
 
 export interface CreateDesignSystemExtractionResponse {

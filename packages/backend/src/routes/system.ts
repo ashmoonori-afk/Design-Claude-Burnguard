@@ -1,4 +1,5 @@
 import { rm, stat } from "node:fs/promises";
+import path from "node:path";
 import { Hono } from "hono";
 import type {
   ApiErrorBody,
@@ -9,6 +10,7 @@ import type {
   DeleteDesignSystemResponse,
   DesignSystemDetail,
   DesignSystemFontUploadResponse,
+  DesignSystemExtractionLineageRequest,
   DesignSystemTokensResponse,
   UpdateDesignSystemRequest,
   UpsertDesignSystemColorRequest,
@@ -44,6 +46,25 @@ function fail(
   return { error: { code, message, details } };
 }
 
+function parseExtractionLineage(input: unknown): DesignSystemExtractionLineageRequest | null | undefined {
+  if (input === undefined) return undefined;
+  if (typeof input !== "object" || input === null) return null;
+  if (!("operation" in input) || (input.operation !== "override" && input.operation !== "re-extraction")) return null;
+  if (!("parent_receipt_id" in input) || typeof input.parent_receipt_id !== "string") return null;
+  if (!("parent_content_digest" in input) || typeof input.parent_content_digest !== "string") return null;
+  if (!("reason" in input) || typeof input.reason !== "string") return null;
+  if (!("metadata" in input) || typeof input.metadata !== "object" || input.metadata === null) return null;
+  const entries = Object.entries(input.metadata);
+  if (!entries.every((entry): entry is [string, string] => typeof entry[1] === "string")) return null;
+  return {
+    operation: input.operation,
+    parent_receipt_id: input.parent_receipt_id,
+    parent_content_digest: input.parent_content_digest,
+    reason: input.reason,
+    metadata: Object.fromEntries(entries),
+  };
+}
+
 export const systemRoutes = new Hono();
 
 systemRoutes.post("/api/design-systems/extract", async (c) => {
@@ -52,14 +73,39 @@ systemRoutes.post("/api/design-systems/extract", async (c) => {
     return c.json(fail("invalid_body", "Expected a JSON object request body"), 400);
   }
 
+  const allowedFields = new Set(["source_url", "source_type", "name", "system_id", "lineage"]);
+  if (Object.keys(body).some((field) => !allowedFields.has(field))) {
+    return c.json(fail("invalid_body", "Extraction request contains unsupported fields"), 400);
+  }
+
+  const sourceUrl = "source_url" in body ? body.source_url : undefined;
+  const sourceType = "source_type" in body ? body.source_type : undefined;
+  const name = "name" in body ? body.name : undefined;
+  const systemId = "system_id" in body ? body.system_id : undefined;
+  const lineage = parseExtractionLineage("lineage" in body ? body.lineage : undefined);
+  if (
+    typeof sourceUrl !== "string" ||
+    (sourceType !== undefined && sourceType !== "github" && sourceType !== "website" && sourceType !== "figma") ||
+    (name !== undefined && typeof name !== "string") ||
+    (systemId !== undefined && typeof systemId !== "string") ||
+    lineage === null
+  ) {
+    return c.json(fail("invalid_body", "Extraction request fields have invalid types"), 400);
+  }
+  const extractionRequest: CreateDesignSystemExtractionRequest = {
+    source_url: sourceUrl,
+    ...(sourceType === undefined ? {} : { source_type: sourceType }),
+    ...(name === undefined ? {} : { name }),
+    ...(systemId === undefined ? {} : { system_id: systemId }),
+    ...(lineage === undefined ? {} : { lineage }),
+  };
+
   try {
-    const result = await extractDesignSystemFromSource(
-      body as CreateDesignSystemExtractionRequest,
-    );
+    const result = await extractDesignSystemFromSource(extractionRequest, { signal: c.req.raw.signal });
     return c.json(ok(result satisfies CreateDesignSystemExtractionResponse), 201);
   } catch (err) {
     if (err instanceof DesignSystemExtractError) {
-      return c.json(fail(err.code, err.message), 400);
+      return c.json(fail(err.code, err.message), err.code === "publication_failed" ? 500 : err.code === "acquisition_timeout" ? 408 : 400);
     }
     return c.json(
       fail(
@@ -98,11 +144,12 @@ systemRoutes.post("/api/design-systems/upload", async (c) => {
         name: typeof name === "string" ? name : undefined,
         system_id: typeof systemId === "string" ? systemId : undefined,
       },
+      signal: c.req.raw.signal,
     });
     return c.json(ok(result satisfies CreateDesignSystemUploadResponse), 201);
   } catch (err) {
     if (err instanceof DesignSystemExtractError) {
-      return c.json(fail(err.code, err.message), 400);
+      return c.json(fail(err.code, err.message), err.code === "publication_failed" ? 500 : err.code === "acquisition_timeout" ? 408 : 400);
     }
     return c.json(
       fail(
@@ -343,10 +390,13 @@ systemRoutes.get("/api/design-systems/:id/files/*", async (c) => {
   let absolutePath: string | null = null;
   if (detail) {
     try {
-      const segments = relPath.replaceAll("\\", "/").split("/").map(assertSafeName);
-      const candidate = resolveWithin(detail.dir_path, ...segments);
-      const info = await stat(candidate);
-      if (info.isFile()) absolutePath = candidate;
+      const managedDir = resolveManagedPath(systemsDir, detail.dir_path);
+      if (managedDir === path.join(systemsDir, id)) {
+        const segments = relPath.replaceAll("\\", "/").split("/").map(assertSafeName);
+        const candidate = resolveWithin(managedDir, ...segments);
+        const info = await stat(candidate);
+        if (info.isFile()) absolutePath = candidate;
+      }
     } catch {
       // Preserve this endpoint's file-not-found response for invalid paths,
       // escaping links, and inaccessible or missing files.

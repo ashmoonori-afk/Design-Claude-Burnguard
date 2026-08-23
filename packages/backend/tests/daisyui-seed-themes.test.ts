@@ -48,7 +48,7 @@ describe("bundled daisyUI-derived design systems", () => {
     const destinationRoot = await mkdtemp(path.join(tmpdir(), "bg-theme-seeds-"));
     try {
       const canonicalCss = await readFile(canonicalTokensPath, "utf8");
-      const requiredTokens = [...extractCssCustomProperties(canonicalCss).keys()];
+      const requiredTokens = [...(await extractCssCustomProperties(canonicalCss)).keys()];
       expect(requiredTokens.length).toBeGreaterThan(0);
 
       await seedBundledDesignSystems(resolveRepoRoot(), destinationRoot);
@@ -65,14 +65,14 @@ describe("bundled daisyUI-derived design systems", () => {
         expect(css.startsWith(attribution)).toBe(true);
         expect(css.toLowerCase()).not.toContain("oklch(");
 
-        const tokens = extractCssCustomProperties(css);
+        const tokens = await extractCssCustomProperties(css);
         for (const token of requiredTokens) {
           expect(tokens.has(token), `${slug}: --${token}`).toBe(true);
           expect(tokens.get(token)?.trim(), `${slug}: --${token}`).not.toBe("");
         }
 
         const colorSection = css.split("/* Type families */", 1)[0] ?? "";
-        for (const [token, value] of extractCssCustomProperties(colorSection)) {
+        for (const [token, value] of await extractCssCustomProperties(colorSection)) {
           expect(value, `${slug}: --${token}`).toMatch(/^#[0-9a-f]{6}$/i);
         }
 

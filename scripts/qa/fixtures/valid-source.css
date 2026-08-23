@@ -1,0 +1,8 @@
+:root {
+  --fixture-brand-primary: #2457d6;
+  --fixture-brand-primary: #2457d6;
+}
+.fixture-card {
+  border: 1px solid #2457d6;
+  border-radius: 12px;
+}

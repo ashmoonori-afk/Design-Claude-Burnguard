@@ -9,6 +9,7 @@ export * from "./design-system";
 export * from "./events";
 export * from "./export";
 export * from "./export-attempt";
+export * from "./extraction-domain";
 export * from "./extraction-provenance";
 export * from "./file-patch";
 export * from "./harness";

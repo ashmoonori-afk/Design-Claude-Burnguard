@@ -12,29 +12,13 @@
  * `loadConfig`). Never log or echo it.
  */
 
+import { DEFAULT_ACQUISITION_LIMITS, ExtractionAcquisitionError, throwIfAcquisitionAborted, type AcquisitionLimits } from "./extraction-acquisition";
+import { assertFigmaItemCount, readFigmaResponse } from "./extraction-figma-response";
+import { FigmaApiError } from "./figma-errors";
+
+export { FigmaApiError };
+
 const FIGMA_API_ROOT = "https://api.figma.com";
-
-export class FigmaApiError extends Error {
-  readonly code:
-    | "missing_token"
-    | "invalid_url"
-    | "auth_failed"
-    | "not_found"
-    | "rate_limited"
-    | "fetch_failed";
-  readonly httpStatus?: number;
-
-  constructor(
-    code: FigmaApiError["code"],
-    message: string,
-    httpStatus?: number,
-  ) {
-    super(message);
-    this.name = "FigmaApiError";
-    this.code = code;
-    this.httpStatus = httpStatus;
-  }
-}
 
 export interface FigmaFileMeta {
   name: string;
@@ -150,6 +134,7 @@ export function parseFigmaUrl(input: string): { fileKey: string } {
 async function figmaFetch(
   pathAndQuery: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   if (!token) {
     throw new FigmaApiError("missing_token", "No Figma access token configured.");
@@ -158,8 +143,10 @@ async function figmaFetch(
   try {
     res = await fetch(`${FIGMA_API_ROOT}${pathAndQuery}`, {
       headers: { "X-Figma-Token": token },
+      signal,
     });
   } catch (err) {
+    if (signal?.reason instanceof ExtractionAcquisitionError) throw signal.reason;
     throw new FigmaApiError(
       "fetch_failed",
       `Figma API request failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -193,15 +180,16 @@ async function figmaFetch(
       res.status,
     );
   }
-  return res.json();
+  return readFigmaResponse(res, signal);
 }
 
 export async function fetchFigmaFileMeta(
   fileKey: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<FigmaFileMeta> {
   // depth=1 keeps the response cheap — we only need top-level metadata.
-  const json = (await figmaFetch(`/v1/files/${fileKey}?depth=1`, token)) as {
+  const json = (await figmaFetch(`/v1/files/${fileKey}?depth=1`, token, signal)) as {
     name: string;
     lastModified: string;
     thumbnailUrl?: string;
@@ -218,8 +206,9 @@ export async function fetchFigmaFileMeta(
 export async function fetchFigmaPublishedStyles(
   fileKey: string,
   token: string,
+  signal?: AbortSignal,
 ): Promise<FigmaPublishedStyle[]> {
-  const json = (await figmaFetch(`/v1/files/${fileKey}/styles`, token)) as {
+  const json = (await figmaFetch(`/v1/files/${fileKey}/styles`, token, signal)) as {
     meta?: {
       styles?: Array<{
         key: string;
@@ -231,7 +220,9 @@ export async function fetchFigmaPublishedStyles(
       }>;
     };
   };
-  return (json.meta?.styles ?? []).map((s) => ({
+  const styles = json.meta?.styles ?? [];
+  assertFigmaItemCount(styles.length);
+  return styles.map((s) => ({
     key: s.key,
     fileKey: s.file_key,
     nodeId: s.node_id,
@@ -245,17 +236,22 @@ export async function fetchFigmaNodes(
   fileKey: string,
   nodeIds: string[],
   token: string,
+  signal?: AbortSignal,
 ): Promise<Record<string, FigmaNode>> {
   if (nodeIds.length === 0) return {};
   const ids = encodeURIComponent(nodeIds.join(","));
   const json = (await figmaFetch(
     `/v1/files/${fileKey}/nodes?ids=${ids}`,
     token,
+    signal,
   )) as {
     nodes: Record<string, { document?: FigmaNode } | null>;
   };
   const out: Record<string, FigmaNode> = {};
-  for (const [id, wrapper] of Object.entries(json.nodes ?? {})) {
+  const entries = Object.entries(json.nodes ?? {});
+  assertFigmaItemCount(entries.length);
+  for (const [id, wrapper] of entries) {
+    throwIfAcquisitionAborted(signal);
     if (wrapper?.document) {
       out[id] = wrapper.document;
     }
@@ -271,15 +267,24 @@ export async function fetchFigmaNodes(
  * Color naming: published-style names are kebab-cased so they slot
  * straight into a CSS custom property (`--color-brand-primary`).
  */
+export type FigmaTokenExtractionOptions = {
+  readonly signal?: AbortSignal;
+  readonly limits?: AcquisitionLimits;
+};
+
 export function extractFigmaTokens(
   styles: FigmaPublishedStyle[],
   nodes: Record<string, FigmaNode>,
+  options: FigmaTokenExtractionOptions = {},
 ): FigmaTokens {
+  const limits = options.limits ?? DEFAULT_ACQUISITION_LIMITS;
+  assertFigmaItemCount(styles.length, limits);
   const colors = new Map<string, string>();
   const textStyles: FigmaTokens["textStyles"] = [];
   const fontFamilies = new Set<string>();
 
   for (const style of styles) {
+    throwIfAcquisitionAborted(options.signal);
     const node = nodes[style.nodeId];
     if (!node) continue;
     const slug = slugifyStyleName(style.name);
