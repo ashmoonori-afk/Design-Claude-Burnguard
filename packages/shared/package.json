@@ -6,7 +6,10 @@
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./contract-parser": "./src/contract-parser.ts",
+    "./export": "./src/export.ts",
+    "./learning-contract": "./src/learning-contract.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

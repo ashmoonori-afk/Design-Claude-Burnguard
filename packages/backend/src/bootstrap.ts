@@ -5,7 +5,9 @@ import {
   bundledDesignSystemId,
   bundledDesignSystems,
 } from "./data/bundled-design-systems";
+import { getDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
+import { reconcilePipelineRows } from "./db/pipeline-repository";
 import { seedCoreData } from "./db/seed";
 import { seedTutorialsOnce } from "./db/seed-tutorials";
 import {
@@ -98,6 +100,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await runMigrations();
   await seedCoreData();
   await seedTutorialsOnce();
+  reconcilePipelineRows(getDb());
   await ensureAllProjectWatchers();
   // Best-effort export GC — never block startup on it.
   void pruneOldExports().catch(() => {

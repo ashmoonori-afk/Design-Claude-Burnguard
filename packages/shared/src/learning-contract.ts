@@ -7,6 +7,7 @@ import {
   requiredRecord,
   requiredString,
 } from "./contract-parser";
+export { UpgradeContractError };
 
 export type LearningProgress = {
   readonly state: "not_started" | "in_progress" | "completed";
@@ -63,26 +64,32 @@ export function parseLearningContract(input: unknown): LearningContract {
   }
 }
 
+export function parseLearningNextContext(input: unknown): LearningNextContext {
+  const context = decodeContract(input);
+  const contextDigest = context["artifact_digest"];
+  if (contextDigest === undefined) throw new UpgradeContractError("missing_artifact_digest", "artifact_digest");
+  if (typeof contextDigest !== "string" || contextDigest.length === 0) throw new UpgradeContractError("invalid_field", "artifact_digest");
+  const contextKind = requiredString(context, "kind");
+  if (contextKind !== "iteration") throw new UpgradeContractError("unknown_discriminant", "kind");
+  return {
+    kind: contextKind,
+    parent_checkpoint_id: requiredString(context, "parent_checkpoint_id"),
+    schema_revision: requiredNumber(context, "schema_revision"),
+    artifact_revision: requiredNumber(context, "artifact_revision"),
+    artifact_digest: contextDigest,
+  };
+}
+
 function parseCheckpoint(record: Readonly<Record<string, unknown>>): LearningCheckpoint {
   const digest = record["artifact_digest"];
   if (digest === undefined) throw new UpgradeContractError("missing_artifact_digest", "checkpoint.artifact_digest");
   if (typeof digest !== "string" || digest.length === 0) throw new UpgradeContractError("invalid_field", "checkpoint.artifact_digest");
-  const context = requiredRecord(record, "next_context");
-  const contextDigest = context["artifact_digest"];
-  if (contextDigest === undefined) throw new UpgradeContractError("missing_artifact_digest", "checkpoint.next_context.artifact_digest");
-  if (typeof contextDigest !== "string" || contextDigest.length === 0) throw new UpgradeContractError("invalid_field", "checkpoint.next_context.artifact_digest");
-  const contextKind = requiredString(context, "kind");
-  if (contextKind !== "iteration") throw new UpgradeContractError("unknown_discriminant", "checkpoint.next_context.kind");
+  const context = parseLearningNextContext(requiredRecord(record, "next_context"));
   return {
     id: requiredString(record, "id"),
     parent_checkpoint_id: optionalString(record, "parent_checkpoint_id"),
     artifact_revision: requiredNumber(record, "artifact_revision"), artifact_digest: digest,
-    next_context: {
-      kind: contextKind,
-      parent_checkpoint_id: requiredString(context, "parent_checkpoint_id"),
-      schema_revision: requiredNumber(context, "schema_revision"),
-      artifact_revision: requiredNumber(context, "artifact_revision"), artifact_digest: contextDigest,
-    },
+    next_context: context,
   };
 }
 function parseProgress(value: string): LearningProgress["state"] {

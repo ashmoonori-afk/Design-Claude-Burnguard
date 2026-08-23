@@ -1,7 +1,8 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { ulid } from "ulid";
 import type { NormalizedEvent, UserEvent } from "@bg/shared";
-import { getDb } from "./client";
+import { getDb, getSqlite } from "./client";
+import { insertSequencedEvent, parsePersistedNormalizedEvent, parsePersistedUserEvent } from "./event-sequence-repository";
 import { eventsTable, projectsTable, sessionsTable } from "./schema";
 
 export interface PersistedUserEvent {
@@ -12,35 +13,19 @@ export interface PersistedUserEvent {
 }
 
 export async function insertUserEvent(sessionId: string, payload: UserEvent) {
-  const db = getDb();
   const id = ulid();
   const now = Date.now();
-  await db.insert(eventsTable).values({
-    id,
-    sessionId,
-    direction: "up",
-    type: payload.type,
-    payloadJson: JSON.stringify(payload),
-    turnId: null,
-    processedAt: now,
-    createdAt: now,
-  });
-  return {
-    id,
-    session_id: sessionId,
-    payload,
-    processed_at: now,
-  } satisfies PersistedUserEvent;
+  insertSequencedEvent(getSqlite(), { id, sessionId, direction: "up", type: payload.type, payload, turnId: null, processedAt: now, createdAt: now });
+  return { id, session_id: sessionId, payload, processed_at: now } satisfies PersistedUserEvent;
 }
 
 export async function insertNormalizedEvent(sessionId: string, event: NormalizedEvent) {
-  const db = getDb();
-  await db.insert(eventsTable).values({
+  insertSequencedEvent(getSqlite(), {
     id: event.id,
     sessionId,
     direction: "down",
     type: event.type,
-    payloadJson: JSON.stringify(event),
+    payload: event,
     turnId: "turnId" in event ? event.turnId : null,
     processedAt: event.ts,
     createdAt: Date.now(),
@@ -69,7 +54,7 @@ export async function listSessionEvents(sessionId: string, since?: number) {
   const out: NormalizedEvent[] = [];
   for (const row of rows) {
     if (row.direction === "down") {
-      out.push(JSON.parse(row.payload) as NormalizedEvent);
+      out.push(parsePersistedNormalizedEvent(row.payload, row.id));
       continue;
     }
     // direction === "up" — synthesize a chat.user_message for legacy sessions
@@ -77,29 +62,23 @@ export async function listSessionEvents(sessionId: string, since?: number) {
     // events. Newer turns already emit chat.user_message via the broker, so
     // we skip duplicates.
     if (row.type !== "user.message") continue;
-    try {
-      const payload = JSON.parse(row.payload) as UserEvent;
-      if (payload.type !== "user.message") continue;
-      const hasSynth = rows.some(
-        (r) =>
-          r.direction === "down" &&
-          r.type === "chat.user_message" &&
-          Math.abs(r.processed_at - row.processed_at) < 500,
-      );
-      if (hasSynth) continue;
-      out.push({
-        id: row.id,
-        ts: row.processed_at,
-        type: "chat.user_message",
-        turnId: row.turnId ?? row.id,
-        text: payload.text,
-        attachmentCount: Array.isArray(payload.attachments)
-          ? payload.attachments.length
-          : 0,
-      });
-    } catch {
-      // bad row — skip silently
-    }
+    const payload = parsePersistedUserEvent(row.payload, row.id);
+    if (payload.type !== "user.message") continue;
+    const hasSynth = rows.some(
+      (candidate) =>
+        candidate.direction === "down" &&
+        candidate.type === "chat.user_message" &&
+        Math.abs(candidate.processed_at - row.processed_at) < 500,
+    );
+    if (hasSynth) continue;
+    out.push({
+      id: row.id,
+      ts: row.processed_at,
+      type: "chat.user_message",
+      turnId: row.turnId ?? row.id,
+      text: payload.text,
+      attachmentCount: payload.attachments?.length ?? 0,
+    });
   }
   return out.sort((a, b) => (a.ts === b.ts ? a.id.localeCompare(b.id) : a.ts - b.ts));
 }
