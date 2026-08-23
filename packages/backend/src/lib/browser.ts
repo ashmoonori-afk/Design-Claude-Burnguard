@@ -1,21 +1,25 @@
-/**
- * Cross-platform "open URL in default browser".
- */
-export function openBrowser(url: string): void {
+/** Returns the platform-native command without launching it. */
+export function browserOpenCommand(platform: NodeJS.Platform, url: string): readonly string[] {
+  switch (platform) {
+    case "win32":
+      return ["cmd", "/c", "start", "", url];
+    case "darwin":
+      return ["open", url];
+    default:
+      return ["xdg-open", url];
+  }
+}
+
+type BrowserLauncher = (command: readonly string[]) => void;
+
+/** Cross-platform "open URL in default browser". */
+export function openBrowser(url: string, launch?: BrowserLauncher): void {
   if (process.env.BG_NO_OPEN === "1") return;
 
   try {
-    if (process.platform === "win32") {
-      // `start` is a cmd built-in; the empty "" is the window title arg
-      Bun.spawn(["cmd", "/c", "start", "", url], {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-    } else if (process.platform === "darwin") {
-      Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
-    } else {
-      Bun.spawn(["xdg-open", url], { stdout: "ignore", stderr: "ignore" });
-    }
+    const command = browserOpenCommand(process.platform, url);
+    if (launch !== undefined) launch(command);
+    else Bun.spawn([...command], { stdout: "ignore", stderr: "ignore" });
   } catch (err) {
     console.warn("[burnguard] could not auto-open browser:", err);
   }
