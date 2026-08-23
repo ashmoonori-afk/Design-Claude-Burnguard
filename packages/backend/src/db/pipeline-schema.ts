@@ -28,11 +28,22 @@ export const designSystemReceiptsTable = sqliteTable(
     provenanceJson: text("provenance_json").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    operation: text("operation", { enum: ["content", "duplicate", "derive", "trash", "restore", "purge"] }).notNull().default("content"),
+    parentSystemId: text("parent_system_id"),
+    parentReceiptId: text("parent_receipt_id"),
+    parentDigest: text("parent_digest"),
+    reason: text("reason"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    sourcePath: text("source_path"),
+    destinationPath: text("destination_path"),
   },
   (table) => [
     check("ck_design_system_receipts_status", sql`${table.status} IN ('prepared','committed','recovering','failed')`),
+    check("ck_design_system_receipts_operation", sql`${table.operation} IN ('content','duplicate','derive','trash','restore','purge')`),
     unique().on(table.designSystemId, table.contentRevision),
     index("idx_design_system_receipts_system").on(table.designSystemId, desc(table.contentRevision)),
+    index("idx_design_system_receipt_operation").on(table.designSystemId, table.operation, table.createdAt),
+    uniqueIndex("uq_design_system_nonterminal_receipt").on(table.designSystemId).where(sql`${table.operation} != 'content' AND ${table.status} IN ('prepared','recovering')`),
   ],
 );
 

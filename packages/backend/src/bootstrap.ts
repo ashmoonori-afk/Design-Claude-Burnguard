@@ -5,7 +5,7 @@ import {
   bundledDesignSystemId,
   bundledDesignSystems,
 } from "./data/bundled-design-systems";
-import { getDb } from "./db/client";
+import { getDb, getSqlite } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import { reconcilePipelineRows } from "./db/pipeline-repository";
 import { seedCoreData } from "./db/seed";
@@ -22,6 +22,7 @@ import {
 } from "./lib/paths";
 import { pruneOldExports } from "./services/export-gc";
 import { reconcileExtractionState } from "./services/extraction-recovery";
+import { reconcileCatalogState } from "./services/catalog-lifecycle";
 import { ensureAllProjectWatchers } from "./services/watchers";
 
 async function exists(target: string): Promise<boolean> {
@@ -102,6 +103,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await seedCoreData();
   await seedTutorialsOnce();
   reconcilePipelineRows(getDb());
+  await reconcileCatalogState(getSqlite(), systemsDir);
   await reconcileExtractionState();
   await ensureAllProjectWatchers();
   // Best-effort export GC — never block startup on it.

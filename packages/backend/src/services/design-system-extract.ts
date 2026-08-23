@@ -364,7 +364,7 @@ async function persistCanonicalExtraction(
       signal: input.signal,
     });
     throwIfAcquisitionAborted(input.signal);
-    await validateExtractionBundle(reservation, input.signal);
+    const validation = await validateExtractionBundle(reservation, input.signal);
     const systemDir = reservation.destinationDir;
     const created = await createDesignSystemRecord({
       id: reservation.id,
@@ -388,12 +388,12 @@ async function persistCanonicalExtraction(
       contentRevision: 1,
       schemaVersion: written.provenance.schema_version,
       digest: written.provenance.content_digest,
-      manifest: { files: written.generatedFiles, publication_state: "validated" },
+      manifest: validation.manifest,
       provenance: written.provenance,
       createdAt: Date.now(),
     });
     throwIfAcquisitionAborted(input.signal);
-    await publishExtractionBundle(reservation, input.signal);
+    await publishExtractionBundle(reservation, input.signal, validation.manifest);
     if (
       process.env.BG_EXTRACTION_FAULT === "after_publish" ||
       process.env.BG_EXTRACTION_FAULT_AFTER_PUBLISH_ID === reservation.id

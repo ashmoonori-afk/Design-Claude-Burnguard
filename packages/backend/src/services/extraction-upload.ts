@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { AcquisitionLimitError, DEFAULT_ACQUISITION_LIMITS, MAX_PARSED_ITEMS, throwIfAcquisitionAborted, type AcquisitionLimits } from "./extraction-acquisition";
 import { DesignSystemExtractError } from "./extraction-errors";
+import { inferUploadKind, type SupportedUploadKind } from "./upload-kind";
+
+export { inferUploadKind };
 
 const MAX_UPLOAD_UI_KIT_PAGES = 8;
 
-export type SupportedUploadKind = "pdf" | "pptx";
+export type { SupportedUploadKind } from "./upload-kind";
 export type UploadManifestPage = {
   readonly index: number;
   readonly title: string;
@@ -64,16 +66,6 @@ export async function readBoundedUpload(
     reader.releaseLock();
   }
   return Buffer.concat(chunks);
-}
-
-export function inferUploadKind(fileName: string, contentType?: string | null): SupportedUploadKind | null {
-  const extension = path.extname(fileName).toLowerCase();
-  if (extension === ".pdf") return "pdf";
-  if (extension === ".pptx") return "pptx";
-  const normalized = (contentType ?? "").toLowerCase();
-  if (normalized.includes("application/pdf")) return "pdf";
-  if (normalized.includes("application/vnd.openxmlformats-officedocument.presentationml.presentation")) return "pptx";
-  return null;
 }
 
 export async function readUploadManifest(manifestPath: string, signal?: AbortSignal): Promise<UploadManifest> {

@@ -1,4 +1,6 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { watch } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -10,23 +12,27 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runMigrations } from "../src/db/migrate";
-import { getSqlite } from "../src/db/client";
+import { runMigrations, runMigrationsFrom } from "../src/db/migrate";
+import { getSqlite } from "../src/db/sqlite-client";
 import { exportsDir, projectsDir, systemsDir } from "../src/lib/paths";
 import { PathBoundaryError } from "../src/security/path-boundary";
 import { createApp } from "../src/server";
-import { saveSessionAttachments } from "../src/services/attachments";
+import { attachmentExtractedTextPath, attachmentSummaryPath, saveSessionAttachments } from "../src/services/attachments";
 import {
   indexProjectFiles,
   resolveDrawFile,
   resolveProjectFile,
-} from "../src/services/files";
+} from "../src/services/managed-project-files";
 import {
   __resetFilePatchUndoStoreForTests,
   FilePatchError,
+  getFileUndoState,
+  parseInlineStyle,
   patchHtmlNode,
+  serializeInlineStyle,
   undoLastFilePatch,
 } from "../src/services/file-patch";
+import { closeProjectWatcher, pendingProjectEmit, pendingProjectReindex, projectSessionIds, projectWatchers } from "../src/services/watcher-registry";
 
 const tempDirs: string[] = [];
 const projectIds: string[] = [];
@@ -142,6 +148,21 @@ afterEach(async () => {
   }
 });
 
+describe("focused migration execution", () => {
+  test("applies a pending migration transaction and records it once", async () => {
+    const directory = await temp("bg04-migration-");
+    await writeFile(path.join(directory, "0001_test.sql"), "CREATE TABLE focused_gate(id TEXT PRIMARY KEY);", "utf8");
+    const db = new Database(":memory:");
+
+    await runMigrationsFrom(db, directory);
+    await runMigrationsFrom(db, directory);
+
+    expect(db.query("SELECT id FROM schema_migrations").all()).toEqual([{ id: "0001_test.sql" }]);
+    expect(db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='focused_gate'").get()).toEqual({ name: "focused_gate" });
+    db.close();
+  });
+});
+
 describe("project file and draw services", () => {
   test("reject traversal, backslash traversal, absolute paths, and junction escapes", async () => {
     const root = await temp("bg04-project-");
@@ -180,15 +201,47 @@ describe("project file and draw services", () => {
     const outside = await temp("bg04-index-outside-");
     await writeFile(path.join(outside, "secret.txt"), "secret", "utf8");
     await makeDirLink(outside, path.join(root, "linked"));
+    await mkdir(path.join(root, "nested"));
+    await Promise.all([
+      writeFile(path.join(root, "index.html"), "<p/>", "utf8"),
+      writeFile(path.join(root, "style.css"), ":root{}", "utf8"),
+      writeFile(path.join(root, "script.ts"), "export {};", "utf8"),
+      writeFile(path.join(root, "readme.md"), "# readme", "utf8"),
+      writeFile(path.join(root, "image.png"), "png", "utf8"),
+      writeFile(path.join(root, "other.bin"), "bin", "utf8"),
+      writeFile(path.join(root, ".page.1.2.tmp"), "temp", "utf8"),
+    ]);
     const projectId = insertProject(root);
 
     const files = await indexProjectFiles(projectId);
     expect(files?.some((file) => file.rel_path.startsWith("linked"))).toBe(false);
+    expect(files?.map((file) => file.category)).toEqual(["asset", "html", "folder", "other", "document", "script", "stylesheet"]);
   });
 });
 
 describe("file patch service", () => {
   const html = '<h1 data-bg-node-id="title">outside</h1>';
+
+  test("commits and exactly undoes a valid managed HTML patch", async () => {
+    const root = await temp("bg04-patch-valid-");
+    await writeFile(path.join(root, "page.html"), html, "utf8");
+    const projectId = insertProject(root);
+
+    const patched = await patchHtmlNode(projectId, "page.html", { node_bg_id: "title", text: "inside" });
+    const undone = await undoLastFilePatch(projectId, "page.html");
+
+    expect(patched.updatedAt).toBeGreaterThan(0);
+    expect(undone).not.toBeNull();
+    expect(await readFile(path.join(root, "page.html"), "utf8")).toBe(html);
+  });
+
+  test("parses nested inline styles and reports empty undo state deterministically", () => {
+    const styles = parseInlineStyle("background: linear-gradient(red, blue); font-family: 'A; B'; color: var(--x, red)");
+
+    expect(styles).toEqual({ background: "linear-gradient(red, blue)", "font-family": "'A; B'", color: "var(--x, red)" });
+    expect(serializeInlineStyle(styles)).toBe("background: linear-gradient(red, blue); font-family: 'A; B'; color: var(--x, red)");
+    expect(getFileUndoState("missing", "page.html")).toEqual({ can_undo: false, stored_at: null });
+  });
 
   test("does not patch HTML through a junction outside the project", async () => {
     const root = await temp("bg04-patch-project-");
@@ -229,7 +282,80 @@ describe("file patch service", () => {
   });
 });
 
+describe("watcher registry cleanup", () => {
+  test("closes watcher timers emits and session cache for a deleted project", async () => {
+    const root = await temp("bg04-watcher-registry-");
+    const projectId = id("watcher-registry");
+    const watcher = watch(root);
+    projectWatchers.set(projectId, watcher);
+    pendingProjectReindex.set(projectId, setTimeout(() => undefined, 10_000));
+    pendingProjectEmit.set(`${projectId}:index.html`, setTimeout(() => undefined, 10_000));
+    projectSessionIds.set(projectId, "session");
+
+    closeProjectWatcher(projectId);
+
+    expect([projectWatchers.has(projectId), pendingProjectReindex.has(projectId), pendingProjectEmit.has(`${projectId}:index.html`), projectSessionIds.has(projectId)]).toEqual([false, false, false, false]);
+  });
+});
+
 describe("serve and deletion routes", () => {
+  test("serves the built application shell and a real bundled asset through production static routing", async () => {
+    const dist = path.join(import.meta.dir, "..", "..", "frontend", "dist");
+    const assets = (await readdir(path.join(dist, "assets"))).filter((name) => !name.startsWith("."));
+    const asset = assets[0];
+    expect(asset).toBeDefined();
+    if (asset === undefined) return;
+
+    const app = createApp();
+    const shell = await app.request("/");
+    const bundled = await app.request(`/assets/${asset}`);
+
+    expect([shell.status, bundled.status]).toEqual([200, 200]);
+    expect(shell.headers.get("content-type")).toContain("text/html");
+    expect((await bundled.arrayBuffer()).byteLength).toBeGreaterThan(0);
+  });
+
+  test("returns typed missing states from every project registration route", async () => {
+    const missing = id("missing-project");
+    const app = createApp();
+
+    const detail = await app.request(`/api/projects/${missing}`);
+    const session = await app.request(`/api/projects/${missing}/session`);
+    const deletion = await app.request(`/api/projects/${missing}`, { method: "DELETE" });
+
+    expect([detail.status, session.status, deletion.status]).toEqual([404, 404, 404]);
+  });
+
+  test("serves valid project files draws export downloads and project registration through decomposed production routes", async () => {
+    const root = await temp("bg04-valid-project-");
+    await mkdir(path.join(root, ".meta", "draws"), { recursive: true });
+    await writeFile(path.join(root, "index.html"), "<h1>valid</h1>", "utf8");
+    const projectId = insertProject(root);
+    const sessionId = insertSession(projectId);
+    const outputDir = path.join(exportsDir, id("valid-output"));
+    tempDirs.push(outputDir);
+    await mkdir(outputDir, { recursive: true });
+    const output = path.join(outputDir, "valid.zip");
+    await writeFile(output, "archive", "utf8");
+    const exportId = insertExport(projectId, output);
+    const app = createApp();
+
+    const project = await app.request(`/api/projects/${projectId}`);
+    const session = await app.request(`/api/projects/${projectId}/session`);
+    const file = await app.request(`/api/projects/${projectId}/fs/index.html`);
+    const emptyDraw = await app.request(`/api/projects/${projectId}/draws/note`);
+    const savedDraw = await app.request(`/api/projects/${projectId}/draws/note`, { method: "PUT", body: "<svg/>" });
+    const draw = await app.request(`/api/projects/${projectId}/draws/note`);
+    const download = await app.request(`/api/exports/${exportId}/download`);
+
+    expect([project.status, session.status, file.status, emptyDraw.status, savedDraw.status, draw.status, download.status]).toEqual([200, 200, 200, 200, 200, 200, 200]);
+    expect(await file.text()).toBe("<h1>valid</h1>");
+    expect(await emptyDraw.text()).toContain("<svg");
+    expect(await draw.text()).toBe("<svg/>");
+    expect(await download.text()).toBe("archive");
+    expect(sessionId).not.toBe("");
+  });
+
   test("rejects project file and draw junction escapes at HTTP sinks", async () => {
     const root = await temp("bg04-route-project-");
     const outside = await temp("bg04-route-outside-");
@@ -310,6 +436,33 @@ describe("serve and deletion routes", () => {
 });
 
 describe("attachments service", () => {
+  test("rejects missing sessions and attachment-count overflow before writing bytes", async () => {
+    const root = await temp("bg04-attachment-limits-");
+    const projectId = insertProject(root);
+    const sessionId = insertSession(projectId);
+    const files = Array.from({ length: 9 }, (_, index) => new File(["x"], `note-${index}.txt`, { type: "text/plain" }));
+
+    const oversized = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.bin");
+    await expect(saveSessionAttachments("missing-session", [files[0] ?? new File([], "missing")])).rejects.toThrow("session_not_found");
+    await expect(saveSessionAttachments(sessionId, files)).rejects.toThrow("attachment_limit_exceeded");
+    await expect(saveSessionAttachments(sessionId, [oversized])).rejects.toThrow("attachment_too_large");
+    expect(attachmentSummaryPath("file")).toBe("file.summary.json");
+    expect(attachmentExtractedTextPath("file")).toBe("file.extracted.md");
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  test("stores a bounded ordinary attachment through the focused attachment boundary", async () => {
+    const root = await temp("bg04-attachment-valid-");
+    const projectId = insertProject(root);
+    const sessionId = insertSession(projectId);
+
+    const records = await saveSessionAttachments(sessionId, [new File(["content"], "note.txt", { type: "text/plain" })]);
+
+    expect(records).toHaveLength(1);
+    expect(await readFile(records[0] ?? "", "utf8")).toBe("content");
+    expect(getSqlite().query("SELECT original_name,size_bytes FROM attachments WHERE session_id=?").get(sessionId)).toEqual({ original_name: "note.txt", size_bytes: 7 });
+  });
+
   test("rejects a symlinked .attachments directory before writing any upload", async () => {
     const root = await temp("bg04-attachment-project-");
     const outside = await temp("bg04-attachment-outside-");

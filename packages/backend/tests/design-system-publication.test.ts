@@ -3,6 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  CanonicalTreeManifestError, inspectCanonicalTree, parseCanonicalTreeManifest, validateCanonicalTree,
+} from "../src/services/canonical-tree-manifest";
+import {
   ExtractionPublicationError,
   completeExtractionPublication,
   publishExtractionBundle,
@@ -169,6 +172,40 @@ describe("extraction crash classification", () => {
 });
 
 describe("safe extraction publication", () => {
+  test("Given canonical bytes When a tree manifest is parsed and validated Then exact paths sizes hashes and aggregate digest agree", async () => {
+    const systemsRoot = await root();
+    const reservation = await reserveExtractionBundle(systemsRoot, "manifest");
+    await writeValidBundle(reservation);
+    const manifest = await inspectCanonicalTree(reservation.stagingDir);
+
+    const parsed = parseCanonicalTreeManifest(JSON.parse(JSON.stringify(manifest)));
+    const validated = await validateCanonicalTree(reservation.stagingDir, parsed);
+
+    expect(validated).toEqual(manifest);
+    expect(manifest.files.every((entry) => entry.path.length > 0 && entry.size >= 0 && /^[0-9a-f]{64}$/.test(entry.sha256))).toBe(true);
+  });
+
+  test("Given legacy duplicate or inconsistent manifest entries When parsed Then lifecycle trust is rejected", () => {
+    const entry = { path: "README.md", size: 1, sha256: "0".repeat(64) };
+    const invalid = [
+      { files: ["README.md"] },
+      { schema_version: 1, digest_algorithm: "sha256", tree_digest: "0".repeat(64), files: [entry, entry], publication_state: "validated" },
+      { schema_version: 1, digest_algorithm: "sha256", tree_digest: "0".repeat(64), files: [{ ...entry, path: "../README.md" }], publication_state: "validated" },
+    ];
+
+    for (const manifest of invalid) expect(() => parseCanonicalTreeManifest(manifest)).toThrow(CanonicalTreeManifestError);
+  });
+
+  test("Given a manifest-listed file changes When its tree is validated Then byte identity fails", async () => {
+    const systemsRoot = await root();
+    const reservation = await reserveExtractionBundle(systemsRoot, "changed");
+    await writeValidBundle(reservation);
+    const manifest = await inspectCanonicalTree(reservation.stagingDir);
+    await writeFile(path.join(reservation.stagingDir, "README.md"), "changed\n");
+
+    await expect(validateCanonicalTree(reservation.stagingDir, manifest)).rejects.toMatchObject({ code: "tree_mismatch" });
+  });
+
   test("Given two same-ID requests When both reserve publication Then exactly one can own the ID", async () => {
     // Given
     const systemsRoot = await root();

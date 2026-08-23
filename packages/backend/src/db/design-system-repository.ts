@@ -33,7 +33,7 @@ type Receipt = {
 type PipelineDatabase = ReturnType<typeof drizzle>;
 
 export function updateDesignSystemMetadata(db: PipelineDatabase, input: MetadataUpdate) {
-  const tags = [...new Set(input.tags.map((tag) => tag.normalize("NFC").trim()).filter(Boolean))].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const tags = [...new Set(input.tags.map((tag) => tag.normalize("NFC").trim().toLowerCase()).filter(Boolean))].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
   return db.transaction((tx) => {
     tx.run(sql`UPDATE design_systems SET name=${input.name}, description=${input.description}, metadata_revision=${input.expectedRevision + 1}, updated_at=${input.updatedAt} WHERE id=${input.id} AND metadata_revision=${input.expectedRevision}`);
     const changed = tx.get<readonly [number]>(sql`SELECT changes()`);
@@ -91,6 +91,7 @@ export function getDesignSystemReceiptById(db: PipelineDatabase, id: string): Re
   const row = db.select().from(designSystemReceiptsTable).where(and(
     eq(designSystemReceiptsTable.id, id),
     eq(designSystemReceiptsTable.status, "committed"),
+    eq(designSystemReceiptsTable.operation, "content"),
   )).limit(1).all()[0];
   return row === undefined ? null : parseReceipt(row);
 }
@@ -102,7 +103,7 @@ export function getDesignSystemPipeline(db: PipelineDatabase, id: string): { rea
   if (tags.some((tag) => tag.length === 0 || tag.trim() !== tag || tag.normalize("NFC") !== tag)) {
     throw new PipelineRepositoryError("corrupt_tag", id);
   }
-  const row = db.select().from(designSystemReceiptsTable).where(eq(designSystemReceiptsTable.designSystemId, id)).orderBy(desc(designSystemReceiptsTable.contentRevision)).limit(1).all()[0];
+  const row = db.select().from(designSystemReceiptsTable).where(and(eq(designSystemReceiptsTable.designSystemId, id), eq(designSystemReceiptsTable.operation, "content"))).orderBy(desc(designSystemReceiptsTable.contentRevision)).limit(1).all()[0];
   return { metadataRevision: system[0], tags, receipt: row === undefined ? null : parseReceipt(row) };
 }
 

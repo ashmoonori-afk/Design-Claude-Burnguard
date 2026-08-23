@@ -3,16 +3,9 @@ import { lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "no
 import path from "node:path";
 import { PathBoundaryError, resolveWithin } from "../security/path-boundary";
 import { AcquisitionLimitError, DEFAULT_ACQUISITION_LIMITS, throwIfAcquisitionAborted, type AcquisitionLimits } from "./extraction-acquisition";
-import { digestStableProvenance } from "./extraction-provenance";
 import { assertInertSourceMarkup, assertSafeBundleRelativePath } from "./extraction-safety";
-
-const CANONICAL_FILES = [
-  "README.md",
-  "SKILL.md",
-  "colors_and_type.css",
-  "fonts/fonts.css",
-  "extraction-provenance.json",
-] as const;
+import { inspectCanonicalTree, validateCanonicalTree, type CanonicalTreeManifest } from "./canonical-tree-manifest";
+import { CANONICAL_EXTRACTION_FILES, readValidatedExtractionSidecar, type ValidatedExtractionSidecar } from "./extraction-sidecar";
 
 export class ExtractionPublicationError extends Error {
   readonly name = "ExtractionPublicationError";
@@ -60,19 +53,14 @@ export async function reserveExtractionBundle(root: string, id: string): Promise
   return { id, root, stagingDir, destinationDir, reservationDir, publicationToken };
 }
 
-type ValidatedSidecar = {
-  readonly content_digest: string;
-  readonly content: { readonly entries: readonly unknown[] };
-};
-
 export async function validateExtractionBundle(
   reservation: ExtractionReservation,
   signal?: AbortSignal,
   limits: AcquisitionLimits = DEFAULT_ACQUISITION_LIMITS,
-): Promise<ValidatedSidecar> {
+): Promise<ValidatedExtractionSidecar & { readonly manifest: CanonicalTreeManifest }> {
   let units = 0;
   let bytes = 0;
-  for (const relativePath of CANONICAL_FILES) {
+  for (const relativePath of CANONICAL_EXTRACTION_FILES) {
     throwIfAcquisitionAborted(signal);
     units += 1;
     const target = resolveWithin(reservation.stagingDir, ...relativePath.split("/"));
@@ -104,22 +92,33 @@ export async function validateExtractionBundle(
       assertInertSourceMarkup(await readFile(file, "utf8"), extension === ".svg" ? "svg" : "html");
     }
   }
-  const sidecar = parseSidecar(await readFile(path.join(reservation.stagingDir, "extraction-provenance.json"), "utf8"));
-  if (sidecar.content_digest !== digestStableProvenance(sidecar.content)) {
-    throw new ExtractionPublicationError("invalid_bundle", "Extraction provenance digest mismatch");
+  try {
+    const [sidecar, manifest] = await Promise.all([
+      readValidatedExtractionSidecar(reservation.stagingDir),
+      inspectCanonicalTree(reservation.stagingDir, { files: limits.publicationUnits, bytes: limits.publicationBytes }),
+    ]);
+    return { ...sidecar, manifest };
+  } catch (error) {
+    if (error instanceof Error) throw new ExtractionPublicationError("invalid_bundle", error.message, { cause: error });
+    throw error;
   }
-  return sidecar;
 }
 
-export async function publishExtractionBundle(reservation: ExtractionReservation, signal?: AbortSignal): Promise<void> {
+export async function publishExtractionBundle(
+  reservation: ExtractionReservation,
+  signal?: AbortSignal,
+  expectedManifest?: CanonicalTreeManifest,
+): Promise<void> {
   throwIfAcquisitionAborted(signal);
+  const manifest = expectedManifest ?? await inspectCanonicalTree(reservation.stagingDir);
   if (await pathExists(reservation.destinationDir)) {
     throw new ExtractionPublicationError("system_id_conflict", "Design system destination already exists");
   }
   try {
     await rename(reservation.stagingDir, reservation.destinationDir);
+    await validateCanonicalTree(reservation.destinationDir, manifest);
   } catch (error) {
-    throw new ExtractionPublicationError("publication_failed", "Could not atomically publish extraction bundle", { cause: error });
+    throw new ExtractionPublicationError("publication_failed", "Could not atomically publish a verified extraction bundle", { cause: error });
   }
 }
 
@@ -171,27 +170,6 @@ async function listBundleFiles(root: string, limits: AcquisitionLimits): Promise
   };
   await visit(root);
   return files.sort();
-}
-
-function parseSidecar(raw: string): ValidatedSidecar {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    if (error instanceof SyntaxError) throw new ExtractionPublicationError("invalid_bundle", "Extraction provenance is not JSON");
-    throw error;
-  }
-  if (!isRecord(parsed) || parsed.schema_version !== 1 || parsed.digest_algorithm !== "sha256" || typeof parsed.content_digest !== "string" || !isRecord(parsed.content) || !Array.isArray(parsed.content.entries) || typeof parsed.generated_at !== "number") {
-    throw new ExtractionPublicationError("invalid_bundle", "Extraction provenance has an invalid shape");
-  }
-  return {
-    content_digest: parsed.content_digest,
-    content: { entries: parsed.content.entries },
-  };
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isFileSystemError(error: unknown, code: string): error is NodeJS.ErrnoException {

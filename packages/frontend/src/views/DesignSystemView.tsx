@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DesignSystemColorToken, DesignSystemDetail } from "@bg/shared";
+import type { CatalogDesignSystemDetail, DesignSystemColorToken, DesignSystemDetail } from "@bg/shared";
 import { AlertTriangle, Pencil, Plus, Upload } from "lucide-react";
 import { useParams } from "react-router-dom";
 import {
-  getDesignSystem,
   getDesignSystemTokens,
-  updateDesignSystem,
   uploadDesignSystemFont,
   upsertDesignSystemColor,
 } from "@/api/design-system";
+import { catalogDetailRows, getDesignSystem, updateDesignSystemWithConflictReload } from "@/api/design-system-metadata";
 import SystemPreviewGrid from "@/components/systems/SystemPreviewGrid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,7 @@ export default function DesignSystemView({
   const id = systemIdOverride ?? paramId;
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
-  const [system, setSystem] = useState<DesignSystemDetail | null>(null);
+  const [system, setSystem] = useState<CatalogDesignSystemDetail | null>(null);
   const [extractionNotes, setExtractionNotes] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
@@ -52,16 +51,31 @@ export default function DesignSystemView({
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!id) throw new Error("missing id");
+      if (!system) throw new Error("missing system");
       const trimmedName = draftName.trim();
       if (!trimmedName) throw new Error("Name cannot be empty.");
-      return await updateDesignSystem(id, {
+      return await updateDesignSystemWithConflictReload(id, {
+        expected_revision: system.metadata_revision,
         name: trimmedName,
         description: draftDescription.trim() ? draftDescription.trim() : null,
         status: draftStatus,
+        tags: system.tags,
       });
     },
-    onSuccess: async (updated) => {
-      setSystem(updated);
+    onSuccess: async (result) => {
+      if (result.kind === "conflict") {
+        setSystem(result.current);
+        setDraftName(result.current.name);
+        setDraftDescription(result.current.description ?? "");
+        setDraftStatus(result.current.status);
+        pushToast({
+          title: "Design system changed elsewhere",
+          body: "Current metadata was reloaded. Review and save again.",
+          tone: "error",
+        });
+        return;
+      }
+      setSystem(result.system);
       setEditing(false);
       pushToast({ title: "Design system updated", tone: "success" });
       await queryClient.invalidateQueries({ queryKey: ["design-systems"] });
@@ -305,18 +319,7 @@ export default function DesignSystemView({
           ) : null}
 
           <dl className="mt-8 grid gap-4 text-sm md:grid-cols-2">
-            <InfoRow label="Status" value={system.status} />
-            <InfoRow
-              label="Template"
-              value={system.is_template ? "Yes" : "No"}
-            />
-            <InfoRow label="Source" value={system.source_type ?? "manual"} />
-            <InfoRow label="Directory" value={system.dir_path} />
-            <InfoRow label="SKILL.md" value={system.skill_md_path ?? "None"} />
-            <InfoRow
-              label="Tokens CSS"
-              value={system.tokens_css_path ?? "None"}
-            />
+            {catalogDetailRows(system).map((row) => <InfoRow key={row.label} label={row.label} value={row.value} />)}
           </dl>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">

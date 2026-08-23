@@ -46,6 +46,6 @@ export async function runMigrationsFrom(
 }
 
 export async function runMigrations(): Promise<void> {
-  const { getSqlite } = await import("./client");
+  const { getSqlite } = await import("./sqlite-client");
   await runMigrationsFrom(getSqlite(), path.join(import.meta.dir, "migrations"));
 }

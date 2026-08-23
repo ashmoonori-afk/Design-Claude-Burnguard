@@ -1,16 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
-import { APP_NAME } from "@bg/shared";
-import { healthRoutes } from "./routes/health";
-import { artifactRoutes } from "./routes/artifacts";
-import { commentRoutes } from "./routes/comments";
-import { homeRoutes } from "./routes/home";
-import { projectRoutes } from "./routes/project";
-import { runtimeRoutes } from "./routes/runtime";
-import { sessionRoutes } from "./routes/session";
-import { settingsRoutes } from "./routes/settings";
-import { systemRoutes } from "./routes/system";
+import { APP_NAME } from "@bg/shared/app";
 import { resolveRepoRoot } from "./lib/paths";
 import {
   createRequestAuthority,
@@ -24,15 +15,7 @@ export function createApp(authority?: RequestAuthorityOptions): Hono {
     app.use("/api/*", createRequestAuthority(authority));
   }
 
-  app.route("/", healthRoutes);
-  app.route("/", artifactRoutes);
-  app.route("/", commentRoutes);
-  app.route("/", homeRoutes);
-  app.route("/", projectRoutes);
-  app.route("/", runtimeRoutes);
-  app.route("/", sessionRoutes);
-  app.route("/", settingsRoutes);
-  app.route("/", systemRoutes);
+  app.all("/api/*", async (c) => apiRoutes(classifyApiRoute(c.req.path, c.req.method)).then((routes) => routes.fetch(c.req.raw)));
 
   app.get("/assets/*", async (c) => {
     const distDir = findFrontendDistDir();
@@ -145,6 +128,44 @@ export function createApp(authority?: RequestAuthorityOptions): Hono {
   });
 
   return app;
+}
+
+export type ApiRouteDomain = "health" | "catalog" | "system" | "managed-files" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
+
+export function classifyApiRoute(pathname: string, method: string): ApiRouteDomain {
+  if (pathname === "/api/health") return "health";
+  if (pathname.startsWith("/api/design-systems")) {
+    return /\/(?:extract|upload|tokens|colors|fonts)(?:\/|$)/.test(pathname) ? "system" : "catalog";
+  }
+  if (/^\/api\/exports\/[^/]+\/download$/.test(pathname)) return "managed-files";
+  if (pathname.startsWith("/api/exports")) return "artifacts";
+  if (pathname.startsWith("/api/comments") || /\/comments(?:\/|$)/.test(pathname)) return "comments";
+  if (pathname.startsWith("/api/sessions")) return "session";
+  if (pathname.startsWith("/api/runtime")) return "runtime";
+  if (pathname.startsWith("/api/settings") || pathname.startsWith("/api/backends") || pathname.startsWith("/api/home") || pathname === "/api/projects") return "home";
+  if (pathname.startsWith("/api/projects")) {
+    if (/\/draws(?:\/|$)/.test(pathname) && (method === "GET" || method === "PUT")) return "managed-files";
+    if (/\/fs(?:\/|$)/.test(pathname) && method === "GET" && !pathname.endsWith("/undo-info")) return "managed-files";
+    if (/\/(?:fs|files|artifacts|refresh|exports)(?:\/|$)/.test(pathname)) return "artifacts";
+    return "project";
+  }
+  return "not-found";
+}
+
+async function apiRoutes(domain: ApiRouteDomain): Promise<Hono> {
+  switch (domain) {
+    case "health": return (await import("./routes/health")).healthRoutes;
+    case "catalog": return (await import("./routes/catalog")).catalogRoutes;
+    case "system": return (await import("./routes/system")).systemRoutes;
+    case "managed-files": return (await import("./routes/managed-files")).managedFileRoutes;
+    case "artifacts": return (await import("./routes/artifacts")).artifactRoutes;
+    case "comments": return (await import("./routes/comments")).commentRoutes;
+    case "session": return (await import("./routes/session")).sessionRoutes;
+    case "runtime": return (await import("./routes/runtime")).runtimeRoutes;
+    case "home": return (await import("./routes/home")).homeRoutes;
+    case "project": return (await import("./routes/project")).projectRoutes;
+    case "not-found": return new Hono();
+  }
 }
 
 function findFrontendDistDir() {

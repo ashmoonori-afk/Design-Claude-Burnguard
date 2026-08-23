@@ -5,6 +5,7 @@ import { getDb, getSqlite } from "../../src/db/client";
 import { runMigrations } from "../../src/db/migrate";
 import { reconcilePipelineRows } from "../../src/db/pipeline-repository";
 import { systemsDir } from "../../src/lib/paths";
+import { inspectCanonicalTree } from "../../src/services/canonical-tree-manifest";
 import { buildExtractionProvenance } from "../../src/services/extraction-provenance";
 import { reconcileExtractionState } from "../../src/services/extraction-recovery";
 
@@ -46,8 +47,9 @@ insertSystem.run("legacy-valid", "Legacy", "draft", "website", legacyDir, now, n
 insertSystem.run("orphan-row", "Orphan", "draft", "website", path.join(systemsDir, "orphan-row"), now, now);
 insertSystem.run("committed-marker", "Committed", "draft", "website", committedDir, now, now);
 insertSystem.run("outside-row", "Outside", "draft", "website", outsideDir, now, now);
+const manifest = await inspectCanonicalTree(committedDir);
 sqlite.prepare("INSERT INTO design_system_receipts (id,design_system_id,status,content_revision,schema_version,digest,manifest_json,provenance_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-  .run("receipt-committed", "committed-marker", "committed", 1, 1, provenance.content_digest, "{}", JSON.stringify(provenance), now, now);
+  .run("receipt-committed", "committed-marker", "committed", 1, 1, provenance.content_digest, JSON.stringify(manifest), JSON.stringify(provenance), now, now);
 const before = sqlite.query("SELECT id FROM design_systems WHERE id IN ('legacy-valid','orphan-row','committed-marker','outside-row') ORDER BY id").all();
 reconcilePipelineRows(getDb(), 2);
 const recovery = await reconcileExtractionState(3);

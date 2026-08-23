@@ -1,7 +1,7 @@
 import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "node-html-parser";
-import { resolveProjectFile } from "./files";
+import { resolveProjectFile } from "./managed-project-files";
 
 export class FilePatchError extends Error {
   readonly code:

@@ -12,13 +12,15 @@ import {
 } from "./file-change-broker";
 import { indexProjectFiles, isTransientFilePath } from "./files";
 import { appendSessionTrace } from "./trace";
+import {
+  RESERVED_PROJECT_WATCHER,
+  pendingProjectEmit as pendingEmit,
+  pendingProjectReindex as pendingReindex,
+  projectSessionIds as sessionIdCache,
+  projectWatchers as watchers,
+} from "./watcher-registry";
 
 const IGNORED_TOP_LEVEL = new Set([".meta", ".attachments"]);
-
-const watchers = new Map<string, FSWatcher>();
-const pendingReindex = new Map<string, Timer>();
-const pendingEmit = new Map<string, Timer>();
-const sessionIdCache = new Map<string, string>();
 
 type ErrorAwareWatcher = FSWatcher & {
   on(event: "error", listener: (error: Error) => void): ErrorAwareWatcher;
@@ -38,7 +40,7 @@ export async function ensureProjectWatcher(projectId: string) {
   // ensureProjectWatcher calls can't both see has()===false and create
   // duplicate watchers (audit fix). The placeholder is swapped for the
   // real watcher below; on failure we delete it so a retry can run.
-  watchers.set(projectId, RESERVED_WATCHER);
+  watchers.set(projectId, RESERVED_PROJECT_WATCHER);
 
   let watcher: ErrorAwareWatcher;
   try {
@@ -75,44 +77,6 @@ export async function ensureProjectWatcher(projectId: string) {
   });
 
   watchers.set(projectId, watcher);
-}
-
-const RESERVED_WATCHER = Symbol("bg-reserved-watcher") as unknown as FSWatcher;
-
-/**
- * Stops the FS watcher for a project and clears any pending debounce
- * timers + cache entries. Called from the project DELETE route so a
- * deleted project doesn't leak a watcher onto a directory the host
- * process can no longer reach. Safe to call when no watcher exists.
- */
-export function closeProjectWatcher(projectId: string): void {
-  const watcher = watchers.get(projectId);
-  if (watcher && watcher !== RESERVED_WATCHER) {
-    try {
-      watcher.close();
-    } catch {
-      // Already closed — nothing to do.
-    }
-  }
-  watchers.delete(projectId);
-
-  const reindexTimer = pendingReindex.get(projectId);
-  if (reindexTimer) {
-    clearTimeout(reindexTimer);
-    pendingReindex.delete(projectId);
-  }
-
-  // pendingEmit is keyed by `${projectId}:${relPath}` — sweep all
-  // entries that match the deleted project.
-  const prefix = `${projectId}:`;
-  for (const [key, timer] of pendingEmit) {
-    if (key.startsWith(prefix)) {
-      clearTimeout(timer);
-      pendingEmit.delete(key);
-    }
-  }
-
-  sessionIdCache.delete(projectId);
 }
 
 export async function ensureAllProjectWatchers() {

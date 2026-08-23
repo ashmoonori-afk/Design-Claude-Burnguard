@@ -46,7 +46,7 @@ type ExpectedParity = {
 
 const parityTables: readonly ExpectedParity[] = [
   { table: designSystemTagsTable, checks: [], defaults: {}, namedIndexes: [], primaryKey: ["design_system_id", "tag"], unique: [["design_system_id", "ordinal"]] },
-  { table: designSystemReceiptsTable, checks: ["status in ('prepared','committed','recovering','failed')"], defaults: { status: "prepared" }, namedIndexes: ["idx_design_system_receipts_system"], primaryKey: ["id"], unique: [["design_system_id", "content_revision"]] },
+  { table: designSystemReceiptsTable, checks: ["status in ('prepared','committed','recovering','failed')", "operation in ('content','duplicate','derive','trash','restore','purge')"], defaults: { status: "prepared", operation: "content", metadata_json: "{}" }, namedIndexes: ["idx_design_system_receipt_operation", "idx_design_system_receipts_system", "uq_design_system_nonterminal_receipt"], primaryKey: ["id"], unique: [["design_system_id", "content_revision"]] },
   { table: learningItemsTable, checks: ["kind in ('lesson','example','skill-card')"], defaults: {}, namedIndexes: ["idx_learning_items_kind"], primaryKey: ["id"], unique: [] },
   { table: learningProgressTable, checks: ["state in ('not_started','in_progress','completed')"], defaults: { state: "not_started", revision: "0" }, namedIndexes: [], primaryKey: ["item_id"], unique: [] },
   { table: learningCheckpointsTable, checks: [], defaults: {}, namedIndexes: ["idx_learning_checkpoints_item"], primaryKey: ["id"], unique: [] },
@@ -95,6 +95,17 @@ function namedIndexes(db: Database, tableName: string) {
     ]);
     expect(db.query("SELECT COUNT(*) AS count FROM design_system_receipts").get()).toEqual({ count: 0 });
     expect(db.query("SELECT COUNT(*) AS count FROM schema_migrations WHERE id='0005_pipeline_durability.sql'").get()).toEqual({ count: 1 });
+
+    // Given an installation that already recorded 0005
+    await cp(path.join(sourceDir, "0006_catalog.sql"), path.join(directory, "0006_catalog.sql"));
+
+    // When the catalog migration is applied
+    await runMigrationsFrom(db, directory);
+
+    // Then the legacy row gains catalog defaults without content receipt inference
+    expect(db.query("SELECT catalog_kind,catalog_owner,lifecycle,provenance_state,license_state FROM design_systems WHERE id='ds'").get()).toEqual({ catalog_kind: "design-system", catalog_owner: "local", lifecycle: "active", provenance_state: "unknown", license_state: "unknown" });
+    expect(db.query("SELECT COUNT(*) AS count FROM design_system_receipts").get()).toEqual({ count: 0 });
+    expect(db.query("SELECT id FROM schema_migrations WHERE id IN ('0005_pipeline_durability.sql','0006_catalog.sql') ORDER BY id").all()).toEqual([{ id: "0005_pipeline_durability.sql" }, { id: "0006_catalog.sql" }]);
   });
 
   test("Given the full migration When schema is inspected Then exactly three learning tables and one-nonterminal index exist", async () => {
@@ -123,19 +134,31 @@ function namedIndexes(db: Database, tableName: string) {
     }
 
     // When / Then
-    expect(authorityConfigs.flatMap((config) => config.indexes).map((index) => index.config.name).sort()).toEqual(["idx_ds_status", "idx_events_session_time", "idx_events_turn", "idx_events_type", "idx_exports_project", "idx_projects_ds", "idx_projects_updated", "idx_sessions_project", "idx_sessions_status", "uq_events_session_sequence"]);
+    expect(authorityConfigs.flatMap((config) => config.indexes).map((index) => index.config.name).sort()).toEqual(["idx_design_system_catalog", "idx_ds_status", "idx_events_session_time", "idx_events_turn", "idx_events_type", "idx_exports_project", "idx_projects_ds", "idx_projects_updated", "idx_sessions_project", "idx_sessions_status", "uq_events_session_sequence"]);
     for (const authority of [
-      { table: designSystemsTable, alteredColumns: ["metadata_revision"] },
+      { table: designSystemsTable, alteredColumns: ["metadata_revision", "catalog_kind", "catalog_owner", "lifecycle", "provenance_state", "license_state", "trashed_at"] },
       { table: projectsTable, alteredColumns: ["current_revision", "current_digest"] },
       { table: eventsTable, alteredColumns: ["sequence"] },
     ]) {
       const name = getTableName(authority.table);
       const config = getTableConfig(authority.table);
-      const sqliteColumns = db.query<{ readonly name: string; readonly type: string; readonly required: number; readonly defaultValue: string | null }, [string]>("SELECT name,type,\"notnull\" AS required,dflt_value AS defaultValue FROM pragma_table_info(?) ORDER BY cid").all(name).filter((column) => authority.alteredColumns.includes(column.name));
+      const sqliteColumns = db.query<{ readonly name: string; readonly type: string; readonly required: number; readonly defaultValue: string | null }, [string]>("SELECT name,type,\"notnull\" AS required,dflt_value AS defaultValue FROM pragma_table_info(?) ORDER BY cid").all(name).filter((column) => authority.alteredColumns.includes(column.name)).map((column) => ({ ...column, defaultValue: column.defaultValue?.replaceAll("'", "") ?? null }));
       const drizzleColumns = config.columns.filter((column) => authority.alteredColumns.includes(column.name)).map((column) => ({ name: column.name, type: column.getSQLType().toUpperCase(), required: column.notNull ? 1 : 0, defaultValue: column.default === undefined ? null : String(column.default) }));
       const drizzleIndexes = config.indexes.map((index) => ({ name: index.config.name, unique: index.config.unique, partial: index.config.where !== undefined, columns: index.config.columns.map(indexExpression) })).sort((left, right) => left.name.localeCompare(right.name));
       expect(drizzleColumns).toEqual(sqliteColumns);
-      if (name === "events") expect(drizzleIndexes).toEqual(namedIndexes(db, name));
+      if (name === "events" || name === "design_systems") expect(drizzleIndexes).toEqual(namedIndexes(db, name));
+    }
+    const designSystemChecks = normalized(getTableConfig(designSystemsTable).checks.map((item) => dialect.sqlToQuery(item.value).sql).join(" "));
+    const designSystemTableSql = normalized(db.query<{ readonly sql: string }, []>("SELECT sql FROM sqlite_master WHERE type='table' AND name='design_systems'").get()?.sql ?? "");
+    for (const fragment of [
+      "catalog_kind in ('design-system','pattern-library','template')",
+      "catalog_owner = 'local'",
+      "lifecycle in ('active','archived','trashed')",
+      "provenance_state in ('observed','inferred','defaulted','unknown','conflicted')",
+      "license_state in ('verified','declared','unknown','restricted')",
+    ]) {
+      expect(designSystemChecks).toContain(fragment);
+      expect(designSystemTableSql).toContain(`check(${fragment})`);
     }
     for (const expected of parityTables) {
       const name = getTableName(expected.table);

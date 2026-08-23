@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { commitDesignSystemReceipt } from "../db/design-system-repository";
 import { getDb, getSqlite } from "../db/client";
 import { resolveManagedPath, systemsDir } from "../lib/paths";
+import { parseCanonicalTreeManifest, validateCanonicalTree } from "./canonical-tree-manifest";
 import { classifyExtractionRecovery, type ExtractionRecoverySnapshot } from "./extraction-recovery-state";
 import {
   completeExtractionPublication,
@@ -24,16 +25,17 @@ type RecoveringRow = {
   readonly receiptId: string;
   readonly designSystemId: string;
   readonly digest: string;
+  readonly manifestJson: string;
   readonly dirPath: string;
 };
 
 export async function reconcileExtractionState(now = Date.now()): Promise<ExtractionRecoveryReceipt> {
   const rows = getSqlite().query<RecoveringRow, []>(`
     SELECT r.id AS receiptId, r.design_system_id AS designSystemId,
-           r.digest AS digest, d.dir_path AS dirPath
+           r.digest AS digest, r.manifest_json AS manifestJson, d.dir_path AS dirPath
       FROM design_system_receipts r
       JOIN design_systems d ON d.id = r.design_system_id
-     WHERE r.status IN ('prepared','recovering')
+     WHERE r.operation = 'content' AND r.status IN ('prepared','recovering')
      ORDER BY r.design_system_id, r.content_revision
   `).all();
   let committed = 0;
@@ -45,16 +47,18 @@ export async function reconcileExtractionState(now = Date.now()): Promise<Extrac
         throw new ExtractionRecoveryError("noncanonical_destination");
       }
       const reservation = await recoveryReservation(row.designSystemId, destinationDir);
+      const manifest = parseCanonicalTreeManifest(JSON.parse(row.manifestJson));
       const destinationExists = await stat(destinationDir).then((item) => item.isDirectory()).catch(() => false);
       if (!destinationExists) {
         if (reservation.stagingDir === destinationDir) throw new ExtractionRecoveryError("staging_missing");
         const sidecar = await validateExtractionBundle(reservation);
-        if (sidecar.content_digest !== row.digest) throw new ExtractionRecoveryError("digest_mismatch");
-        await publishExtractionBundle(reservation);
+        if (sidecar.content_digest !== row.digest || sidecar.manifest.tree_digest !== manifest.tree_digest) throw new ExtractionRecoveryError("digest_mismatch");
+        await publishExtractionBundle(reservation, undefined, manifest);
       }
       const published = { ...reservation, stagingDir: destinationDir } satisfies ExtractionReservation;
       const sidecar = await validateExtractionBundle(published);
       if (sidecar.content_digest !== row.digest) throw new ExtractionRecoveryError("digest_mismatch");
+      await validateCanonicalTree(destinationDir, manifest);
       commitDesignSystemReceipt(getDb(), { id: row.receiptId, digest: row.digest, updatedAt: now });
       await completeExtractionPublication(reservation);
       committed += 1;
@@ -70,13 +74,14 @@ export async function reconcileExtractionState(now = Date.now()): Promise<Extrac
     readonly receiptId: string | null;
     readonly receiptStatus: ExtractionRecoverySnapshot["receiptStatus"];
     readonly digest: string | null;
+    readonly manifestJson: string | null;
   }, []>(`
     SELECT d.id, d.dir_path AS dirPath, r.id AS receiptId,
-           r.status AS receiptStatus, r.digest
+           r.status AS receiptStatus, r.digest, r.manifest_json AS manifestJson
       FROM design_systems d
       LEFT JOIN design_system_receipts r ON r.id = (
         SELECT latest.id FROM design_system_receipts latest
-         WHERE latest.design_system_id = d.id
+         WHERE latest.design_system_id = d.id AND latest.operation = 'content'
          ORDER BY latest.content_revision DESC LIMIT 1
       )
      WHERE d.source_type IN ('github','website','figma','upload')
@@ -99,12 +104,13 @@ export async function reconcileExtractionState(now = Date.now()): Promise<Extrac
       continue;
     }
     const row = extractionRows.find((item) => item.id === action.id);
-    if (row?.digest === null || row === undefined) throw new ExtractionRecoveryError("committed_digest_missing");
+    if (row?.digest === null || row?.manifestJson === null || row === undefined) throw new ExtractionRecoveryError("committed_digest_missing");
     const destination = resolveManagedPath(systemsDir, row.dirPath);
     const reservation = await recoveryReservation(row.id, destination);
     const published = { ...reservation, stagingDir: destination } satisfies ExtractionReservation;
     const sidecar = await validateExtractionBundle(published);
     if (sidecar.content_digest !== row.digest) throw new ExtractionRecoveryError("digest_mismatch");
+    await validateCanonicalTree(destination, parseCanonicalTreeManifest(JSON.parse(row.manifestJson)));
     await completeExtractionPublication(reservation);
   }
   const cleanup = await reconcileExtractionPublications(systemsDir);

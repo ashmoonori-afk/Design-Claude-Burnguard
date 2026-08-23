@@ -1,4 +1,5 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const designSystemsTable = sqliteTable(
   "design_systems",
@@ -19,8 +20,22 @@ export const designSystemsTable = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
     archivedAt: integer("archived_at"),
     metadataRevision: integer("metadata_revision").notNull().default(0),
+    catalogKind: text("catalog_kind", { enum: ["design-system", "pattern-library", "template"] }).notNull().default("design-system"),
+    catalogOwner: text("catalog_owner", { enum: ["local"] }).notNull().default("local"),
+    lifecycle: text("lifecycle", { enum: ["active", "archived", "trashed"] }).notNull().default("active"),
+    provenanceState: text("provenance_state", { enum: ["observed", "inferred", "defaulted", "unknown", "conflicted"] }).notNull().default("unknown"),
+    licenseState: text("license_state", { enum: ["verified", "declared", "unknown", "restricted"] }).notNull().default("unknown"),
+    trashedAt: integer("trashed_at"),
   },
-  (table) => [index("idx_ds_status").on(table.status)],
+  (table) => [
+    check("ck_design_systems_catalog_kind", sql`${table.catalogKind} IN ('design-system','pattern-library','template')`),
+    check("ck_design_systems_catalog_owner", sql`${table.catalogOwner} = 'local'`),
+    check("ck_design_systems_lifecycle", sql`${table.lifecycle} IN ('active','archived','trashed')`),
+    check("ck_design_systems_provenance_state", sql`${table.provenanceState} IN ('observed','inferred','defaulted','unknown','conflicted')`),
+    check("ck_design_systems_license_state", sql`${table.licenseState} IN ('verified','declared','unknown','restricted')`),
+    index("idx_ds_status").on(table.status),
+    index("idx_design_system_catalog").on(table.lifecycle, table.catalogKind, table.updatedAt, table.id),
+  ],
 );
 
 export const projectsTable = sqliteTable(

@@ -7,6 +7,11 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./app": "./src/app.ts",
+    "./api": "./src/api.ts",
+    "./design-system": "./src/design-system.ts",
+    "./home": "./src/home.ts",
+    "./project": "./src/project.ts",
     "./contract-parser": "./src/contract-parser.ts",
     "./export": "./src/export.ts",
     "./extraction-domain": "./src/extraction-domain.ts",
