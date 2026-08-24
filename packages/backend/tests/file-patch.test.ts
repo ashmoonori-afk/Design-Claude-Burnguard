@@ -1,16 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-  __resetFilePatchUndoStoreForTests,
   applyHtmlNodePatch,
   FilePatchError,
-  getFileUndoState,
   parseInlineStyle,
   serializeInlineStyle,
 } from "../src/services/file-patch";
-
-afterEach(() => {
-  __resetFilePatchUndoStoreForTests();
-});
 
 const FIXTURE = `<!doctype html>
 <html>
@@ -106,6 +100,26 @@ describe("applyHtmlNodePatch", () => {
     });
     expect(out).toContain('data-bg-node-id="hero-title"');
     expect(out).not.toContain("hijacked");
+  });
+
+  test("Given duplicate node IDs When patching Then ambiguous source is rejected", () => {
+    // Given
+    const duplicate = `${FIXTURE}<div data-bg-node-id="hero-title">duplicate</div>`;
+
+    // When / Then
+    expect(() => applyHtmlNodePatch(duplicate, { node_bg_id: "hero-title", text: "x" })).toThrow("ambiguous_node_id");
+  });
+
+  test("Given byte-sensitive surrounding source When patching Then unrelated bytes remain exact", () => {
+    // Given
+    const source = `<!DOCTYPE html>\r\n<!--keep-->\r\n<script>const x = \"<div>\";</script>\r\n<div  class='hero' data-bg-node-id="hero-title">Old</div>\r\n<style>.x::after { content: \"<\"; }</style>\r\n`;
+    const expected = source.replace(">Old</div>", ">New</div>");
+
+    // When
+    const output = applyHtmlNodePatch(source, { node_bg_id: "hero-title", text: "New" });
+
+    // Then
+    expect(output).toBe(expected);
   });
 
   test("throws FilePatchError(node_not_found) when the anchor is missing", () => {
@@ -232,24 +246,5 @@ describe("parseInlineStyle / serializeInlineStyle", () => {
       filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2))",
       margin: "4px",
     });
-  });
-});
-
-// File-level single-step undo store (audit fix #7). The full round-trip
-// (patchHtmlNode → undoLastFilePatch → file content restored) needs a
-// real project on disk + a DB row, so it's exercised manually in the
-// app. These tests pin the public read-only surface so the empty-store
-// contract and the test reset helper never silently regress.
-describe("file undo store", () => {
-  test("getFileUndoState returns can_undo:false on an unseen file", () => {
-    const state = getFileUndoState("project-x", "deck.html");
-    expect(state.can_undo).toBe(false);
-    expect(state.stored_at).toBeNull();
-  });
-
-  test("the test-only reset helper is idempotent", () => {
-    expect(() => __resetFilePatchUndoStoreForTests()).not.toThrow();
-    expect(() => __resetFilePatchUndoStoreForTests()).not.toThrow();
-    expect(getFileUndoState("project-x", "deck.html").can_undo).toBe(false);
   });
 });

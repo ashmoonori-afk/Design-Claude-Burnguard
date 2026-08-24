@@ -63,6 +63,7 @@ export interface FileInfo {
     | "html"
     | "other";
   size_bytes?: number | null;
+  hash?: string | null;
   updated_at?: number;
 }
 

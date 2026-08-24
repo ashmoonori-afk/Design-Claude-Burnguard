@@ -130,7 +130,7 @@ export function createApp(authority?: RequestAuthorityOptions): Hono {
   return app;
 }
 
-export type ApiRouteDomain = "health" | "catalog" | "learning" | "system" | "managed-files" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
+export type ApiRouteDomain = "health" | "catalog" | "learning" | "system" | "managed-files" | "artifact-operations" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
 
 export function classifyApiRoute(pathname: string, method: string): ApiRouteDomain {
   if (pathname === "/api/health") return "health";
@@ -145,9 +145,11 @@ export function classifyApiRoute(pathname: string, method: string): ApiRouteDoma
   if (pathname.startsWith("/api/runtime")) return "runtime";
   if (pathname.startsWith("/api/settings") || pathname.startsWith("/api/backends") || pathname.startsWith("/api/home") || pathname === "/api/projects") return "home";
   if (pathname.startsWith("/api/projects")) {
+    if (/\/checkpoints(?:\/|$)/.test(pathname)) return "session";
     if (/\/draws(?:\/|$)/.test(pathname) && (method === "GET" || method === "PUT")) return "managed-files";
     if (/\/fs(?:\/|$)/.test(pathname) && method === "GET" && !pathname.endsWith("/undo-info")) return "managed-files";
-    if (/\/(?:fs|files|artifacts|refresh|exports)(?:\/|$)/.test(pathname)) return "artifacts";
+    if (/\/(?:fs|operations)(?:\/|$)/.test(pathname)) return "artifact-operations";
+    if (/\/(?:files|artifacts|refresh|exports)(?:\/|$)/.test(pathname)) return "artifacts";
     return "project";
   }
   return "not-found";
@@ -160,6 +162,7 @@ async function apiRoutes(domain: ApiRouteDomain): Promise<Hono> {
     case "learning": return (await import("./routes/learning")).learningRoutes;
     case "system": return (await import("./routes/system")).systemRoutes;
     case "managed-files": return (await import("./routes/managed-files")).managedFileRoutes;
+    case "artifact-operations": return (await import("./routes/artifact-operations")).artifactOperationRoutes;
     case "artifacts": return (await import("./routes/artifacts")).artifactRoutes;
     case "comments": return (await import("./routes/comments")).commentRoutes;
     case "session": return (await import("./routes/session")).sessionRoutes;

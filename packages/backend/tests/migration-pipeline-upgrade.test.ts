@@ -9,6 +9,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { runMigrationsFrom } from "../src/db/migrate";
 import { designSystemsTable, eventsTable, exportsTable, projectsTable, sessionsTable } from "../src/db/pipeline-authorities";
 import { artifactOperationsTable, designSystemReceiptsTable, designSystemTagsTable, exportAttemptsTable, learningCheckpointsTable, learningItemsTable, learningProgressTable } from "../src/db/pipeline-schema";
+import { attachmentsTable, commentsTable, filesTable, tweaksTable } from "../src/db/schema";
 
 const sourceDir = path.join(import.meta.dir, "../src/db/migrations");
 const databases: Database[] = [];
@@ -230,6 +231,26 @@ function namedIndexes(db: Database, tableName: string) {
     expect(db.query("SELECT id FROM schema_migrations WHERE id='0007_checkpoint_delete_immutability.sql'").get()).toEqual({ id: "0007_checkpoint_delete_immutability.sql" });
     expect(db.query("SELECT name FROM sqlite_master WHERE name='immutable_learning_checkpoints_delete'").get()).toEqual({ name: "immutable_learning_checkpoints_delete" });
     expect(db.query("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
+  });
+
+  test("Given legacy comments When the artifact anchor migration runs Then rows remain explicitly unanchored with Drizzle parity", async () => {
+    const db = database();
+    const directory = await migrationDirectory("0007_checkpoint_delete_immutability.sql");
+    await runMigrationsFrom(db, directory);
+    db.exec("INSERT INTO projects(id,name,type,dir_path,backend_id,created_at,updated_at) VALUES ('p','P','prototype','/tmp/p','codex',1,1); INSERT INTO comments(id,project_id,rel_path,x_pct,y_pct,created_at,updated_at) VALUES ('c','p','index.html',1,2,1,1)");
+    await cp(path.join(sourceDir, "0008_artifact_anchors.sql"), path.join(directory, "0008_artifact_anchors.sql"));
+
+    await runMigrationsFrom(db, directory);
+
+    expect(db.query("SELECT artifact_revision,artifact_digest FROM comments WHERE id='c'").get()).toEqual({ artifact_revision: null, artifact_digest: null });
+    const columns = getTableConfig(commentsTable).columns.filter((column) => column.name.startsWith("artifact_")).map((column) => ({ name: column.name, required: column.notNull }));
+    const managedConfigs = [attachmentsTable, filesTable, commentsTable, tweaksTable].map(getTableConfig);
+    const managedIndexNames = managedConfigs.flatMap((config) => config.indexes.map((item) => item.config.name)).toSorted();
+    const managedForeignTables = managedConfigs.flatMap((config) => config.foreignKeys.map((foreignKey) => getTableName(foreignKey.reference().foreignTable))).toSorted();
+    expect(columns).toEqual([{ name: "artifact_revision", required: false }, { name: "artifact_digest", required: false }]);
+    expect(managedIndexNames).toEqual(["idx_attachments_session", "idx_comments_project", "idx_files_project", "idx_tweaks_project_node", "idx_tweaks_turn", "uq_files_project_rel_path"]);
+    expect(managedForeignTables).toEqual(["projects", "projects", "projects", "sessions"]);
+    expect(db.query("SELECT name,\"notnull\" required FROM pragma_table_info('comments') WHERE name LIKE 'artifact_%' ORDER BY cid").all()).toEqual([{ name: "artifact_revision", required: 0 }, { name: "artifact_digest", required: 0 }]);
   });
 
   test("Given a broken later migration When migration fails Then its transaction rolls back and foreign keys recover", async () => {

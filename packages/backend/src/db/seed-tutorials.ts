@@ -1,8 +1,10 @@
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ulid } from "ulid";
 import { eq } from "drizzle-orm";
 import { getDb } from "./client";
+import { getSqlite } from "./sqlite-client";
+import { ArtifactCoordinator, ArtifactOperationError } from "../services/artifact-coordinator";
 import { projectsTable, sessionsTable } from "./schema";
 import { projectsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
@@ -417,15 +419,6 @@ export const DECK_TUTORIAL_HTML = `<!doctype html>
 </html>
 `;
 
-async function exists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Creates the two built-in tutorial projects if they aren't already in the
  * DB. Idempotent — matches by the tagged name so a manually-deleted tutorial
@@ -435,9 +428,12 @@ export async function seedTutorialsOnce(): Promise<void> {
   const db = getDb();
   const existing = await db
     .select({
+      id: projectsTable.id,
       name: projectsTable.name,
       dirPath: projectsTable.dirPath,
       entrypoint: projectsTable.entrypoint,
+      currentRevision: projectsTable.currentRevision,
+      currentDigest: projectsTable.currentDigest,
     })
     .from(projectsTable);
   const now = Date.now();
@@ -479,10 +475,13 @@ export async function seedTutorialsOnce(): Promise<void> {
     const existingSample = existingByName.get(sample.name);
     if (existingSample) {
       await syncPromptSampleProject({
+        id: existingSample.id,
         name: sample.name,
         dirPath: existingSample.dirPath,
         entrypoint: existingSample.entrypoint,
         html: renderPromptSampleHtml(sample),
+        currentRevision: existingSample.currentRevision,
+        currentDigest: existingSample.currentDigest,
       });
       continue;
     }
@@ -868,24 +867,23 @@ function promptSampleTitle(sample: PromptSample): string {
 }
 
 async function syncPromptSampleProject(input: {
-  name: string;
-  dirPath: string;
-  entrypoint: string;
-  html: string;
+  id: string; name: string; dirPath: string; entrypoint: string; html: string;
+  currentRevision: number; currentDigest: string | null;
 }): Promise<void> {
-  const db = getDb();
-  const now = Date.now();
   await mkdir(input.dirPath, { recursive: true });
-  await writeFile(path.join(input.dirPath, input.entrypoint), input.html, "utf8");
-  await db
-    .update(projectsTable)
-    .set({
-      type: "from_template",
-      entrypoint: input.entrypoint,
-      updatedAt: now,
-      archivedAt: null,
-    })
-    .where(eq(projectsTable.name, input.name));
+  const coordinator = new ArtifactCoordinator(getSqlite());
+  if (input.currentDigest === null) { await coordinator.initialize(input.id, input.dirPath); return; }
+  const current = await readFile(path.join(input.dirPath, input.entrypoint), "utf8").catch(() => null);
+  if (current === input.html) return;
+  const userOperations = getSqlite().query<{ readonly count: number }, [string]>("SELECT COUNT(*) count FROM artifact_operations WHERE project_id=? AND status='committed' AND json_extract(replay_json,'$.kind')!='initialize'").get(input.id)?.count ?? 0;
+  if (userOperations > 0) return;
+  try {
+    await coordinator.run({ projectId: input.id, projectDir: input.dirPath, kind: "initialize", expectedRevision: input.currentRevision, expectedArtifactDigest: input.currentDigest, mutate: async (stage) => { await writeFile(path.join(stage, input.entrypoint), input.html, "utf8"); } });
+  } catch (error) {
+    if (error instanceof ArtifactOperationError && error.code === "artifact_identity_mismatch") return;
+    throw error;
+  }
+  await getDb().update(projectsTable).set({ type: "from_template", entrypoint: input.entrypoint, archivedAt: null }).where(eq(projectsTable.name, input.name));
 }
 
 async function writeTutorialProject(input: {
@@ -902,22 +900,6 @@ async function writeTutorialProject(input: {
 
   await mkdir(path.join(dirPath, ".attachments"), { recursive: true });
   await mkdir(path.join(dirPath, ".meta", "checkpoints"), { recursive: true });
-  await writeFile(path.join(dirPath, input.entrypoint), input.html, "utf8");
-
-  // Slide decks need deck-stage.js next to the artifact so they can be
-  // staged + exported without relying on the HTTP runtime route.
-  if (input.type === "slide_deck") {
-    const runtimeDir = path.join(dirPath, "runtime");
-    if (!(await exists(runtimeDir))) {
-      await mkdir(runtimeDir, { recursive: true });
-    }
-    await writeFile(
-      path.join(runtimeDir, "deck-stage.js"),
-      DECK_STAGE_JS,
-      "utf8",
-    );
-  }
-
   await db.insert(projectsTable).values({
     id: projectId,
     name: input.name,
@@ -941,6 +923,13 @@ async function writeTutorialProject(input: {
     createdAt: now,
     updatedAt: now,
     lastActiveAt: now,
+  });
+  await new ArtifactCoordinator(getSqlite()).initializeProject(projectId, dirPath, async (stage) => {
+    await writeFile(path.join(stage, input.entrypoint), input.html, "utf8");
+    if (input.type === "slide_deck") {
+      await mkdir(path.join(stage, "runtime"), { recursive: true });
+      await writeFile(path.join(stage, "runtime", "deck-stage.js"), DECK_STAGE_JS, "utf8");
+    }
   });
 }
 

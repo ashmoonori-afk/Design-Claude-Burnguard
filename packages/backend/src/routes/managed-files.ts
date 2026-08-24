@@ -3,9 +3,14 @@ import path from "node:path";
 import { Hono } from "hono";
 import type { ApiErrorBody, ApiSuccess } from "@bg/shared";
 import { getManagedExportJob } from "../db/managed-file-repository";
+import { getSqlite } from "../db/sqlite-client";
 import { getProjectDetail } from "../db/project-read-repository";
 import { exportsDir, resolveManagedPath } from "../lib/paths";
+import { ArtifactCoordinator } from "../services/artifact-coordinator";
+import { ArtifactIdentityError, requireArtifactIdentity } from "../services/artifact-identity";
+import { inspectCanonicalTree } from "../services/canonical-tree-manifest";
 import { resolveDrawFile, resolveProjectFile } from "../services/managed-project-files";
+import { FilePatchError, fingerprintHtmlNode } from "../services/file-patch";
 
 function ok<T>(data: T): ApiSuccess<T> { return { data }; }
 function fail(code: string, message: string, details?: unknown): ApiErrorBody { return { error: { code, message, details } }; }
@@ -24,7 +29,23 @@ managedFileRoutes.get("/api/projects/:id/fs/*", async (c) => {
     if (error instanceof Error) return c.json(fail("file_not_found", "Project file not found", { projectId, relPath }), 404);
     throw error;
   }
-  return new Response(Bun.file(resolved.absolutePath), { headers: { "Cache-Control": "no-cache", "Content-Type": contentType(resolved.absolutePath) } });
+  const coordinator = new ArtifactCoordinator(getSqlite());
+  if (resolved.project.current_digest === null) await coordinator.initialize(projectId, resolved.project.dir_path);
+  else await coordinator.observeExternal(projectId, resolved.project.dir_path);
+  const project = await getProjectDetail(projectId);
+  const manifest = await inspectCanonicalTree(resolved.project.dir_path);
+  const file = manifest.files.find((entry) => entry.path === resolved.relPath);
+  if (project === null || project.current_digest === null || file === undefined) return c.json(fail("artifact_identity_unavailable", "Artifact identity is unavailable"), 409);
+  const headers: Record<string, string> = { "Cache-Control": "no-cache", "Content-Type": contentType(resolved.absolutePath), ETag: `"${file.sha256}"`, "X-Burnguard-File-Hash": file.sha256, "X-Burnguard-Revision": String(project.current_revision), "X-Burnguard-Artifact-Digest": project.current_digest };
+  const nodeBgId = c.req.query("node_bg_id");
+  if (nodeBgId !== undefined) {
+    try { headers["X-Burnguard-Node-Fingerprint"] = fingerprintHtmlNode(await readFile(resolved.absolutePath, "utf8"), nodeBgId).fingerprint; }
+    catch (error) {
+      if (error instanceof FilePatchError) return c.json(fail(error.code, error.message), 422);
+      throw error;
+    }
+  }
+  return new Response(Bun.file(resolved.absolutePath), { headers });
 });
 
 managedFileRoutes.get("/api/projects/:id/draws/*", async (c) => {
@@ -53,9 +74,20 @@ managedFileRoutes.put("/api/projects/:id/draws/*", async (c) => {
   if (resolved === null) return c.json(fail("path_escape", "Resolved path escapes the draws root", { relPath }), 400);
   const body = await c.req.text();
   if (body.length > 2_000_000) return c.json(fail("invalid_body", "svg body required (string, <= 2MB)"), 400);
+  const project = await getProjectDetail(projectId);
+  const expectedRevision = Number(c.req.header("x-burnguard-revision"));
+  const expectedDigest = (c.req.header("if-match") ?? "").replace(/^"|"$/g, "");
+  if (project === null) return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
+  try { requireArtifactIdentity({ revision: expectedRevision, digest: expectedDigest }, { revision: project.current_revision, digest: project.current_digest }); }
+  catch (error) {
+    if (error instanceof ArtifactIdentityError) return c.json(fail(error.code, error.message, { current_revision: project.current_revision, current_digest: project.current_digest }), error.code === "invalid_artifact_identity" ? 400 : 409);
+    throw error;
+  }
   await mkdir(resolved.parentDir, { recursive: true });
   await writeFile(resolved.absolutePath, body, "utf8");
-  return c.json(ok({ rel_path: resolved.relPath, bytes: body.length }));
+  const anchor = { schema_version: 1, artifact_revision: expectedRevision, artifact_digest: expectedDigest, file_hash: c.req.header("x-burnguard-file-hash") ?? null, viewport: c.req.header("x-burnguard-viewport") ?? null, coordinate_system: c.req.header("x-burnguard-coordinate-system") ?? "svg", node_anchor: c.req.header("x-burnguard-node-anchor") ?? null };
+  await writeFile(`${resolved.absolutePath}.anchor.json`, JSON.stringify(anchor), "utf8");
+  return c.json(ok({ rel_path: resolved.relPath, bytes: Buffer.byteLength(body), anchor }));
 });
 
 managedFileRoutes.get("/api/exports/:id/download", async (c) => {

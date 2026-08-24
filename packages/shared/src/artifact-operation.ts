@@ -29,8 +29,8 @@ type ArtifactOperationBase = {
   readonly project_id: string;
   readonly base_revision: number;
   readonly base_digest: string;
-  readonly result_revision: number;
-  readonly result_digest: string;
+  readonly result_revision: number | null;
+  readonly result_digest: string | null;
   readonly expected_revision: number;
   readonly expected_file_hash: string;
   readonly node_fingerprint: string;
@@ -42,7 +42,8 @@ export type ArtifactOperation =
   | (ArtifactOperationBase & { readonly status: "preview" })
   | (ArtifactOperationBase & { readonly status: "pending" })
   | (ArtifactOperationBase & { readonly status: "working" })
-  | (ArtifactOperationBase & { readonly status: "committed" })
+  | (ArtifactOperationBase & { readonly status: "recovering" })
+  | (ArtifactOperationBase & { readonly status: "committed"; readonly result_revision: number; readonly result_digest: string })
   | (ArtifactOperationBase & { readonly status: "cancelled" })
   | (ArtifactOperationBase & { readonly status: "failed" })
   | (ArtifactOperationBase & { readonly status: "conflicted" })
@@ -59,8 +60,8 @@ export function parseArtifactOperation(input: unknown): ArtifactOperation {
     id: requiredString(record, "id"), project_id: requiredString(record, "project_id"),
     base_revision: requiredNumber(record, "base_revision", "missing_base_revision"),
     base_digest: requiredString(record, "base_digest"),
-    result_revision: requiredNumber(record, "result_revision"),
-    result_digest: requiredString(record, "result_digest"),
+    result_revision: nullableNumber(record, "result_revision"),
+    result_digest: optionalString(record, "result_digest"),
     expected_revision: requiredNumber(record, "expected_revision"),
     expected_file_hash: requiredString(record, "expected_file_hash"),
     node_fingerprint: requiredString(record, "node_fingerprint"),
@@ -84,7 +85,11 @@ export function parseArtifactOperation(input: unknown): ArtifactOperation {
     case "preview": return { ...base, status };
     case "pending": return { ...base, status };
     case "working": return { ...base, status };
-    case "committed": return { ...base, status };
+    case "recovering": return { ...base, status };
+    case "committed": {
+      if (base.result_revision === null || base.result_digest === null) throw new UpgradeContractError("missing_required_field", "result_revision");
+      return { ...base, status, result_revision: base.result_revision, result_digest: base.result_digest };
+    }
     case "cancelled": return { ...base, status };
     case "failed": return { ...base, status };
     case "conflicted": return { ...base, status };
@@ -93,4 +98,9 @@ export function parseArtifactOperation(input: unknown): ArtifactOperation {
     case "replaying": return { ...base, status };
     default: throw new UpgradeContractError("unknown_discriminant", "status");
   }
+}
+
+function nullableNumber(record: Readonly<Record<string, unknown>>, key: string): number | null {
+  if (record[key] === null) return null;
+  return requiredNumber(record, key);
 }

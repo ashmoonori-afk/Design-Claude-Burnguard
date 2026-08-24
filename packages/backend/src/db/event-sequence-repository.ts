@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import type { NormalizedEvent, UserEvent } from "@bg/shared";
-import { PipelineRepositoryError, parseJsonRecord } from "./pipeline-repository";
+import type { NormalizedEvent, SequencedEventEnvelope, UserEvent } from "@bg/shared/events";
+import { PipelineRepositoryError, parseJsonRecord } from "./pipeline-errors";
 
 type SequencedEventInput = {
   readonly id: string;
@@ -33,6 +33,8 @@ export function parsePersistedNormalizedEvent(value: string, id: string): Normal
       const common = { ...base, type, turnId: text(item, "turnId", id), toolCallId: text(item, "toolCallId", id), tool: text(item, "tool", id), ok: truth(item, "ok", id) };
       return output === undefined ? common : { ...common, output };
     }
+    case "artifact.operation":
+      return { ...base, type, operationId: text(item, "operationId", id), revision: integer(item, "revision", id), digest: text(item, "digest", id), changedPaths: texts(item, "changedPaths", id), outcome: operationOutcome(item, id) };
     case "file.changed":
       return { ...base, type, turnId: text(item, "turnId", id), action: fileAction(item, id), path: text(item, "path", id) };
     case "status.running":
@@ -76,6 +78,14 @@ export function parsePersistedUserEvent(value: string, id: string): UserEvent {
   }
 }
 
+export function listSequencedSessionEvents(db: Database, sessionId: string, afterSequence: number): readonly SequencedEventEnvelope[] {
+  const rows = db.query<{ readonly sequence: number | null; readonly payload_json: string; readonly id: string }, [string, number]>("SELECT sequence,payload_json,id FROM events WHERE session_id=? AND direction='down' AND sequence>? ORDER BY sequence").all(sessionId, afterSequence);
+  return rows.map((row) => {
+    if (row.sequence === null) throw new PipelineRepositoryError("corrupt_json", row.id);
+    return { sequence: row.sequence, event: parsePersistedNormalizedEvent(row.payload_json, row.id) };
+  });
+}
+
 export function insertSequencedEvent(db: Database, input: SequencedEventInput) {
   return db.transaction(() => {
     const row = db.query<{ readonly next: number }, [string]>(
@@ -113,6 +123,20 @@ function truth(item: Readonly<Record<string, unknown>>, key: string, id: string)
   const value = item[key];
   if (typeof value !== "boolean") throw new PipelineRepositoryError("corrupt_json", id);
   return value;
+}
+
+function texts(item: Readonly<Record<string, unknown>>, key: string, id: string): readonly string[] {
+  const value = item[key];
+  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) throw new PipelineRepositoryError("corrupt_json", id);
+  return value;
+}
+
+function operationOutcome(item: Readonly<Record<string, unknown>>, id: string): "committed" | "cancelled" | "failed" | "conflicted" | "recovered" {
+  const value = text(item, "outcome", id);
+  switch (value) {
+    case "committed": case "cancelled": case "failed": case "conflicted": case "recovered": return value;
+    default: throw new PipelineRepositoryError("corrupt_json", id);
+  }
 }
 
 function fileAction(item: Readonly<Record<string, unknown>>, id: string): "created" | "edited" | "deleted" {

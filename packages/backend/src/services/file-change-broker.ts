@@ -1,7 +1,7 @@
 import { ulid } from "ulid";
 import type { NormalizedEvent } from "@bg/shared";
 import { insertNormalizedEvent } from "../db/events";
-import { broker } from "./broker";
+import { broker, sequencedBroker } from "./broker";
 import { appendSessionTrace } from "./trace";
 
 const DEDUPE_WINDOW_MS = 2_000;
@@ -73,11 +73,12 @@ export async function publishFileChangeFromWatcher(
     action,
     path: keyPath(relPath),
   };
-  await insertNormalizedEvent(sessionId, event).catch(() => {});
+  const persisted = await insertNormalizedEvent(sessionId, event);
   await appendSessionTrace(sessionId, {
     level: "file_change_watcher",
     event,
-  }).catch(() => {});
+  });
   broker.publish(sessionId, event);
+  sequencedBroker.publish(sessionId, persisted);
   noteEmittedFileChange(projectId, relPath);
 }

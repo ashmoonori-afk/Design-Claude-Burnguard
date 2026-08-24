@@ -1,8 +1,8 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { ulid } from "ulid";
-import type { NormalizedEvent, UserEvent } from "@bg/shared";
+import type { NormalizedEvent, SequencedEventEnvelope, UserEvent } from "@bg/shared/events";
 import { getDb, getSqlite } from "./client";
-import { insertSequencedEvent, parsePersistedNormalizedEvent, parsePersistedUserEvent } from "./event-sequence-repository";
+import { insertSequencedEvent, listSequencedSessionEvents, parsePersistedNormalizedEvent, parsePersistedUserEvent } from "./event-sequence-repository";
 import { eventsTable, projectsTable, sessionsTable } from "./schema";
 
 export interface PersistedUserEvent {
@@ -20,7 +20,7 @@ export async function insertUserEvent(sessionId: string, payload: UserEvent) {
 }
 
 export async function insertNormalizedEvent(sessionId: string, event: NormalizedEvent) {
-  insertSequencedEvent(getSqlite(), {
+  const persisted = insertSequencedEvent(getSqlite(), {
     id: event.id,
     sessionId,
     direction: "down",
@@ -30,9 +30,14 @@ export async function insertNormalizedEvent(sessionId: string, event: Normalized
     processedAt: event.ts,
     createdAt: Date.now(),
   });
+  return { sequence: persisted.sequence, event } satisfies SequencedEventEnvelope;
 }
 
-export async function listSessionEvents(sessionId: string, since?: number) {
+export async function listSessionEvents(sessionId: string, afterSequence?: number): Promise<readonly SequencedEventEnvelope[]> {
+  return listSequencedSessionEvents(getSqlite(), sessionId, afterSequence ?? 0);
+}
+
+export async function listLegacySessionEvents(sessionId: string, since?: number) {
   const db = getDb();
   const rows = await db
     .select({

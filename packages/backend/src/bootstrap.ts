@@ -25,6 +25,7 @@ import { pruneOldExports } from "./services/export-gc";
 import { reconcileExtractionState } from "./services/extraction-recovery";
 import { reconcileCatalogState } from "./services/catalog-lifecycle";
 import { ensureAllProjectWatchers } from "./services/watchers";
+import { reconcileArtifactState } from "./services/artifact-recovery";
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -107,6 +108,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   reconcilePipelineRows(getDb());
   await reconcileCatalogState(getSqlite(), systemsDir);
   await reconcileExtractionState();
+  await reconcileArtifactState(getSqlite());
   await ensureAllProjectWatchers();
   // Best-effort export GC — never block startup on it.
   void pruneOldExports().catch(() => {

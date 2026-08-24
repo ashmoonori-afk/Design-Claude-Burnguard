@@ -8,6 +8,8 @@ export interface Comment {
   slide_index: number | null;
   body: string;
   author_id: string;
+  artifact_revision: number | null;
+  artifact_digest: string | null;
   resolved_at: number | null;
   created_at: number;
   updated_at: number;
@@ -20,6 +22,8 @@ export interface CreateCommentRequest {
   y_pct: number;
   slide_index?: number | null;
   body?: string;
+  artifact_revision?: number;
+  artifact_digest?: string;
 }
 
 export interface UpdateCommentRequest {

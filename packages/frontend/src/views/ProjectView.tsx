@@ -547,11 +547,7 @@ export default function ProjectView() {
     let active = true;
     let cleanup = () => {};
 
-    const connect = async () => {
-      const gap = await listSessionEvents(sessionId, latestEventTsRef.current);
-      if (!active) return;
-
-      appendEvents(gap, seenEventIdsRef, latestEventTsRef, setEvents);
+    const connect = () => {
       cleanup = subscribeSessionStream(sessionId, (event) => {
         appendEvents([event], seenEventIdsRef, latestEventTsRef, setEvents);
         setSessionState((current) => applyEventToSession(current, event));

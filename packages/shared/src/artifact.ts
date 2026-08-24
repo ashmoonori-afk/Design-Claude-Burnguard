@@ -10,6 +10,8 @@ export interface ArtifactSummary {
   design_system_id: string | null;
   design_system_url: string | null;
   file_count: number;
+  current_revision: number;
+  current_digest: string;
   updated_at: number;
 }
 

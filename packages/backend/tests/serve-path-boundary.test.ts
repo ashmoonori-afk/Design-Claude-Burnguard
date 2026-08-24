@@ -23,16 +23,9 @@ import {
   resolveDrawFile,
   resolveProjectFile,
 } from "../src/services/managed-project-files";
-import {
-  __resetFilePatchUndoStoreForTests,
-  FilePatchError,
-  getFileUndoState,
-  parseInlineStyle,
-  patchHtmlNode,
-  serializeInlineStyle,
-  undoLastFilePatch,
-} from "../src/services/file-patch";
-import { closeProjectWatcher, pendingProjectEmit, pendingProjectReindex, projectSessionIds, projectWatchers } from "../src/services/watcher-registry";
+import { closeProjectWatcher, projectSessionIds, projectWatchers } from "../src/services/watcher-registry";
+import { insertNormalizedEvent } from "../src/db/events";
+import type { NormalizedEvent } from "@bg/shared/events";
 
 const tempDirs: string[] = [];
 const projectIds: string[] = [];
@@ -41,6 +34,23 @@ const systemIds: string[] = [];
 const exportIds: string[] = [];
 const distLinks: string[] = [];
 let sequence = 0;
+
+async function readSseUntil(reader: ReadableStreamDefaultReader<Uint8Array>, token: string): Promise<string> {
+  const decoder = new TextDecoder();
+  let output = "";
+  let timer: Timer | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`SSE token timeout: ${token}`)), 5_000); });
+  try {
+    while (!output.includes(token)) {
+      const item = await Promise.race([reader.read(), timeout]);
+      if (item.done) throw new Error(`SSE ended before token: ${token}`);
+      output += decoder.decode(item.value, { stream: true });
+    }
+    return output;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
 
 function id(prefix: string): string {
   sequence += 1;
@@ -124,7 +134,6 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  __resetFilePatchUndoStoreForTests();
   const db = getSqlite();
   for (const exportId of exportIds.splice(0)) {
     db.prepare("DELETE FROM exports WHERE id = ?").run(exportId);
@@ -196,7 +205,7 @@ describe("project file and draw services", () => {
     expect(safe?.absolutePath).toBe(path.join(realProject, ".meta", "draws", "new", "note.svg"));
   });
 
-  test("does not index a symlink whose target leaves the project", async () => {
+  test("rejects a project tree containing a symlink whose target leaves the project", async () => {
     const root = await temp("bg04-index-project-");
     const outside = await temp("bg04-index-outside-");
     await writeFile(path.join(outside, "secret.txt"), "secret", "utf8");
@@ -213,88 +222,21 @@ describe("project file and draw services", () => {
     ]);
     const projectId = insertProject(root);
 
-    const files = await indexProjectFiles(projectId);
-    expect(files?.some((file) => file.rel_path.startsWith("linked"))).toBe(false);
-    expect(files?.map((file) => file.category)).toEqual(["asset", "html", "folder", "other", "document", "script", "stylesheet"]);
-  });
-});
-
-describe("file patch service", () => {
-  const html = '<h1 data-bg-node-id="title">outside</h1>';
-
-  test("commits and exactly undoes a valid managed HTML patch", async () => {
-    const root = await temp("bg04-patch-valid-");
-    await writeFile(path.join(root, "page.html"), html, "utf8");
-    const projectId = insertProject(root);
-
-    const patched = await patchHtmlNode(projectId, "page.html", { node_bg_id: "title", text: "inside" });
-    const undone = await undoLastFilePatch(projectId, "page.html");
-
-    expect(patched.updatedAt).toBeGreaterThan(0);
-    expect(undone).not.toBeNull();
-    expect(await readFile(path.join(root, "page.html"), "utf8")).toBe(html);
-  });
-
-  test("parses nested inline styles and reports empty undo state deterministically", () => {
-    const styles = parseInlineStyle("background: linear-gradient(red, blue); font-family: 'A; B'; color: var(--x, red)");
-
-    expect(styles).toEqual({ background: "linear-gradient(red, blue)", "font-family": "'A; B'", color: "var(--x, red)" });
-    expect(serializeInlineStyle(styles)).toBe("background: linear-gradient(red, blue); font-family: 'A; B'; color: var(--x, red)");
-    expect(getFileUndoState("missing", "page.html")).toEqual({ can_undo: false, stored_at: null });
-  });
-
-  test("does not patch HTML through a junction outside the project", async () => {
-    const root = await temp("bg04-patch-project-");
-    const outside = await temp("bg04-patch-outside-");
-    const outsideFile = path.join(outside, "page.html");
-    await writeFile(outsideFile, html, "utf8");
-    await makeDirLink(outside, path.join(root, "linked"));
-    const projectId = insertProject(root);
-
-    await expect(
-      patchHtmlNode(projectId, "linked/page.html", {
-        node_bg_id: "title",
-        text: "pwned",
-      }),
-    ).rejects.toMatchObject({ code: "file_not_found" } satisfies Partial<FilePatchError>);
-    expect(await readFile(outsideFile, "utf8")).toBe(html);
-  });
-
-  test("revalidates containment before undoing a prior patch", async () => {
-    const root = await temp("bg04-undo-project-");
-    const inside = path.join(root, "inside");
-    const outside = await temp("bg04-undo-outside-");
-    await mkdir(inside);
-    await writeFile(path.join(inside, "page.html"), html, "utf8");
-    await writeFile(path.join(outside, "page.html"), html, "utf8");
-    const link = path.join(root, "linked");
-    await makeDirLink(inside, link);
-    const projectId = insertProject(root);
-    await patchHtmlNode(projectId, "linked/page.html", {
-      node_bg_id: "title",
-      text: "inside patch",
-    });
-    await rm(link, { recursive: true, force: true });
-    await makeDirLink(outside, link);
-
-    expect(await undoLastFilePatch(projectId, "linked/page.html")).toBeNull();
-    expect(await readFile(path.join(outside, "page.html"), "utf8")).toBe(html);
+    await expect(indexProjectFiles(projectId)).rejects.toMatchObject({ code: "unsafe_tree_entry" });
   });
 });
 
 describe("watcher registry cleanup", () => {
-  test("closes watcher timers emits and session cache for a deleted project", async () => {
+  test("closes watcher and session cache for a deleted project", async () => {
     const root = await temp("bg04-watcher-registry-");
     const projectId = id("watcher-registry");
     const watcher = watch(root);
     projectWatchers.set(projectId, watcher);
-    pendingProjectReindex.set(projectId, setTimeout(() => undefined, 10_000));
-    pendingProjectEmit.set(`${projectId}:index.html`, setTimeout(() => undefined, 10_000));
     projectSessionIds.set(projectId, "session");
 
     closeProjectWatcher(projectId);
 
-    expect([projectWatchers.has(projectId), pendingProjectReindex.has(projectId), pendingProjectEmit.has(`${projectId}:index.html`), projectSessionIds.has(projectId)]).toEqual([false, false, false, false]);
+    expect([projectWatchers.has(projectId), projectSessionIds.has(projectId)]).toEqual([false, false]);
   });
 });
 
@@ -344,7 +286,7 @@ describe("serve and deletion routes", () => {
     const session = await app.request(`/api/projects/${projectId}/session`);
     const file = await app.request(`/api/projects/${projectId}/fs/index.html`);
     const emptyDraw = await app.request(`/api/projects/${projectId}/draws/note`);
-    const savedDraw = await app.request(`/api/projects/${projectId}/draws/note`, { method: "PUT", body: "<svg/>" });
+    const savedDraw = await app.request(`/api/projects/${projectId}/draws/note`, { method: "PUT", body: "<svg/>", headers: { "x-burnguard-revision": file.headers.get("x-burnguard-revision") ?? "", "if-match": file.headers.get("x-burnguard-artifact-digest") ?? "" } });
     const draw = await app.request(`/api/projects/${projectId}/draws/note`);
     const download = await app.request(`/api/exports/${exportId}/download`);
 
@@ -354,6 +296,67 @@ describe("serve and deletion routes", () => {
     expect(await draw.text()).toBe("<svg/>");
     expect(await download.text()).toBe("archive");
     expect(sessionId).not.toBe("");
+  });
+
+  test("coordinates source patch operation undo comment and draw anchors through production routes", async () => {
+    const root = await temp("bg07-artifact-route-");
+    await writeFile(path.join(root, "index.html"), '<div data-bg-node-id="hero">Old</div>', "utf8");
+    const projectId = insertProject(root);
+    insertSession(projectId);
+    const app = createApp();
+
+    const source = await app.request(`/api/projects/${projectId}/fs/index.html?node_bg_id=hero`);
+    const baseRevision = Number(source.headers.get("x-burnguard-revision"));
+    const baseDigest = source.headers.get("x-burnguard-artifact-digest") ?? "";
+    const fileHash = source.headers.get("x-burnguard-file-hash") ?? "";
+    const fingerprint = source.headers.get("x-burnguard-node-fingerprint") ?? "";
+    const patchBody = { expected_revision: baseRevision, expected_artifact_digest: baseDigest, expected_file_hash: fileHash, node_bg_id: "hero", node_fingerprint: fingerprint, text: "New" };
+    const patch = await app.request(`/api/projects/${projectId}/fs/index.html`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patchBody) });
+    const patched: { readonly data: { readonly operation_id: string; readonly result_revision: number; readonly result_digest: string; readonly diff: readonly unknown[] } } = await patch.json();
+    const detail = await app.request(`/api/projects/${projectId}/operations/${patched.data.operation_id}`);
+    const stalePatch = await app.request(`/api/projects/${projectId}/fs/index.html`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patchBody) });
+    const comment = await app.request(`/api/projects/${projectId}/comments`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rel_path: "index.html", x_pct: 10, y_pct: 20, artifact_revision: patched.data.result_revision, artifact_digest: patched.data.result_digest }) });
+    const staleComment = await app.request(`/api/projects/${projectId}/comments`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rel_path: "index.html", x_pct: 10, y_pct: 20, artifact_revision: baseRevision, artifact_digest: baseDigest }) });
+    const draw = await app.request(`/api/projects/${projectId}/draws/index.html`, { method: "PUT", headers: { "x-burnguard-revision": String(patched.data.result_revision), "if-match": patched.data.result_digest }, body: "<svg/>" });
+    const staleDraw = await app.request(`/api/projects/${projectId}/draws/index.html`, { method: "PUT", headers: { "x-burnguard-revision": String(baseRevision), "if-match": baseDigest }, body: "<svg/>" });
+    const undo = await app.request(`/api/projects/${projectId}/operations/${patched.data.operation_id}/undo`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expected_revision: patched.data.result_revision, expected_artifact_digest: patched.data.result_digest }) });
+    const undone: { readonly data: { readonly result_revision: number; readonly result_digest: string } } = await undo.json();
+
+    expect([source.status, patch.status, detail.status, stalePatch.status, comment.status, staleComment.status, draw.status, staleDraw.status, undo.status]).toEqual([200, 200, 200, 409, 201, 409, 200, 409, 200]);
+    expect(patched.data.diff).toHaveLength(1);
+    expect(undone.data).toMatchObject({ result_revision: patched.data.result_revision + 1, result_digest: baseDigest });
+    expect(await readFile(path.join(root, "index.html"), "utf8")).toContain("Old");
+  });
+
+  test("replays SSE by sequence and reconnects from Last-Event-ID through the production route", async () => {
+    const root = await temp("bg07-sse-route-");
+    await writeFile(path.join(root, "index.html"), "base", "utf8");
+    const projectId = insertProject(root);
+    const sessionId = insertSession(projectId);
+    const first: NormalizedEvent = { id: id("sse-first"), ts: 10, type: "status.running" };
+    await insertNormalizedEvent(sessionId, first);
+    const second: NormalizedEvent = { id: id("sse-second"), ts: 10, type: "status.idle", stopReason: "end_turn" };
+    await insertNormalizedEvent(sessionId, second);
+    const app = createApp();
+    const controller = new AbortController();
+    const response = await app.request(`/api/sessions/${sessionId}/stream?after_sequence=0`, { signal: controller.signal });
+    const reader = response.body?.getReader();
+    if (reader === undefined) throw new Error("SSE response body missing");
+    const backfill = await readSseUntil(reader, "id: 2");
+    controller.abort();
+
+    const reconnectController = new AbortController();
+    const reconnect = await app.request(`/api/sessions/${sessionId}/stream`, { signal: reconnectController.signal, headers: { "Last-Event-ID": "1" } });
+    const reconnectReader = reconnect.body?.getReader();
+    if (reconnectReader === undefined) throw new Error("SSE reconnect body missing");
+    const replay = await readSseUntil(reconnectReader, "id: 2");
+    reconnectController.abort();
+
+    expect(response.status).toBe(200);
+    expect(backfill).toContain('"sequence":1');
+    expect(backfill).toContain('"sequence":2');
+    expect(replay).toContain('"sequence":2');
+    expect(replay).not.toContain('"sequence":1');
   });
 
   test("rejects project file and draw junction escapes at HTTP sinks", async () => {

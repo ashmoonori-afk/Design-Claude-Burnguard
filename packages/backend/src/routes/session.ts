@@ -15,13 +15,16 @@ import {
   getSessionInfo,
 } from "../db/seed";
 import { saveSessionAttachments } from "../services/attachments";
-import { broker } from "../services/broker";
+import { broker, sequencedBroker } from "../services/broker";
+import { subscribeBeforeBackfill } from "../services/sequenced-event-replay";
 import {
-  hasSnapshot,
-  restoreFromSnapshot,
+  getVerifiedSnapshotPath,
 } from "../services/checkpoints";
+import { ArtifactCoordinator, ArtifactOperationError } from "../services/artifact-coordinator";
+import { materializeManagedTree } from "../services/artifact-tree-storage";
+import { getSqlite } from "../db/sqlite-client";
+import { assertSafeName } from "../security/path-boundary";
 import { appendSessionTrace } from "../services/trace";
-import { indexProjectFiles } from "../services/files";
 import {
   interruptUserTurn,
   isUserTurnRunning,
@@ -41,6 +44,12 @@ function fail(
   return { error: { code, message, details } };
 }
 
+async function persistAndPublishRoute(sessionId: string, event: NormalizedEvent): Promise<void> {
+  const persisted = await insertNormalizedEvent(sessionId, event);
+  broker.publish(sessionId, event);
+  sequencedBroker.publish(sessionId, persisted);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -53,9 +62,10 @@ sessionRoutes.get("/api/sessions/:id/events", async (c) => {
   if (!session) {
     return c.json(fail("session_not_found", "Session not found", { id }), 404);
   }
-  const sinceRaw = c.req.query("since");
-  const since = sinceRaw ? Number.parseInt(sinceRaw, 10) : undefined;
-  const events = await listSessionEvents(id, Number.isFinite(since) ? since : undefined);
+  const afterRaw = c.req.query("after_sequence");
+  const afterSequence = afterRaw ? Number.parseInt(afterRaw, 10) : 0;
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) return c.json(fail("invalid_sequence", "after_sequence must be a non-negative integer"), 400);
+  const events = await listSessionEvents(id, afterSequence);
   return c.json(ok(events));
 });
 
@@ -74,6 +84,7 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
 
   const contentType = c.req.header("content-type") ?? "";
   let payload: UserEvent | null = null;
+  let requestedOperationId: string | undefined;
 
   if (contentType.includes("application/json")) {
     const body = await c.req.json<unknown>().catch(() => null);
@@ -89,6 +100,11 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
           ? body.attachments.filter((value): value is string => typeof value === "string")
           : undefined,
       };
+      if (body.operation_id !== undefined) {
+        if (typeof body.operation_id !== "string" || process.env.BG_ARTIFACT_QA !== "1" || body.operation_id !== process.env.BG_ARTIFACT_TURN_OPERATION_ID) return c.json(fail("invalid_operation_id", "Scoped operation identity is invalid"), 400);
+        try { requestedOperationId = assertSafeName(body.operation_id); }
+        catch (error) { return c.json(fail("invalid_operation_id", error instanceof Error ? error.message : "Scoped operation identity is invalid"), 400); }
+      }
     }
   } else if (contentType.includes("multipart/form-data")) {
     const form = await c.req.formData();
@@ -123,7 +139,7 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
     );
   }
 
-  const turn = startUserTurn(id, payload);
+  const turn = startUserTurn(id, payload, requestedOperationId);
   if (!turn) {
     return c.json(
       fail("session_busy", "A turn is already running for this session", { id }),
@@ -131,31 +147,19 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
     );
   }
 
-  // Fire-and-forget — the CLI can take minutes. Let the broker stream
-  // events to SSE subscribers. The outer catch is a safety net in case
-  // runUserTurn throws before its own try/catch is set up.
-  void turn.catch(async (err) => {
-    const message = err instanceof Error ? err.message : String(err);
-    const errEvent: NormalizedEvent = {
-      id: ulid(),
-      ts: Date.now(),
-      type: "status.error",
-      message,
-      recoverable: true,
-    };
-    await insertNormalizedEvent(id, errEvent).catch(() => {});
-    broker.publish(id, errEvent);
-    const idle: NormalizedEvent = {
-      id: ulid(),
-      ts: Date.now(),
-      type: "status.idle",
-      stopReason: "error",
-    };
-    await insertNormalizedEvent(id, idle).catch(() => {});
-    broker.publish(id, idle);
-    await setSessionStatus(id, "idle").catch(() => {});
+  const completed = turn.promise.catch(async (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    await persistAndPublishRoute(id, { id: ulid(), ts: Date.now(), type: "status.error", message, recoverable: true });
+    await persistAndPublishRoute(id, { id: ulid(), ts: Date.now(), type: "status.idle", stopReason: "error" });
+    await setSessionStatus(id, "idle");
   });
-  return c.json(ok({ accepted: true }));
+  try { await turn.prepared; }
+  catch (error) {
+    await completed;
+    return c.json(fail("artifact_prepare_failed", error instanceof Error ? error.message : "Artifact operation preparation failed"), 500);
+  }
+  void completed;
+  return c.json(ok({ accepted: true, turn_id: turn.turnId, operation_id: turn.operationId }));
 });
 
 sessionRoutes.post("/api/sessions/:id/interrupt", async (c) => {
@@ -173,9 +177,8 @@ sessionRoutes.post("/api/sessions/:id/interrupt", async (c) => {
       type: "status.idle",
       stopReason: "interrupted",
     };
-    await insertNormalizedEvent(id, event);
+    await persistAndPublishRoute(id, event);
     await setSessionStatus(id, "idle");
-    broker.publish(id, event);
   }
 
   return c.json(ok({ accepted: true, interrupted }));
@@ -277,9 +280,8 @@ sessionRoutes.post("/api/sessions/:id/tool-decision", async (c) => {
         type: "status.idle",
         stopReason: "interrupted",
       };
-      await insertNormalizedEvent(id, idleEvent);
+      await persistAndPublishRoute(id, idleEvent);
       await setSessionStatus(id, "idle");
-      broker.publish(id, idleEvent);
     }
   }
 
@@ -317,8 +319,7 @@ if (process.env.BG_DEV === "1") {
         tool,
         input,
       };
-      await insertNormalizedEvent(id, event);
-      broker.publish(id, event);
+      await persistAndPublishRoute(id, event);
       return c.json(ok({ accepted: true, toolCallId: event.toolCallId }));
     },
   );
@@ -342,15 +343,10 @@ sessionRoutes.post(
       );
     }
 
-    if (!(await hasSnapshot(projectId, turnId))) {
-      return c.json(
-        fail("snapshot_not_found", "No pre-turn snapshot for this turn", {
-          projectId,
-          turnId,
-        }),
-        404,
-      );
-    }
+    const snapshotPath = await getVerifiedSnapshotPath(projectId, turnId);
+    if (snapshotPath === null) return c.json(fail("snapshot_not_found", "No verified pre-turn snapshot for this turn", { projectId, turnId }), 410);
+    const body = await c.req.json<unknown>().catch(() => null);
+    if (!isRecord(body) || typeof body.expected_revision !== "number" || typeof body.expected_artifact_digest !== "string") return c.json(fail("invalid_artifact_identity", "Expected artifact identity is required"), 400);
 
     const session = await getLatestProjectSession(projectId);
     if (session && isUserTurnRunning(session.id)) {
@@ -362,28 +358,23 @@ sessionRoutes.post(
       );
     }
 
-    const result = await restoreFromSnapshot(projectId, turnId);
-    if (!result) {
-      return c.json(
-        fail("restore_failed", "Snapshot disappeared during restore", {
-          projectId,
-          turnId,
-        }),
-        500,
-      );
+    let operationId: string | undefined;
+    if (body.operation_id !== undefined) {
+      if (typeof body.operation_id !== "string" || process.env.BG_ARTIFACT_QA !== "1" || body.operation_id !== process.env.BG_ARTIFACT_FAULT_OPERATION_ID) return c.json(fail("invalid_operation_id", "Scoped operation identity is invalid"), 400);
+      try { operationId = assertSafeName(body.operation_id); }
+      catch (error) { return c.json(fail("invalid_operation_id", error instanceof Error ? error.message : "Scoped operation identity is invalid"), 400); }
     }
-
-    await indexProjectFiles(projectId);
-    if (session) {
-      await appendSessionTrace(session.id, {
-        level: "turn_restored",
-        turnId,
-        restoredAt: result.restoredAt,
-        removed: result.removedEntries,
-        copied: result.copiedEntries,
-      });
+    try {
+      let publicationWrites = 0;
+      const coordinator = new ArtifactCoordinator(getSqlite(), operationId !== undefined && operationId === process.env.BG_ARTIFACT_FAULT_OPERATION_ID ? { afterPublishWrite: () => { publicationWrites += 1; if (publicationWrites === 1) process.kill(process.pid, "SIGKILL"); } } : {});
+      if (project.current_digest === null) await coordinator.initialize(projectId, project.dir_path);
+      const result = await coordinator.run({ projectId, projectDir: project.dir_path, kind: "restore", operationId, expectedRevision: body.expected_revision, expectedArtifactDigest: body.expected_artifact_digest, mutate: async (stage) => { await materializeManagedTree(snapshotPath, stage); } });
+      if (session) await appendSessionTrace(session.id, { level: "turn_restored", turnId, operationId: result.id, revision: result.resultRevision, digest: result.resultDigest });
+      return c.json(ok({ operation_id: result.id, status: result.status, base_revision: result.baseRevision, base_digest: result.baseDigest, result_revision: result.resultRevision, result_digest: result.resultDigest, diff: result.diff }));
+    } catch (error) {
+      if (error instanceof ArtifactOperationError) return c.json(fail(error.code, error.message), 409);
+      throw error;
     }
-    return c.json(ok(result));
   },
 );
 
@@ -396,25 +387,25 @@ sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
 
   return streamSSE(c, async (stream) => {
     let closed = false;
+    let heartbeat: Timer | null = null;
+    let unsubscribe = () => {};
     const closeAndCleanup = () => {
       closed = true;
-      clearInterval(heartbeat);
+      if (heartbeat !== null) clearInterval(heartbeat);
       unsubscribe();
     };
-
-    const unsubscribe = broker.subscribe(id, async (event: NormalizedEvent) => {
-      if (closed) return;
-      try {
-        await stream.writeSSE({
-          data: JSON.stringify(event),
-          event: "message",
-          id: event.id,
-        });
-      } catch {
-        // Client disconnected mid-write. Tear down so the broker
-        // stops calling us and the heartbeat below stops firing.
-        closeAndCleanup();
-      }
+    const headerCursor = c.req.header("Last-Event-ID");
+    const queryCursor = c.req.query("after_sequence");
+    const cursor = Number.parseInt(headerCursor ?? queryCursor ?? "0", 10);
+    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("invalid_sequence_cursor");
+    unsubscribe = await subscribeBeforeBackfill({
+      afterSequence: cursor,
+      subscribe: (listener) => sequencedBroker.subscribe(id, listener),
+      backfill: async (afterSequence) => listSessionEvents(id, afterSequence),
+      emit: async (item) => {
+        if (closed) return;
+        await stream.writeSSE({ data: JSON.stringify(item), event: "message", id: String(item.sequence) });
+      },
     });
 
     // Heartbeat must fire inside Bun.serve's idleTimeout window (255s max)
@@ -422,9 +413,9 @@ sessionRoutes.get("/api/sessions/:id/stream", async (c) => {
     // 30 s is well below the limit but doesn't burn round-trips on idle
     // tabs; the previous 8 s value was a holdover from a smaller
     // idleTimeout.
-    const heartbeat = setInterval(() => {
+    heartbeat = setInterval(() => {
       if (closed) {
-        clearInterval(heartbeat);
+        if (heartbeat !== null) clearInterval(heartbeat);
         return;
       }
       // Fire-and-forget but trap the promise — an unhandled rejection

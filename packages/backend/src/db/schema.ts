@@ -75,6 +75,8 @@ export const commentsTable = sqliteTable(
     slideIndex: integer("slide_index"),
     body: text("body").notNull().default(""),
     authorId: text("author_id").notNull().default("local"),
+    artifactRevision: integer("artifact_revision"),
+    artifactDigest: text("artifact_digest"),
     resolvedAt: integer("resolved_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),

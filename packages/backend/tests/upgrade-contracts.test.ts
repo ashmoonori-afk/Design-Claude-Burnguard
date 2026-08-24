@@ -135,7 +135,7 @@ describe("strict upgrade contract boundaries", () => {
       const input = { ...provenance, state, source: "extractor", conflicts: state === "conflicted" ? ["sha256:other"] : undefined };
       expect(Reflect.get(Object(parseWith("parseExtractionProvenance", input)), "state")).toBe(state);
     }
-    for (const status of ["preview", "pending", "working", "committed", "cancelled", "failed", "conflicted", "recovered", "reconnecting", "replaying"]) {
+    for (const status of ["preview", "pending", "working", "recovering", "committed", "cancelled", "failed", "conflicted", "recovered", "reconnecting", "replaying"]) {
       expect(Reflect.get(Object(parseWith("parseArtifactOperation", { ...artifact, status })), "status")).toBe(status);
     }
     for (const status of ["pending", "running", "validating", "validated", "failed", "cancelled", "retrying", "recovering", "expired", "corrupt"]) {
@@ -144,6 +144,11 @@ describe("strict upgrade contract boundaries", () => {
     for (const kind of ["lesson", "example", "skill-card"]) {
       expect(Reflect.get(Object(parseWith("parseLearningContract", { ...learning, kind })), "kind")).toBe(kind);
     }
+  });
+
+  test("accepts nullable result identity only while an artifact operation is nonterminal", () => {
+    expect(parseWith("parseArtifactOperation", { ...artifact, status: "working", result_revision: null, result_digest: null })).toMatchObject({ status: "working", result_revision: null, result_digest: null });
+    expect(parseWith("parseArtifactOperation", { ...artifact, status: "committed", result_revision: null, result_digest: null })).toEqual({ code: "missing_required_field" });
   });
 
   test("keeps catalog identity metadata revision and content receipt separate", () => {

@@ -10,7 +10,8 @@ import {
   listProjectComments,
   updateProjectComment,
 } from "../db/comments";
-import { getProjectDetail } from "../db/seed";
+import { getProjectDetail } from "../db/project-read-repository";
+import { ArtifactIdentityError, requireArtifactIdentity } from "../services/artifact-identity";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -62,6 +63,8 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
     y_pct,
     slide_index,
     body: commentBody,
+    artifact_revision,
+    artifact_digest,
   } = body;
   if (typeof rel_path !== "string" || rel_path.trim().length === 0) {
     return c.json(
@@ -111,6 +114,13 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
     );
   }
 
+  let anchor: { readonly revision: number; readonly digest: string };
+  try { anchor = requireArtifactIdentity({ revision: artifact_revision, digest: artifact_digest }, { revision: project.current_revision, digest: project.current_digest }); }
+  catch (error) {
+    if (error instanceof ArtifactIdentityError) return c.json(fail(error.code, error.message, { current_revision: project.current_revision, current_digest: project.current_digest }), error.code === "invalid_artifact_identity" ? 400 : 409);
+    throw error;
+  }
+
   const created = await createProjectComment(id, {
     rel_path,
     node_selector: typeof node_selector === "string" ? node_selector : undefined,
@@ -118,6 +128,8 @@ commentRoutes.post("/api/projects/:id/comments", async (c) => {
     y_pct,
     slide_index: slideIndex,
     body: typeof commentBody === "string" ? commentBody : undefined,
+    artifact_revision: anchor.revision,
+    artifact_digest: anchor.digest,
   });
 
   return c.json(ok(created), 201);

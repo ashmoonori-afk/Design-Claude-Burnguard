@@ -11,8 +11,12 @@ type SessionRow = {
 
 export async function getProjectDetail(projectId: string): Promise<ProjectDetail | null> {
   return getSqlite().query<ProjectRow, [string]>(`SELECT p.id,p.name,p.type,p.design_system_id,d.name design_system_name,
-    p.thumbnail_path,p.updated_at,p.archived_at,p.dir_path,p.entrypoint,p.backend_id,p.options_json
+    p.thumbnail_path,p.updated_at,p.archived_at,p.dir_path,p.entrypoint,p.backend_id,p.options_json,p.current_revision,p.current_digest
     FROM projects p LEFT JOIN design_systems d ON d.id=p.design_system_id WHERE p.id=?`).get(projectId);
+}
+
+export async function listProjectIds(): Promise<readonly string[]> {
+  return getSqlite().query<{ readonly id: string }, []>("SELECT id FROM projects ORDER BY id").all().map((row) => row.id);
 }
 
 export async function getLatestProjectSession(projectId: string): Promise<SessionInfo | null> {

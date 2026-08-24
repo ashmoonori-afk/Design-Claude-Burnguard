@@ -1,4 +1,7 @@
-import type { ArtifactSummary, FileInfo } from "@bg/shared";
+import type { ArtifactSummary } from "@bg/shared/artifact";
+import type { FileInfo } from "@bg/shared/harness";
+import { getSqlite } from "../db/sqlite-client";
+import { ArtifactCoordinator } from "./artifact-coordinator";
 import { listProjectFiles as listProjectFilesFromDb } from "../db/files";
 import { getProjectDetail } from "../db/project-read-repository";
 import { indexProjectFiles } from "./managed-project-files";
@@ -16,6 +19,8 @@ export async function listIndexedProjectFiles(projectId: string) {
 export async function buildArtifactSummary(projectId: string): Promise<ArtifactSummary | null> {
   const project = await getProjectDetail(projectId);
   if (project === null) return null;
+  let digest = project.current_digest;
+  if (digest === null) digest = (await new ArtifactCoordinator(getSqlite()).initialize(projectId, project.dir_path)).tree_digest;
   const files = await listIndexedProjectFiles(projectId);
   const latestUpdated = files.reduce((maximum, file) => Math.max(maximum, file.updated_at ?? 0), project.updated_at);
   const entrypoint = pickEntrypoint(project.entrypoint, files);
@@ -26,6 +31,8 @@ export async function buildArtifactSummary(projectId: string): Promise<ArtifactS
     design_system_id: project.design_system_id,
     design_system_url: project.design_system_id === null ? null : `/api/design-systems/${project.design_system_id}`,
     file_count: files.length,
+    current_revision: project.current_revision,
+    current_digest: digest,
     updated_at: latestUpdated,
   };
 }

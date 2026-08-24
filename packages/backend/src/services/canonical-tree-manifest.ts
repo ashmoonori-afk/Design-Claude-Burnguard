@@ -5,6 +5,7 @@ import { PathBoundaryError, resolveWithin } from "../security/path-boundary";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const OWNED_EPHEMERAL_FILES = new Set([".burnguard-publication", ".burnguard-catalog"]);
+const EXCLUDED_PROJECT_DIRECTORIES = new Set([".meta", ".attachments", ".git", ".omc", ".claude"]);
 
 export type CanonicalTreeEntry = {
   readonly path: string;
@@ -48,6 +49,7 @@ export async function inspectCanonicalTree(
   if (rootInfo?.isSymbolicLink()) throw new CanonicalTreeManifestError("unsafe_tree_entry", "Canonical tree root cannot be a link");
   if (!rootInfo?.isDirectory()) throw new CanonicalTreeManifestError("tree_missing", "Canonical tree directory is missing");
   const files: CanonicalTreeEntry[] = [];
+  const canonicalPaths = new Set<string>();
   let bytes = 0;
   const visit = async (directory: string): Promise<void> => {
     const entries = (await readdir(directory, { withFileTypes: true })).sort((left, right) => compareText(left.name, right.name));
@@ -55,18 +57,23 @@ export async function inspectCanonicalTree(
       const target = resolveWithin(root, path.relative(root, directory), entry.name);
       const info = await lstat(target);
       const relativePath = path.relative(root, target).split(path.sep).join("/");
+      const topLevel = relativePath.split("/")[0];
+      if (topLevel !== undefined && EXCLUDED_PROJECT_DIRECTORIES.has(topLevel)) continue;
       if (OWNED_EPHEMERAL_FILES.has(relativePath)) continue;
-      if (info.isSymbolicLink()) throw new CanonicalTreeManifestError("unsafe_tree_entry", "Canonical tree cannot contain links");
+      if (entry.isSymbolicLink() || info.isSymbolicLink()) throw new CanonicalTreeManifestError("unsafe_tree_entry", "Canonical tree cannot contain links");
       if (info.isDirectory()) {
         await visit(target);
         continue;
       }
-      if (!info.isFile()) throw new CanonicalTreeManifestError("unsafe_tree_entry", "Canonical tree contains a nonregular file");
+      if (!info.isFile() || info.nlink > 1) throw new CanonicalTreeManifestError("unsafe_tree_entry", "Canonical tree contains an unsafe file");
+      const canonicalPath = relativePath.normalize("NFC").toLocaleLowerCase("en-US");
+      if (canonicalPaths.has(canonicalPath)) throw new CanonicalTreeManifestError("unsafe_tree_entry", "Canonical tree contains colliding paths");
+      canonicalPaths.add(canonicalPath);
       if (files.length >= limits.files) throw new CanonicalTreeManifestError("tree_limit_exceeded", "Canonical tree file limit exceeded");
       bytes += info.size;
       if (bytes > limits.bytes) throw new CanonicalTreeManifestError("tree_limit_exceeded", "Canonical tree byte limit exceeded");
       const content = await readFile(target);
-      files.push({ path: relativePath, size: content.byteLength, sha256: createHash("sha256").update(content).digest("hex") });
+      files.push({ path: relativePath.normalize("NFC"), size: content.byteLength, sha256: createHash("sha256").update(content).digest("hex") });
     }
   };
   try {
@@ -83,7 +90,7 @@ export function parseCanonicalTreeManifest(
   input: unknown,
   limits: CanonicalTreeLimits = DEFAULT_CANONICAL_TREE_LIMITS,
 ): CanonicalTreeManifest {
-  if (!isRecord(input) || input["schema_version"] !== 1 || input["digest_algorithm"] !== "sha256" || input["publication_state"] !== "validated") {
+  if (!isRecord(input) || !hasExactKeys(input, ["schema_version", "digest_algorithm", "tree_digest", "files", "publication_state"]) || input["schema_version"] !== 1 || input["digest_algorithm"] !== "sha256" || input["publication_state"] !== "validated") {
     throw new CanonicalTreeManifestError("manifest_unverifiable", "Catalog receipt has no verifiable tree manifest");
   }
   const treeDigest = input["tree_digest"];
@@ -93,10 +100,11 @@ export function parseCanonicalTreeManifest(
   }
   if (rawFiles.length > limits.files) throw new CanonicalTreeManifestError("manifest_unverifiable", "Catalog receipt tree exceeds the file limit");
   const files: CanonicalTreeEntry[] = [];
+  const canonicalPaths = new Set<string>();
   let previous = "";
   let bytes = 0;
   for (const raw of rawFiles) {
-    if (!isRecord(raw) || typeof raw["path"] !== "string" || typeof raw["size"] !== "number" || typeof raw["sha256"] !== "string") {
+    if (!isRecord(raw) || !hasExactKeys(raw, ["path", "size", "sha256"]) || typeof raw["path"] !== "string" || typeof raw["size"] !== "number" || typeof raw["sha256"] !== "string") {
       throw new CanonicalTreeManifestError("manifest_unverifiable", "Catalog receipt tree entry is invalid");
     }
     const relativePath = raw["path"];
@@ -104,6 +112,9 @@ export function parseCanonicalTreeManifest(
       throw new CanonicalTreeManifestError("manifest_unverifiable", "Catalog receipt tree entry is not canonical");
     }
     previous = relativePath;
+    const canonicalPath = relativePath.normalize("NFC").toLocaleLowerCase("en-US");
+    if (canonicalPaths.has(canonicalPath)) throw new CanonicalTreeManifestError("manifest_unverifiable", "Catalog receipt tree contains colliding paths");
+    canonicalPaths.add(canonicalPath);
     bytes += raw["size"];
     if (bytes > limits.bytes) throw new CanonicalTreeManifestError("manifest_unverifiable", "Catalog receipt tree exceeds the byte limit");
     files.push({ path: relativePath, size: raw["size"], sha256: raw["sha256"] });
@@ -138,7 +149,14 @@ function digestEntries(files: readonly CanonicalTreeEntry[]): string {
 }
 
 function isNormalizedRelativePath(value: string): boolean {
-  return value.length > 0 && !value.includes("\\") && !value.startsWith("/") && path.posix.normalize(value) === value && value !== "." && !value.split("/").includes("..");
+  const topLevel = value.split("/")[0];
+  return value.length > 0 && !value.includes("\\") && !value.includes("\0") && !value.startsWith("/") && value.normalize("NFC") === value && path.posix.normalize(value) === value && value !== "." && !value.split("/").includes("..") && topLevel !== undefined && !EXCLUDED_PROJECT_DIRECTORIES.has(topLevel) && !OWNED_EPHEMERAL_FILES.has(value);
+}
+
+function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

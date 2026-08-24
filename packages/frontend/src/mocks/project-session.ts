@@ -133,6 +133,8 @@ export const mockProject: ProjectDetail = {
   entrypoint: "deck.html",
   backend_id: "claude-code",
   options_json: JSON.stringify({ use_speaker_notes: false }),
+  current_revision: 0,
+  current_digest: null,
 };
 
 export const mockSession: SessionInfo = {

@@ -1,16 +1,19 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import type { FileInfo } from "@bg/shared";
+import type { FileInfo } from "@bg/shared/harness";
 import { replaceManagedProjectFiles } from "../db/managed-file-repository";
 import { getProjectDetail } from "../db/project-read-repository";
 import { PathBoundaryError, assertSafeName, resolveWithin } from "../security/path-boundary";
+import { inspectCanonicalTree } from "./canonical-tree-manifest";
 
 const IGNORED_DIRS = new Set([".attachments", ".meta", ".git", ".omc", ".claude"]);
 
 export async function indexProjectFiles(projectId: string) {
   const project = await getProjectDetail(projectId);
   if (project === null) return null;
-  const files = await scanProjectDir(project.dir_path);
+  const manifest = await inspectCanonicalTree(project.dir_path);
+  const hashes = new Map(manifest.files.map((file) => [file.path, file.sha256]));
+  const files = (await scanProjectDir(project.dir_path)).map((file) => ({ ...file, hash: hashes.get(file.rel_path) ?? null }));
   replaceManagedProjectFiles(projectId, files);
   return files;
 }

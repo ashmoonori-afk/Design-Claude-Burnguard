@@ -70,9 +70,10 @@ export function transitionArtifactOperation(db: PipelineDatabase, input: Transit
     if (operationChanged?.[0] === 0) throw new PipelineRepositoryError("invalid_transition", input.id);
     if (input.to === "committed") {
       if (input.resultRevision === null || input.resultDigest === null) throw new PipelineRepositoryError("artifact_identity_mismatch", input.id);
-      const operation = tx.select({ projectId: artifactOperationsTable.projectId, baseRevision: artifactOperationsTable.baseRevision }).from(artifactOperationsTable).where(eq(artifactOperationsTable.id, input.id)).limit(1).all()[0];
+      const operation = tx.select({ projectId: artifactOperationsTable.projectId, baseRevision: artifactOperationsTable.baseRevision, baseDigest: artifactOperationsTable.baseDigest }).from(artifactOperationsTable).where(eq(artifactOperationsTable.id, input.id)).limit(1).all()[0];
       if (operation === undefined) throw new PipelineRepositoryError("not_found", input.id);
-      tx.run(sql`UPDATE projects SET current_revision=${input.resultRevision}, current_digest=${input.resultDigest}, updated_at=${input.updatedAt} WHERE id=${operation.projectId} AND current_revision=${operation.baseRevision}`);
+      if (input.resultRevision !== operation.baseRevision + 1) throw new PipelineRepositoryError("artifact_identity_mismatch", input.id);
+      tx.run(sql`UPDATE projects SET current_revision=${input.resultRevision}, current_digest=${input.resultDigest}, updated_at=${input.updatedAt} WHERE id=${operation.projectId} AND current_revision=${operation.baseRevision} AND current_digest=${operation.baseDigest}`);
       const projectChanged = tx.get<readonly [number]>(sql`SELECT changes()`);
       if (projectChanged?.[0] === 0) throw new PipelineRepositoryError("expected_revision_conflict", operation.projectId);
     }
