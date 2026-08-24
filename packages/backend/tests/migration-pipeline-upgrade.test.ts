@@ -207,7 +207,29 @@ function namedIndexes(db: Database, tableName: string) {
     expect(drizzlePrimaryRequired).toEqual([1, 1, 1, 1, 1, 1]);
     expect(requiredPrimaryKeys.map(([tableName, columnName]) => db.query<{ readonly required: number }, [string, string]>("SELECT \"notnull\" AS required FROM pragma_table_info(?) WHERE name=?").get(tableName, columnName)?.required)).toEqual([1, 1, 1, 1, 1, 1]);
     expect(normalized(db.query<{ readonly sql: string }, []>("SELECT sql FROM sqlite_master WHERE name='uq_artifact_operations_nonterminal'").get()?.sql ?? "")).toContain("where status in ('pending','working','recovering')");
-    expect(db.query("SELECT name FROM sqlite_master WHERE type='trigger' AND name='immutable_learning_checkpoints'").get()).toEqual({ name: "immutable_learning_checkpoints" });
+    expect(db.query("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'immutable_learning_checkpoints%' ORDER BY name").all()).toEqual([
+      { name: "immutable_learning_checkpoints" },
+      { name: "immutable_learning_checkpoints_delete" },
+    ]);
+    db.exec("INSERT INTO projects (id,name,type,dir_path,backend_id,created_at,updated_at) VALUES ('trigger-project','Trigger','prototype','/tmp/trigger','codex',1,1)");
+    db.exec("INSERT INTO learning_items (id,kind,title,content_json,created_at,updated_at) VALUES ('trigger-item','lesson','Trigger','{}',1,1)");
+    db.exec("INSERT INTO learning_checkpoints (id,item_id,project_id,artifact_revision,artifact_digest,feedback,next_context_json,created_at) VALUES ('trigger-cp','trigger-item','trigger-project',0,'digest','feedback','{}',1)");
+    expect(() => db.exec("UPDATE learning_checkpoints SET feedback='changed' WHERE id='trigger-cp'")).toThrow();
+    expect(() => db.exec("DELETE FROM learning_checkpoints WHERE id='trigger-cp'")).toThrow();
+  });
+
+  test("Given an installation with 0005 and 0006 already applied When the immutability upgrade runs Then delete protection is added without rewriting history", async () => {
+    const db = database();
+    const directory = await migrationDirectory("0006_catalog.sql");
+    await runMigrationsFrom(db, directory);
+    expect(db.query("SELECT name FROM sqlite_master WHERE name='immutable_learning_checkpoints_delete'").get()).toBeNull();
+    await cp(path.join(sourceDir, "0007_checkpoint_delete_immutability.sql"), path.join(directory, "0007_checkpoint_delete_immutability.sql"));
+
+    await runMigrationsFrom(db, directory);
+
+    expect(db.query("SELECT id FROM schema_migrations WHERE id='0007_checkpoint_delete_immutability.sql'").get()).toEqual({ id: "0007_checkpoint_delete_immutability.sql" });
+    expect(db.query("SELECT name FROM sqlite_master WHERE name='immutable_learning_checkpoints_delete'").get()).toEqual({ name: "immutable_learning_checkpoints_delete" });
+    expect(db.query("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
   });
 
   test("Given a broken later migration When migration fails Then its transaction rolls back and foreign keys recover", async () => {

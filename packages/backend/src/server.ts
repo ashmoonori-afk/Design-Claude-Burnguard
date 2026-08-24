@@ -130,10 +130,11 @@ export function createApp(authority?: RequestAuthorityOptions): Hono {
   return app;
 }
 
-export type ApiRouteDomain = "health" | "catalog" | "system" | "managed-files" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
+export type ApiRouteDomain = "health" | "catalog" | "learning" | "system" | "managed-files" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
 
 export function classifyApiRoute(pathname: string, method: string): ApiRouteDomain {
   if (pathname === "/api/health") return "health";
+  if (pathname.startsWith("/api/learning")) return "learning";
   if (pathname.startsWith("/api/design-systems")) {
     return /\/(?:extract|upload|tokens|colors|fonts)(?:\/|$)/.test(pathname) ? "system" : "catalog";
   }
@@ -156,6 +157,7 @@ async function apiRoutes(domain: ApiRouteDomain): Promise<Hono> {
   switch (domain) {
     case "health": return (await import("./routes/health")).healthRoutes;
     case "catalog": return (await import("./routes/catalog")).catalogRoutes;
+    case "learning": return (await import("./routes/learning")).learningRoutes;
     case "system": return (await import("./routes/system")).systemRoutes;
     case "managed-files": return (await import("./routes/managed-files")).managedFileRoutes;
     case "artifacts": return (await import("./routes/artifacts")).artifactRoutes;

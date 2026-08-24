@@ -1,12 +1,14 @@
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { Database } from "bun:sqlite";
-import { appRootDir } from "../lib/paths";
+import { appRootDir } from "../lib/app-paths";
 
 let sqliteInstance: Database | null = null;
 
 export function getSqlite(): Database {
   if (sqliteInstance !== null) return sqliteInstance;
   const dbPath = path.join(appRootDir, "burnguard.db");
+  mkdirSync(path.dirname(dbPath), { recursive: true });
   sqliteInstance = new Database(dbPath, { create: true });
   sqliteInstance.exec("PRAGMA journal_mode = WAL;");
   sqliteInstance.exec("PRAGMA busy_timeout = 5000;");

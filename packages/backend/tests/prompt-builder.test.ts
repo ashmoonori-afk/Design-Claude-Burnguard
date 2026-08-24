@@ -1,14 +1,18 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
+import { getSqlite } from "../src/db/sqlite-client";
 import { buildPrompt } from "../src/harness/prompt-builder";
+import { ensureLearningSchema } from "./learning-fixture";
 import {
   attachmentExtractedTextPath,
   attachmentSummaryPath,
-} from "../src/services/attachments";
+} from "../src/services/attachment-paths";
 
 type BuildContext = Parameters<typeof buildPrompt>[0];
+
+beforeAll(() => ensureLearningSchema(getSqlite()));
 
 function makeContext(
   overrides: Partial<BuildContext["project"]> = {},
@@ -182,6 +186,35 @@ header { padding: var(--space-md); }
     }
   });
 
+  test("Given full design-system and file context When built Then deterministic machine paths and values are preserved", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "bg-prompt-context-"));
+    try {
+      const skill = path.join(tempDir, "SKILL.md");
+      const tokens = path.join(tempDir, "tokens.css");
+      const readme = path.join(tempDir, "README.md");
+      await Promise.all([
+        writeFile(skill, "skill-machine-value"),
+        writeFile(tokens, ":root{--machine-token:#123456}"),
+        writeFile(readme, "readme-machine-value"),
+      ]);
+      const files = Array.from({ length: 61 }, (_, index) => ({ rel_path: `file-${String(index).padStart(2, "0")}.txt`, category: "document" as const, size_bytes: index, hash: null, updated_at: 1 }));
+
+      const prompt = await buildPrompt(makeContext({}, {
+        files,
+        designSystem: { id: "machine-system", name: "machine-name", status: "published", source_type: "manual", is_template: false, dir_path: tempDir, skill_md_path: skill, tokens_css_path: tokens, readme_md_path: readme, thumbnail_path: null, created_at: 1, updated_at: 1, archived_at: null },
+      }), { type: "user.message", text: "machine-request" });
+
+      expect(prompt).toContain("file-00.txt (0B)");
+      expect(prompt).toContain("file-59.txt (59B)");
+      expect(prompt).not.toContain("file-60.txt");
+      expect(prompt).toContain("skill-machine-value");
+      expect(prompt).toContain("--machine-token:#123456");
+      expect(prompt).toContain("readme-machine-value");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("skips structure summary gracefully when the entrypoint file does not exist yet", async () => {
     // Brand-new project: backend may build a prompt before the entrypoint has
     // been Written for the first time. The summary block should silently
@@ -201,6 +234,72 @@ header { padding: var(--space-md); }
     expect(prompt).not.toMatch(/deck\.html — \d/);
     // The rest of the prompt must still render normally.
     expect(prompt).toContain("# Slide deck compact contract");
+  });
+
+  test("Given committed learning checkpoints When a prompt is built Then only the latest compatible machine context is injected", async () => {
+    const db = getSqlite();
+    const suffix = `${process.pid}-${Date.now()}`;
+    const projectId = `prompt-learning-project-${suffix}`;
+    const itemId = `prompt-learning-item-${suffix}`;
+    const oldId = `prompt-learning-old-${suffix}`;
+    const latestId = `prompt-learning-latest-${suffix}`;
+    db.prepare("INSERT INTO projects (id,name,type,dir_path,backend_id,current_revision,current_digest,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(projectId, "Prompt learning", "prototype", `/tmp/${projectId}`, "codex", 4, "prompt-digest", 1, 1);
+    db.prepare("INSERT INTO learning_items (id,kind,title,content_json,created_at,updated_at) VALUES (?,?,?,?,?,?)")
+      .run(itemId, "lesson", "Prompt lesson", JSON.stringify({ schema_revision: 1, owner: "user", seed_key: null, revision: 0, content: { summary: "Prompt" } }), 1, 1);
+    db.prepare("INSERT INTO learning_progress (item_id,state,revision,feedback_draft,updated_at) VALUES (?,'in_progress',1,'DRAFT_MUST_NOT_APPEAR',1)").run(itemId);
+    const insert = db.prepare("INSERT INTO learning_checkpoints (id,item_id,project_id,parent_checkpoint_id,artifact_revision,artifact_digest,feedback,next_context_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)");
+    insert.run(oldId, itemId, projectId, null, 4, "prompt-digest", "OLD_FEEDBACK", JSON.stringify({ kind: "iteration", parent_checkpoint_id: oldId, schema_revision: 1, artifact_revision: 4, artifact_digest: "prompt-digest" }), 2);
+    insert.run(latestId, itemId, projectId, oldId, 4, "prompt-digest", "COMMITTED_FEEDBACK", JSON.stringify({ kind: "iteration", parent_checkpoint_id: latestId, schema_revision: 1, artifact_revision: 4, artifact_digest: "prompt-digest" }), 3);
+
+    try {
+      const prompt = await buildPrompt(makeContext({ project_id: projectId, project_dir: `/tmp/${projectId}` }), { type: "user.message", text: "iterate" });
+
+      expect(prompt).toContain("<burnguard-learning-context-v1>");
+      expect(prompt).toContain(`\"checkpoint_id\":\"${latestId}\"`);
+      expect(prompt).toContain("\"artifact_revision\":4");
+      expect(prompt).toContain("\"artifact_digest\":\"prompt-digest\"");
+      expect(prompt).toContain("\"feedback\":\"COMMITTED_FEEDBACK\"");
+      expect(prompt).not.toContain("DRAFT_MUST_NOT_APPEAR");
+      expect(prompt).not.toContain("OLD_FEEDBACK");
+      db.prepare("UPDATE learning_items SET deleted_at=9 WHERE id=?").run(itemId);
+      const deletedPrompt = await buildPrompt(makeContext({ project_id: projectId, project_dir: `/tmp/${projectId}` }), { type: "user.message", text: "iterate" });
+      expect(deletedPrompt).not.toContain("<burnguard-learning-context-v1>");
+      db.prepare("UPDATE learning_items SET deleted_at=NULL WHERE id=?").run(itemId);
+    } finally {
+      db.prepare("UPDATE learning_items SET deleted_at=NULL WHERE id=?").run(itemId);
+    }
+  });
+
+  test("Given stale digest schema and project identity When prompts are built Then no incompatible context is injected", async () => {
+    const db = getSqlite();
+    const suffix = `${process.pid}-${Date.now()}`;
+    const projectId = `prompt-reject-project-${suffix}`;
+    const wrongProjectId = `prompt-wrong-project-${suffix}`;
+    const itemId = `prompt-reject-item-${suffix}`;
+    db.prepare("INSERT INTO projects (id,name,type,dir_path,backend_id,current_revision,current_digest,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(projectId, "Prompt reject", "prototype", `/tmp/${projectId}`, "codex", 5, "current-digest", 1, 1);
+    db.prepare("INSERT INTO projects (id,name,type,dir_path,backend_id,current_revision,current_digest,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(wrongProjectId, "Wrong", "prototype", `/tmp/${wrongProjectId}`, "codex", 5, "current-digest", 1, 1);
+    db.prepare("INSERT INTO learning_items (id,kind,title,content_json,created_at,updated_at) VALUES (?,?,?,?,?,?)")
+      .run(itemId, "lesson", "Reject", JSON.stringify({ schema_revision: 1, owner: "user", seed_key: null, revision: 0, content: { summary: "Reject" } }), 1, 1);
+    db.prepare("INSERT INTO learning_progress (item_id,state,revision,feedback_draft,updated_at) VALUES (?,'in_progress',1,'draft',1)").run(itemId);
+    const insert = db.prepare("INSERT INTO learning_checkpoints (id,item_id,project_id,parent_checkpoint_id,artifact_revision,artifact_digest,feedback,next_context_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)");
+    insert.run(`stale-${suffix}`, itemId, projectId, null, 5, "stale-digest", "STALE", JSON.stringify({ kind: "iteration", parent_checkpoint_id: `stale-${suffix}`, schema_revision: 1, artifact_revision: 5, artifact_digest: "stale-digest" }), 2);
+    insert.run(`schema-${suffix}`, itemId, projectId, null, 5, "current-digest", "SCHEMA", JSON.stringify({ kind: "iteration", parent_checkpoint_id: `schema-${suffix}`, schema_revision: 2, artifact_revision: 5, artifact_digest: "current-digest" }), 3);
+    insert.run(`wrong-${suffix}`, itemId, wrongProjectId, null, 5, "current-digest", "WRONG_PROJECT", JSON.stringify({ kind: "iteration", parent_checkpoint_id: `wrong-${suffix}`, schema_revision: 1, artifact_revision: 5, artifact_digest: "current-digest" }), 4);
+
+    try {
+      const prompt = await buildPrompt(makeContext({ project_id: projectId, project_dir: `/tmp/${projectId}` }), { type: "user.message", text: "iterate" });
+
+      expect(prompt).not.toContain("<burnguard-learning-context-v1>");
+      expect(prompt).not.toContain("STALE");
+      expect(prompt).not.toContain("SCHEMA");
+      expect(prompt).not.toContain("WRONG_PROJECT");
+      expect(prompt).toContain("<burnguard-learning-warning code=\"incompatible_checkpoint\" />");
+    } finally {
+      db.prepare("UPDATE learning_items SET deleted_at=NULL WHERE id=?").run(itemId);
+    }
   });
 
   test("serializes open comments with slide scope for deck pins", async () => {

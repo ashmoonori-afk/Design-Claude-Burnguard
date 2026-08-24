@@ -10,6 +10,7 @@ import { runMigrations } from "./db/migrate";
 import { reconcilePipelineRows } from "./db/pipeline-repository";
 import { seedCoreData } from "./db/seed";
 import { seedTutorialsOnce } from "./db/seed-tutorials";
+import { seedLearningItems } from "./services/learning-service";
 import {
   appRootDir,
   cacheDir,
@@ -102,6 +103,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await runMigrations();
   await seedCoreData();
   await seedTutorialsOnce();
+  seedLearningItems(getSqlite());
   reconcilePipelineRows(getDb());
   await reconcileCatalogState(getSqlite(), systemsDir);
   await reconcileExtractionState();

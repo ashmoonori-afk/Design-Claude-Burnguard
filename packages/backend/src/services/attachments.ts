@@ -4,6 +4,7 @@ import { ulid } from "ulid";
 import { getAttachmentContext, insertAttachmentRecord } from "../db/attachment-context";
 import { assertSafeName, resolveWithin } from "../security/path-boundary";
 import { inferUploadKind } from "./upload-kind";
+export { attachmentExtractedTextPath, attachmentSummaryPath } from "./attachment-paths";
 
 const MAX_ATTACHMENT_COUNT = 8;
 const MAX_ATTACHMENT_BYTES_PER_FILE = 10 * 1024 * 1024;
@@ -72,12 +73,4 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
 
 function sanitize(value: string) {
   return value.replace(/[^\w.-]+/g, "_");
-}
-
-export function attachmentSummaryPath(filePath: string) {
-  return `${filePath}.summary.json`;
-}
-
-export function attachmentExtractedTextPath(filePath: string) {
-  return `${filePath}.extracted.md`;
 }

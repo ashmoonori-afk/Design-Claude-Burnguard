@@ -15,6 +15,7 @@
     "./contract-parser": "./src/contract-parser.ts",
     "./export": "./src/export.ts",
     "./extraction-domain": "./src/extraction-domain.ts",
+    "./events": "./src/events.ts",
     "./learning-contract": "./src/learning-contract.ts"
   },
   "scripts": {

@@ -42,8 +42,10 @@ export type LearningContract =
 
 export function parseLearningContract(input: unknown): LearningContract {
   const record = decodeContract(input);
+  exactFields(record, ["id", "kind", "revision", "progress", "checkpoint"]);
   const kind = requiredString(record, "kind");
   const progressRecord = requiredRecord(record, "progress");
+  exactFields(progressRecord, ["state", "revision", "expected_revision", "feedback_draft"]);
   const progress: LearningProgress = {
     state: parseProgress(requiredString(progressRecord, "state")),
     revision: requiredNumber(progressRecord, "revision"),
@@ -66,6 +68,7 @@ export function parseLearningContract(input: unknown): LearningContract {
 
 export function parseLearningNextContext(input: unknown): LearningNextContext {
   const context = decodeContract(input);
+  exactFields(context, ["kind", "parent_checkpoint_id", "schema_revision", "artifact_revision", "artifact_digest"]);
   const contextDigest = context["artifact_digest"];
   if (contextDigest === undefined) throw new UpgradeContractError("missing_artifact_digest", "artifact_digest");
   if (typeof contextDigest !== "string" || contextDigest.length === 0) throw new UpgradeContractError("invalid_field", "artifact_digest");
@@ -81,6 +84,7 @@ export function parseLearningNextContext(input: unknown): LearningNextContext {
 }
 
 function parseCheckpoint(record: Readonly<Record<string, unknown>>): LearningCheckpoint {
+  exactFields(record, ["id", "parent_checkpoint_id", "artifact_revision", "artifact_digest", "next_context"]);
   const digest = record["artifact_digest"];
   if (digest === undefined) throw new UpgradeContractError("missing_artifact_digest", "checkpoint.artifact_digest");
   if (typeof digest !== "string" || digest.length === 0) throw new UpgradeContractError("invalid_field", "checkpoint.artifact_digest");
@@ -97,4 +101,9 @@ function parseProgress(value: string): LearningProgress["state"] {
     case "not_started": case "in_progress": case "completed": return value;
     default: throw new UpgradeContractError("unknown_discriminant", "progress.state");
   }
+}
+function exactFields(record: Readonly<Record<string, unknown>>, allowed: readonly string[]): void {
+  const fields = new Set(allowed);
+  const unknown = Object.keys(record).find((field) => !fields.has(field));
+  if (unknown !== undefined) throw new UpgradeContractError("invalid_field", unknown);
 }
