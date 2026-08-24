@@ -27,7 +27,7 @@ function isProductStateEntry(entry: string): boolean {
 async function git(
   root: string,
   args: readonly string[],
-  timeoutMs = 5_000,
+  timeoutMs = 15_000,
 ): Promise<string> {
   const child = Bun.spawn(["git", ...args], {
     cwd: root,
@@ -56,22 +56,23 @@ async function git(
 }
 
 export async function readRepositoryIdentity(root: string): Promise<RepositoryIdentity> {
-  const [actualRoot, branch, origin, head, tree, baseCheck, rawStatus, trackedDiff] = await Promise.all([
-    git(root, ["rev-parse", "--show-toplevel"]),
-    git(root, ["branch", "--show-current"]),
-    git(root, ["remote", "get-url", "origin"]),
-    git(root, ["rev-parse", "HEAD"]),
-    git(root, ["rev-parse", "HEAD^{tree}"]),
-    git(root, ["merge-base", "--is-ancestor", EXPECTED_BASE, "HEAD"]),
-    git(root, ["status", "--porcelain=v1", "--untracked-files=all"]),
-    git(root, ["diff", "--binary", "HEAD", "--", ".", ":(exclude).omo", ":(exclude).debug-journal.md"]),
-  ]);
+  // File-provider worktrees can deadlock when several Git processes mmap the
+  // same index concurrently. Keep identity reads sequential and exclude the
+  // control-plane paths before status traversal, matching isProductStateEntry.
+  const actualRoot = await git(root, ["rev-parse", "--show-toplevel"]);
+  const branch = await git(root, ["branch", "--show-current"]);
+  const origin = await git(root, ["remote", "get-url", "origin"]);
+  const head = await git(root, ["rev-parse", "HEAD"]);
+  const tree = await git(root, ["rev-parse", "HEAD^{tree}"]);
+  const baseCheck = await git(root, ["merge-base", "--is-ancestor", EXPECTED_BASE, "HEAD"]);
+  const rawStatus = await git(root, ["status", "--porcelain=v1", "--untracked-files=all", "--", ".", ":(exclude).omo", ":(exclude).debug-journal.md"]);
+  const productStatus = rawStatus === "" ? [] : rawStatus.split("\n").filter(isProductStateEntry).sort();
+  const trackedPaths = productStatus.filter((entry) => !entry.startsWith("?? ")).map((entry) => entry.slice(3));
+  const trackedDiff = trackedPaths.length === 0 ? "" : await git(root, ["diff", "--binary", "HEAD", "--", ...trackedPaths]);
   if (baseCheck !== "") {
     throw new QaPreflightError("base_mismatch", "Expected base is not an ancestor of HEAD");
   }
-  const status = rawStatus === ""
-    ? []
-    : rawStatus.split("\n").filter(isProductStateEntry).sort();
+  const status = productStatus;
   const digest = createHash("sha256").update(status.join("\n")).update(trackedDiff);
   for (const entry of status) {
     if (!entry.startsWith("?? ")) continue;

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { hasSnapshot, restoreFromSnapshot, writePreTurnSnapshot, writeTurnCheckpoint } from "../src/services/checkpoints";
-import { runMigrations } from "../src/db/migrate";
+import { runMigrations } from "../src/db/migrate-local";
 import { getSqlite } from "../src/db/sqlite-client";
 import { indexProjectFiles, isTransientFilePath, resolveDrawFile, resolveProjectFile } from "../src/services/managed-project-files";
 import { buildArtifactSummary, listIndexedProjectFiles } from "../src/services/files";

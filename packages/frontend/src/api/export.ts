@@ -12,6 +12,8 @@ export function formatLabel(format: ExportFormat): string {
   switch (format) {
     case "pdf":
       return "PDF";
+    case "png":
+      return "PNG";
     case "pptx":
       return "PowerPoint";
     case "html_zip":

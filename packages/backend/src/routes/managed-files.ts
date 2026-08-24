@@ -2,10 +2,9 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Hono } from "hono";
 import type { ApiErrorBody, ApiSuccess } from "@bg/shared";
-import { getManagedExportJob } from "../db/managed-file-repository";
 import { getSqlite } from "../db/sqlite-client";
 import { getProjectDetail } from "../db/project-read-repository";
-import { exportsDir, resolveManagedPath } from "../lib/paths";
+
 import { ArtifactCoordinator } from "../services/artifact-coordinator";
 import { ArtifactIdentityError, requireArtifactIdentity } from "../services/artifact-identity";
 import { inspectCanonicalTree } from "../services/canonical-tree-manifest";
@@ -92,21 +91,19 @@ managedFileRoutes.put("/api/projects/:id/draws/*", async (c) => {
 
 managedFileRoutes.get("/api/exports/:id/download", async (c) => {
   const id = c.req.param("id");
-  const job = getManagedExportJob(id);
-  if (job === null) return c.json(fail("export_not_found", "Export job not found", { id }), 404);
-  if (job.status !== "succeeded" || job.output_path === null) return c.json(fail("export_not_ready", "Export is not ready for download", { id }), 409);
-  let outputPath: string;
+  const { ExportDownloadError, verifyExportDownload } = await import("../services/export-download");
   try {
-    outputPath = resolveManagedPath(exportsDir, job.output_path);
-    if (!(await stat(outputPath)).isFile()) return c.json(fail("export_not_found", "Export output file not found", { id }), 404);
+    const download = await verifyExportDownload(id);
+    const project = await getProjectDetail(download.projectId);
+    const { buildContentDisposition, buildDownloadFilename, formatMime } = await import("../services/export-naming");
+    const filename = buildDownloadFilename({ projectName: project?.name ?? null, revision: download.revision, format: download.format });
+    return new Response(Bun.file(download.path), { headers: { "Content-Disposition": buildContentDisposition(filename), "Content-Type": formatMime(download.format) } });
   } catch (error) {
-    if (error instanceof Error) return c.json(fail("export_not_found", "Export output file not found", { id }), 404);
-    throw error;
+    if (!(error instanceof ExportDownloadError)) throw error;
+    if (error.code === "not_found") return c.json(fail("export_not_found", "Export job not found", { id }), 404);
+    if (error.code === "corrupt") return c.json(fail("export_corrupt", "Export receipt or output is corrupt", { id }), 410);
+    return c.json(fail("export_not_ready", "Export is not ready for download", { id }), 409);
   }
-  const project = await getProjectDetail(job.project_id);
-  const { buildContentDisposition, buildDownloadFilename, formatMime } = await import("../services/export-naming");
-  const filename = buildDownloadFilename({ projectName: project?.name ?? null, job });
-  return new Response(Bun.file(outputPath), { headers: { "Content-Disposition": buildContentDisposition(filename), "Content-Type": formatMime(job.format) } });
 });
 
 function contentType(filePath: string): string {

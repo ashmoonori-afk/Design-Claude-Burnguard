@@ -44,8 +44,3 @@ export async function runMigrationsFrom(
     db.exec("PRAGMA foreign_keys = ON;");
   }
 }
-
-export async function runMigrations(): Promise<void> {
-  const { getSqlite } = await import("./sqlite-client");
-  await runMigrationsFrom(getSqlite(), path.join(import.meta.dir, "migrations"));
-}

@@ -4,6 +4,7 @@ import { openBrowser } from "./lib/browser";
 import { pickPort } from "./lib/port";
 import { generateLaunchCapability } from "./security/request-authority";
 import { createApp } from "./server";
+import { closeActiveExportBrowsers } from "./services/export-browser-registry";
 
 await bootstrapLocalAppData();
 const config = await loadConfig();
@@ -51,9 +52,11 @@ if (isDev) {
   );
 }
 
-// Keep the process alive and exit cleanly on Ctrl+C
-process.on("SIGINT", () => {
-  console.log("\n[burnguard] shutting down");
-  server.stop(true);
-  process.exit(0);
-});
+// Keep the process alive and close renderer-owned Chromium before shutdown.
+let shuttingDown = false;
+const shutdown = async (): Promise<void> => {
+  if (shuttingDown) return; shuttingDown = true; console.log("\n[burnguard] shutting down");
+  server.stop(false); await closeActiveExportBrowsers(); server.stop(true); process.exit(0);
+};
+process.on("SIGINT", () => { void shutdown(); });
+process.on("SIGTERM", () => { void shutdown(); });

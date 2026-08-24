@@ -2,17 +2,9 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { chromium, type LaunchOptions } from "playwright-core";
-import {
-  DECK_TUTORIAL_HTML,
-  PROTOTYPE_TUTORIAL_HTML,
-  PROTOTYPE_TUTORIAL_NAME,
-  DECK_TUTORIAL_NAME,
-} from "../src/db/seed-tutorials";
+import { chromium } from "playwright-core";
 import { DECK_STAGE_JS } from "../src/runtime/deck-stage";
-import { PdfExportError, renderDeckToPdf } from "../src/services/export-pdf";
-import { PptxExportError, renderDeckToPptx } from "../src/services/export-pptx";
-import { prepareSlideDeckExport } from "../src/services/exports";
+import { prepareSlideDeckExport } from "../src/services/export-stage";
 
 describe("export path boundary", () => {
   test("rejects an entrypoint outside the staged project", async () => {
@@ -34,29 +26,34 @@ describe("export path boundary", () => {
 });
 
 describe("tutorial HTML contracts", () => {
-  test("prototype tutorial is a standalone page with editable anchors", () => {
-    expect(PROTOTYPE_TUTORIAL_HTML).toContain("<!doctype html>");
-    expect(PROTOTYPE_TUTORIAL_HTML).toContain('data-bg-node-id="headline"');
-    expect(PROTOTYPE_TUTORIAL_HTML).toContain('data-bg-node-id="body"');
-    // No external scripts/fonts — offline export must work verbatim.
-    expect(PROTOTYPE_TUTORIAL_HTML).not.toMatch(/<link[^>]*href=["']https?:/);
-    expect(PROTOTYPE_TUTORIAL_HTML).not.toMatch(/<script[^>]*src=["']https?:/);
-  });
-
-  test("deck tutorial exposes at least 3 [data-slide] sections with editable text", () => {
-    const sectionMatches = DECK_TUTORIAL_HTML.match(/<section\s+data-slide/g) ?? [];
-    expect(sectionMatches.length).toBeGreaterThanOrEqual(3);
-    expect(DECK_TUTORIAL_HTML).toContain('data-bg-node-id="slide-1-title"');
-    expect(DECK_TUTORIAL_HTML).toContain('data-bg-node-id="slide-3-body"');
-    // Runtime script is referenced — deck-stage.js will toggle data-active.
-    expect(DECK_TUTORIAL_HTML).toMatch(/runtime\/deck-stage\.js/);
-  });
-
-  test("tutorial names carry the reserved prefix so seedTutorialsOnce can match", () => {
-    expect(PROTOTYPE_TUTORIAL_NAME.startsWith("[burnguard:tutorial]")).toBe(true);
-    expect(DECK_TUTORIAL_NAME.startsWith("[burnguard:tutorial]")).toBe(true);
-  });
+  test("prototype tutorial is a standalone page with editable anchors", async () => {
+    const observation = await tutorialObservation();
+    expect(observation.prototypeStandalone).toBe(true); expect(observation.prototypeAnchors).toBe(true); expect(observation.prototypeRemoteAssets).toBe(false);
+  }, 30_000);
+  test("deck tutorial exposes at least 3 [data-slide] sections with editable text", async () => {
+    const observation = await tutorialObservation();
+    expect(observation.deckSlides).toBeGreaterThanOrEqual(3); expect(observation.deckAnchors).toBe(true); expect(observation.deckRuntime).toBe(true);
+  }, 30_000);
+  test("tutorial names carry the reserved prefix so seedTutorialsOnce can match", async () => {
+    const observation = await tutorialObservation(); expect(observation.reservedNames).toBe(true);
+  }, 30_000);
 });
+
+type TutorialObservation = { readonly prototypeStandalone: boolean; readonly prototypeAnchors: boolean; readonly prototypeRemoteAssets: boolean; readonly deckSlides: number; readonly deckAnchors: boolean; readonly deckRuntime: boolean; readonly reservedNames: boolean };
+let observedTutorials: Promise<TutorialObservation> | null = null;
+function tutorialObservation(): Promise<TutorialObservation> {
+  observedTutorials ??= (async () => {
+    const moduleUrl = new URL("../src/db/seed-tutorials.ts", import.meta.url).href;
+    const script = `import {DECK_TUTORIAL_HTML as d,PROTOTYPE_TUTORIAL_HTML as p,PROTOTYPE_TUTORIAL_NAME as pn,DECK_TUTORIAL_NAME as dn} from ${JSON.stringify(moduleUrl)};console.log(JSON.stringify({prototypeStandalone:p.includes("<!doctype html>"),prototypeAnchors:p.includes('data-bg-node-id="headline"')&&p.includes('data-bg-node-id="body"'),prototypeRemoteAssets:/<(?:link|script)[^>]*(?:href|src)=["']https?:/.test(p),deckSlides:(d.match(/<section\\s+data-slide/g)||[]).length,deckAnchors:d.includes('data-bg-node-id="slide-1-title"')&&d.includes('data-bg-node-id="slide-3-body"'),deckRuntime:/runtime\\/deck-stage\\.js/.test(d),reservedNames:pn.startsWith("[burnguard:tutorial]")&&dn.startsWith("[burnguard:tutorial]")}))`;
+    const child = Bun.spawn([process.execPath, "-e", script], { stdout: "pipe", stderr: "pipe" });
+    const [exit, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    if (exit !== 0) throw new TypeError(stderr); const value: unknown = JSON.parse(stdout); if (!isTutorialObservation(value)) throw new TypeError("Invalid tutorial observation"); return value;
+  })();
+  return observedTutorials;
+}
+function isTutorialObservation(value: unknown): value is TutorialObservation { return typeof value === "object" && value !== null && typeof Reflect.get(value, "prototypeStandalone") === "boolean" && typeof Reflect.get(value, "deckSlides") === "number"; }
+
+const SMOKE_DECK_HTML = `<!doctype html><html><head><style>html,body{margin:0}.slide{width:1280px;height:720px;box-sizing:border-box;padding:64px;background:white;color:#111}[data-slide]:not([data-active]){display:none}</style></head><body><section class="slide" data-slide><h1 data-bg-node-id="one">One</h1></section><section class="slide" data-slide><h1 data-bg-node-id="two">Two</h1></section><section class="slide" data-slide><h1 data-bg-node-id="three">Three</h1></section><script src="/runtime/deck-stage.js"></script></body></html>`;
 
 /**
  * Deck export pipeline smoke test. Stages the deck tutorial into a temp
@@ -70,25 +67,10 @@ const SMOKE_OPT_IN = process.env.BG_EXPORT_SMOKE === "1";
 
 beforeAll(async () => {
   if (!SMOKE_OPT_IN) return;
-  // Probe once so the chromium-dependent tests skip cleanly when no
-  // browser is installed. Short per-candidate timeout caps the total
-  // cost on a cold machine where channel detection stalls.
-  const candidates: LaunchOptions[] = [
-    { headless: true, timeout: 3_000 },
-    { headless: true, channel: "chrome", timeout: 3_000 },
-    { headless: true, channel: "msedge", timeout: 3_000 },
-  ];
-  for (const opts of candidates) {
-    try {
-      const browser = await chromium.launch(opts);
-      await browser.close();
-      chromiumAvailable = true;
-      return;
-    } catch {
-      // try next candidate
-    }
-  }
-}, 15_000);
+  const browser = await chromium.launch({ headless: true, timeout: 30_000 });
+  await browser.close();
+  chromiumAvailable = true;
+}, 35_000);
 
 describe("deck export smoke (chromium-gated)", () => {
   async function stageDeck() {
@@ -99,7 +81,8 @@ describe("deck export smoke (chromium-gated)", () => {
       DECK_STAGE_JS,
       "utf8",
     );
-    const rewritten = DECK_TUTORIAL_HTML.replaceAll(
+    const source = SMOKE_OPT_IN ? (await import("../src/db/seed-tutorials")).DECK_TUTORIAL_HTML : SMOKE_DECK_HTML;
+    const rewritten = source.replaceAll(
       "/runtime/deck-stage.js",
       "runtime/deck-stage.js",
     );
@@ -113,14 +96,11 @@ describe("deck export smoke (chromium-gated)", () => {
       console.warn("[exports.test] skipping PDF smoke — set BG_EXPORT_SMOKE=1 to run");
       return;
     }
-    if (!chromiumAvailable) {
-      // eslint-disable-next-line no-console
-      console.warn("[exports.test] skipping PDF smoke — no Chromium on PATH");
-      return;
-    }
+    expect(chromiumAvailable).toBe(true);
     const dir = await stageDeck();
     const out = path.join(dir, "deck.pdf");
     try {
+      const { renderDeckToPdf } = await import("../src/services/export-pdf");
       await renderDeckToPdf({
         stagedDir: dir,
         entrypoint: "deck.html",
@@ -128,16 +108,20 @@ describe("deck export smoke (chromium-gated)", () => {
       });
       const info = await stat(out);
       expect(info.size).toBeGreaterThan(1024);
-    } catch (err) {
-      if (err instanceof PdfExportError && err.code !== "render_failed") {
-        // eslint-disable-next-line no-console
-        console.warn(`[exports.test] skipping PDF smoke — ${err.code}`);
-        return;
-      }
-      throw err;
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  }, 60_000);
+
+  test("PNG: renderToPng produces validated viewport pixels", async () => {
+    if (!SMOKE_OPT_IN) return;
+    expect(chromiumAvailable).toBe(true);
+    const dir = await stageDeck(); const out = path.join(dir, "deck.png");
+    try {
+      const { renderToPng } = await import("../src/services/export-png");
+      const result = await renderToPng({ stagedDir: dir, entrypoint: "deck.html", outputPath: out, width: 640, height: 360, dpr: 2, deck: true, signal: new AbortController().signal });
+      expect(result.width).toBe(1280); expect(result.height).toBe(720); expect(result.statistics.differing_pixels).toBeGreaterThan(0);
+    } finally { await rm(dir, { recursive: true, force: true }); }
   }, 60_000);
 
   test("PPTX: renderDeckToPptx produces a non-empty .pptx", async () => {
@@ -146,14 +130,11 @@ describe("deck export smoke (chromium-gated)", () => {
       console.warn("[exports.test] skipping PPTX smoke — set BG_EXPORT_SMOKE=1 to run");
       return;
     }
-    if (!chromiumAvailable) {
-      // eslint-disable-next-line no-console
-      console.warn("[exports.test] skipping PPTX smoke — no Chromium on PATH");
-      return;
-    }
+    expect(chromiumAvailable).toBe(true);
     const dir = await stageDeck();
     const out = path.join(dir, "deck.pptx");
     try {
+      const { renderDeckToPptx } = await import("../src/services/export-pptx-render");
       await renderDeckToPptx({
         stagedDir: dir,
         entrypoint: "deck.html",
@@ -161,13 +142,6 @@ describe("deck export smoke (chromium-gated)", () => {
       });
       const info = await stat(out);
       expect(info.size).toBeGreaterThan(1024);
-    } catch (err) {
-      if (err instanceof PptxExportError && err.code !== "render_failed") {
-        // eslint-disable-next-line no-console
-        console.warn(`[exports.test] skipping PPTX smoke — ${err.code}`);
-        return;
-      }
-      throw err;
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

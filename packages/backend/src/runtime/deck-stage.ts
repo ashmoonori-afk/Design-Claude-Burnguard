@@ -1,3 +1,4 @@
+// allow: SIZE_OK — embedded browser runtime is one shipped state machine.
 /**
  * Deck stage runtime — served at /runtime/deck-stage.js.
  *
@@ -61,6 +62,7 @@ export const DECK_STAGE_JS = `(function() {
     var current = Math.min(parseHashIndex(), all.length - 1);
     setActive(all, current);
     writeHash(current);
+    globalThis.__BURNGUARD_DECK_RUNTIME__ = { version: 1, slideCount: all.length };
     document.body.setAttribute("data-deck-ready", "");
 
     var params = new URLSearchParams(location.search || "");

@@ -1,17 +1,8 @@
 import type { Database } from "bun:sqlite";
-import type { NormalizedEvent, SequencedEventEnvelope, UserEvent } from "@bg/shared/events";
+import type { ExportAttemptStatus, ExportProgress, ExportStopReason, NormalizedEvent, SequencedEventEnvelope, UserEvent } from "@bg/shared";
 import { PipelineRepositoryError, parseJsonRecord } from "./pipeline-errors";
 
-type SequencedEventInput = {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly direction: "up" | "down";
-  readonly type: string;
-  readonly payload: unknown;
-  readonly turnId: string | null;
-  readonly processedAt: number;
-  readonly createdAt: number;
-};
+export { insertSequencedEvent } from "./sequenced-event-writer";
 
 export function parsePersistedNormalizedEvent(value: string, id: string): NormalizedEvent {
   const item = parseJsonRecord(value, id);
@@ -35,6 +26,8 @@ export function parsePersistedNormalizedEvent(value: string, id: string): Normal
     }
     case "artifact.operation":
       return { ...base, type, operationId: text(item, "operationId", id), revision: integer(item, "revision", id), digest: text(item, "digest", id), changedPaths: texts(item, "changedPaths", id), outcome: operationOutcome(item, id) };
+    case "export.attempt":
+      return { ...base, type, jobId: text(item, "jobId", id), attemptId: text(item, "attemptId", id), status: exportStatus(item, id), progress: exportProgress(item, id), projectRevision: integer(item, "projectRevision", id), projectDigest: text(item, "projectDigest", id), stopReason: exportStopReason(item, id) };
     case "file.changed":
       return { ...base, type, turnId: text(item, "turnId", id), action: fileAction(item, id), path: text(item, "path", id) };
     case "status.running":
@@ -86,27 +79,6 @@ export function listSequencedSessionEvents(db: Database, sessionId: string, afte
   });
 }
 
-export function insertSequencedEvent(db: Database, input: SequencedEventInput) {
-  return db.transaction(() => {
-    const row = db.query<{ readonly next: number }, [string]>(
-      "SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM events WHERE session_id = ?",
-    ).get(input.sessionId);
-    const sequence = row?.next ?? 1;
-    db.prepare("INSERT INTO events (id,session_id,direction,type,payload_json,turn_id,processed_at,created_at,sequence) VALUES (?,?,?,?,?,?,?,?,?)").run(
-      input.id,
-      input.sessionId,
-      input.direction,
-      input.type,
-      JSON.stringify(input.payload),
-      input.turnId,
-      input.processedAt,
-      input.createdAt,
-      sequence,
-    );
-    return { id: input.id, sequence };
-  })();
-}
-
 function text(item: Readonly<Record<string, unknown>>, key: string, id: string): string {
   const value = item[key];
   if (typeof value !== "string" || value.length === 0) throw new PipelineRepositoryError("corrupt_json", id);
@@ -130,6 +102,26 @@ function texts(item: Readonly<Record<string, unknown>>, key: string, id: string)
   if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) throw new PipelineRepositoryError("corrupt_json", id);
   return value;
 }
+
+function exportStatus(item: Readonly<Record<string, unknown>>, id: string): ExportAttemptStatus {
+  const value = text(item, "status", id);
+  switch (value) { case "pending": case "running": case "validating": case "retrying": case "recovering": case "validated": case "failed": case "cancelled": case "corrupt": case "expired": return value; default: throw new PipelineRepositoryError("corrupt_json", id); }
+}
+function exportProgress(item: Readonly<Record<string, unknown>>, id: string): ExportProgress {
+  const progress = item["progress"];
+  if (!record(progress)) throw new PipelineRepositoryError("corrupt_json", id);
+  const stage = text(progress, "stage", id); const completed = integer(progress, "completed", id); const total = integer(progress, "total", id);
+  if (total !== 6) throw new PipelineRepositoryError("corrupt_json", id);
+  switch (stage) { case "queued": case "snapshotting": case "rendering": case "validating": case "publishing": case "complete": return { stage, completed, total: 6 }; default: throw new PipelineRepositoryError("corrupt_json", id); }
+}
+function exportStopReason(item: Readonly<Record<string, unknown>>, id: string): ExportStopReason | null {
+  const value = item["stopReason"];
+  if (value === null) return null;
+  if (typeof value !== "string") throw new PipelineRepositoryError("corrupt_json", id);
+  switch (value) { case "user_cancelled": case "source_changed": case "snapshot_failed": case "render_failed": case "validation_failed": case "publication_failed": case "recovery_failed": case "receipt_corrupt": case "output_missing": case "retention_expired": return value; default: throw new PipelineRepositoryError("corrupt_json", id); }
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 
 function operationOutcome(item: Readonly<Record<string, unknown>>, id: string): "committed" | "cancelled" | "failed" | "conflicted" | "recovered" {
   const value = text(item, "outcome", id);

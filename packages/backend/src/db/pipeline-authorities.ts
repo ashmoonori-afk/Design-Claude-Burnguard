@@ -112,14 +112,18 @@ export const exportsTable = sqliteTable(
   {
     id: text("id").primaryKey(),
     projectId: text("project_id").notNull().references(() => projectsTable.id, { onDelete: "cascade" }),
-    format: text("format", { enum: ["html_zip", "pdf", "pptx", "handoff"] }).notNull(),
+    format: text("format", { enum: ["html_zip", "pdf", "png", "pptx", "handoff"] }).notNull(),
     status: text("status", { enum: ["pending", "running", "succeeded", "failed"] }).notNull(),
     outputPath: text("output_path"),
     errorMessage: text("error_message"),
     sizeBytes: integer("size_bytes"),
-    optionsJson: text("options_json"),
+    optionsJson: text("options_json").notNull().default("{}"),
     createdAt: integer("created_at").notNull(),
     completedAt: integer("completed_at"),
   },
-  (table) => [index("idx_exports_project").on(table.projectId, table.createdAt)],
+  (table) => [
+    check("ck_exports_format", sql`${table.format} IN ('html_zip','pdf','png','pptx','handoff')`),
+    check("ck_exports_status", sql`${table.status} IN ('pending','running','succeeded','failed')`),
+    index("idx_exports_project").on(table.projectId, table.createdAt),
+  ],
 );

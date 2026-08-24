@@ -52,7 +52,7 @@ const parityTables: readonly ExpectedParity[] = [
   { table: learningProgressTable, checks: ["state in ('not_started','in_progress','completed')"], defaults: { state: "not_started", revision: "0" }, namedIndexes: [], primaryKey: ["item_id"], unique: [] },
   { table: learningCheckpointsTable, checks: [], defaults: {}, namedIndexes: ["idx_learning_checkpoints_item"], primaryKey: ["id"], unique: [] },
   { table: artifactOperationsTable, checks: ["status in ('pending','working','committed','cancelled','failed','conflicted','recovering','recovered')"], defaults: { status: "pending" }, namedIndexes: ["idx_artifact_operations_project", "uq_artifact_operations_nonterminal"], primaryKey: ["id"], unique: [] },
-  { table: exportAttemptsTable, checks: ["status in ('pending','running','validating','validated','failed','cancelled','retrying','recovering','expired','corrupt')"], defaults: {}, namedIndexes: ["idx_export_attempts_job"], primaryKey: ["id"], unique: [] },
+  { table: exportAttemptsTable, checks: ["status in ('pending','running','validating','validated','failed','cancelled','retrying','recovering','expired','corrupt')"], defaults: {}, namedIndexes: ["idx_export_attempts_job", "uq_export_attempts_nonterminal", "uq_export_attempts_parent"], primaryKey: ["id"], unique: [] },
 ];
 
 const dialect = new SQLiteSyncDialect();

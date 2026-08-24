@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { getSqlite } from "../src/db/sqlite-client";
-import { runMigrations } from "../src/db/migrate";
+import { runMigrations } from "../src/db/migrate-local";
 import { ArtifactCoordinator } from "../src/services/artifact-coordinator";
 import { inspectCanonicalTree } from "../src/services/canonical-tree-manifest";
 import { isTransientFilePath } from "../src/services/files";

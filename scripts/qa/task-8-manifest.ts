@@ -1,0 +1,22 @@
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+type EvidenceClass = "authoritative_green" | "raw_gate" | "red" | "superseded_failed_attempt" | "diagnostic_unavailable" | "cleanup" | "actual_artifact" | "fault_evidence";
+const root = process.argv[2]; if (root === undefined) throw new TypeError("evidence root required");
+const files = await walk(root); const entries = [];
+for (const absolute of files) { const relative = path.relative(root, absolute); if (relative === "manifest.json" || relative === "cookies") continue; const bytes = new Uint8Array(await readFile(absolute)); entries.push({ path: relative, class: classify(relative), sha256: createHash("sha256").update(bytes).digest("hex"), size: bytes.length }); }
+entries.sort((a, b) => a.path.localeCompare(b.path, "en"));
+const preflight = JSON.parse(await readFile(path.join(root, "preflight.json"), "utf8")); const gateEntries = entries.filter((entry) => entry.path.startsWith("gates/") && entry.path.endsWith(".exit.json")); const gateReceipts = await Promise.all(gateEntries.map(async (entry) => JSON.parse(await readFile(path.join(root, entry.path), "utf8"))));
+const proofs = JSON.parse(await readFile(path.join(root, "qa-proofs.json"), "utf8")); const cleanup = JSON.parse(await readFile(path.join(root, "cleanup.json"), "utf8"));
+const source = { head: preflight.repository.head, tree: preflight.repository.tree, status_digest: preflight.repository.statusDigest, status_count: preflight.repository.statusCount, diff_sha256: (await readFile(path.join(root, "source-diff.sha256"), "utf8")).trim() };
+const mislabeledRejected = rejects({ path: "superseded/example.log", class: "authoritative_green", sha256: "a".repeat(64), size: 1 }, source);
+await writeFile(path.join(root, "manifest-self-test.json"), `${JSON.stringify({ mislabeled_authoritative_green_rejected: mislabeledRejected })}\n`);
+const self = new Uint8Array(await readFile(path.join(root, "manifest-self-test.json"))); entries.push({ path: "manifest-self-test.json", class: "red" as const, sha256: createHash("sha256").update(self).digest("hex"), size: self.length }); entries.sort((a, b) => a.path.localeCompare(b.path, "en"));
+const ok = entries.every((entry) => !rejects(entry, source)) && gateReceipts.length === 9 && gateReceipts.every((gate) => gate.exit === 0 && gate.authoritative === true) && Object.values(proofs).every(Boolean) && cleanup.ok === true && mislabeledRejected;
+await writeFile(path.join(root, "manifest.json"), `${JSON.stringify({ schema_version: 2, source, files: entries, gates: gateReceipts, checks: { complete_file_closure: entries.length === files.filter((file) => !["manifest.json", "cookies"].includes(path.relative(root, file))).length + 1, all_raw_gates_exit_zero: gateReceipts.every((gate) => gate.exit === 0), classified: entries.every((entry) => entry.class.length > 0), mislabeled_fixture_rejected: mislabeledRejected, cleanup: cleanup.ok === true }, ok }, null, 2)}\n`);
+function classify(relative: string): EvidenceClass {
+  if (relative.startsWith("gates/")) return "raw_gate"; if (relative.startsWith("output-") || /^pdf-page-\d+\.png$/u.test(relative)) return "actual_artifact"; if (relative.startsWith("cleanup")) return "cleanup"; if (relative.includes("red-") || relative === "manifest-self-test.json") return "red"; if (relative.startsWith("superseded/")) return "superseded_failed_attempt"; if (relative.startsWith("diagnostic-unavailable")) return "diagnostic_unavailable"; if (/^(preflight|source-|qa-proofs|artifact-validation|export-authority|.*-receipt)/u.test(relative)) return "authoritative_green"; return "fault_evidence";
+}
+function rejects(entry: { readonly path: string; readonly class: EvidenceClass; readonly sha256: string; readonly size: number }, source: Readonly<Record<string, unknown>>): boolean { if (!/^[0-9a-f]{64}$/u.test(entry.sha256) || entry.size < 0) return true; if (entry.class === "authoritative_green" && (entry.path.startsWith("superseded/") || typeof source["status_digest"] !== "string")) return true; return false; }
+async function walk(directory: string): Promise<string[]> { const output: string[] = []; for (const entry of await readdir(directory, { withFileTypes: true })) { const target = path.join(directory, entry.name); if (entry.isDirectory()) output.push(...await walk(target)); else if (entry.isFile() && (await stat(target)).isFile()) output.push(target); } return output; }

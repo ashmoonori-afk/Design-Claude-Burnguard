@@ -71,11 +71,11 @@ async function readResponseWithinLimit(
   const reader = response.body?.getReader();
   if (!reader) return Buffer.alloc(0);
   const chunks: Uint8Array[] = [];
-  let total = 0;
+  let total = 0; let cancellation = Promise.resolve();
   try {
     while (true) {
       throwIfAcquisitionAborted(signal);
-      const { done, value } = await abortable(reader.read(), signal, () => { void reader.cancel(); });
+      const { done, value } = await abortable(reader.read(), signal, () => { cancellation = reader.cancel(); });
       throwIfAcquisitionAborted(signal);
       if (done) break;
       if (!value) continue;
@@ -88,7 +88,7 @@ async function readResponseWithinLimit(
     }
     return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } finally {
-    reader.releaseLock();
+    await cancellation; reader.releaseLock();
   }
 }
 

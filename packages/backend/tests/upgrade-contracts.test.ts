@@ -60,14 +60,15 @@ const artifact = {
 };
 const exportAttempt = {
   id: "attempt-2", job_id: "job-stable", parent_attempt_id: "attempt-1",
-  status: "validated", project_revision: 11, project_digest: "sha256:project-11",
+  status: "validated", project_revision: 11, project_digest: "sha256:project-11", design_system_digest: null,
   digests: {
     options: "sha256:options", input_closure: "sha256:inputs", renderer: "sha256:renderer",
     capture: "sha256:capture", output: "sha256:output", receipt: "sha256:receipt",
   },
-  progress: { stage: "validation", completed: 4, total: 4 }, stop_reason: null,
+  progress: { stage: "complete", completed: 6, total: 6 }, stop_reason: null,
   findings: [{ code: "valid_document", path: null }],
-  retention: { retained_until: 3000, output_available: true },
+  retention: { retained_until: 3000, output_available: true }, cancel_requested_at: null,
+  created_at: 1000, updated_at: 2000,
 };
 
 describe("strict upgrade contract boundaries", () => {
@@ -139,7 +140,9 @@ describe("strict upgrade contract boundaries", () => {
       expect(Reflect.get(Object(parseWith("parseArtifactOperation", { ...artifact, status })), "status")).toBe(status);
     }
     for (const status of ["pending", "running", "validating", "validated", "failed", "cancelled", "retrying", "recovering", "expired", "corrupt"]) {
-      expect(Reflect.get(Object(parseWith("parseExportAttempt", { ...exportAttempt, status })), "status")).toBe(status);
+      const validated = status === "validated"; const terminalFailure = ["failed", "cancelled", "expired", "corrupt"].includes(status);
+      const input = { ...exportAttempt, status, digests: { ...exportAttempt.digests, input_closure: status === "pending" || status === "retrying" ? null : exportAttempt.digests.input_closure, output: validated ? exportAttempt.digests.output : null, receipt: validated ? exportAttempt.digests.receipt : null }, progress: validated ? exportAttempt.progress : { stage: "queued", completed: 0, total: 6 }, stop_reason: terminalFailure ? "render_failed" : null, retention: { retained_until: 3000, output_available: validated } };
+      expect(Reflect.get(Object(parseWith("parseExportAttempt", input)), "status")).toBe(status);
     }
     for (const kind of ["lesson", "example", "skill-card"]) {
       expect(Reflect.get(Object(parseWith("parseLearningContract", { ...learning, kind })), "kind")).toBe(kind);

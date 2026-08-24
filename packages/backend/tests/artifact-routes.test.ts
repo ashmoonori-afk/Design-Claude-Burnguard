@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runMigrations } from "../src/db/migrate";
+import { runMigrations } from "../src/db/migrate-local";
 import { getSqlite } from "../src/db/sqlite-client";
 import { ArtifactCoordinator } from "../src/services/artifact-coordinator";
 import { fingerprintHtmlNode } from "../src/services/file-patch";

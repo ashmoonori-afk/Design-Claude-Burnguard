@@ -13,7 +13,7 @@ import { isPortFree, parseQaPort } from "./runtime";
 import { attemptId, repositoryForEvidence } from "./sanitization";
 
 const DEFAULT_PORT = "14079";
-const COMMAND_TIMEOUT_MS = 15_000;
+const COMMAND_TIMEOUT_MS = 30_000;
 
 type PreflightChecks = {
   readonly repository: boolean;

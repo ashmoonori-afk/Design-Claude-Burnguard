@@ -57,6 +57,18 @@ export type NormalizedEvent =
   | {
       id: string;
       ts: number;
+      type: "export.attempt";
+      jobId: string;
+      attemptId: string;
+      status: import("./export-attempt").ExportAttemptStatus;
+      progress: import("./export-attempt").ExportProgress;
+      projectRevision: number;
+      projectDigest: string;
+      stopReason: import("./export-attempt").ExportStopReason | null;
+    }
+  | {
+      id: string;
+      ts: number;
       type: "file.changed";
       turnId: string;
       action: "created" | "edited" | "deleted";

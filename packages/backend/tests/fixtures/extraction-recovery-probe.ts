@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getDb, getSqlite } from "../../src/db/client";
-import { runMigrations } from "../../src/db/migrate";
+import { runMigrations } from "../../src/db/migrate-local";
 import { reconcilePipelineRows } from "../../src/db/pipeline-repository";
 import { systemsDir } from "../../src/lib/paths";
 import { inspectCanonicalTree } from "../../src/services/canonical-tree-manifest";

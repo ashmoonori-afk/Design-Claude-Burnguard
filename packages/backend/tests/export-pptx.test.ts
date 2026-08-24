@@ -2,9 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { EXTRACT_SLIDES_FN, writePptx } from "../src/services/export-pptx";
+import { EXTRACT_SLIDES_FN, PptxExportError, pptxLayoutForSize, writePptx } from "../src/services/export-pptx";
 
 describe("writePptx", () => {
+  test("preserves typed failures and both editable layouts", () => {
+    expect(new PptxExportError("deck_not_ready", "not ready").code).toBe("deck_not_ready");
+    expect(pptxLayoutForSize("16x9")).toEqual({ name: "BG_16x9", width: 10, height: 5.625 });
+    expect(pptxLayoutForSize("4x3")).toEqual({ name: "BG_4x3", width: 10, height: 7.5 });
+  });
+
   test("emits one slide per extract with editable text entries", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "burnguard-pptx-test-"));
     const out = path.join(dir, "out.pptx");

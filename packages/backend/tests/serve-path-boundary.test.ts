@@ -12,7 +12,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runMigrations, runMigrationsFrom } from "../src/db/migrate";
+import { runMigrations } from "../src/db/migrate-local";
+import { runMigrationsFrom } from "../src/db/migrate";
 import { getSqlite } from "../src/db/sqlite-client";
 import { exportsDir, projectsDir, systemsDir } from "../src/lib/paths";
 import { PathBoundaryError } from "../src/security/path-boundary";
@@ -268,7 +269,7 @@ describe("serve and deletion routes", () => {
     expect([detail.status, session.status, deletion.status]).toEqual([404, 404, 404]);
   });
 
-  test("serves valid project files draws export downloads and project registration through decomposed production routes", async () => {
+  test("serves valid project files and draws but blocks a legacy export without a validated receipt", async () => {
     const root = await temp("bg04-valid-project-");
     await mkdir(path.join(root, ".meta", "draws"), { recursive: true });
     await writeFile(path.join(root, "index.html"), "<h1>valid</h1>", "utf8");
@@ -290,11 +291,11 @@ describe("serve and deletion routes", () => {
     const draw = await app.request(`/api/projects/${projectId}/draws/note`);
     const download = await app.request(`/api/exports/${exportId}/download`);
 
-    expect([project.status, session.status, file.status, emptyDraw.status, savedDraw.status, draw.status, download.status]).toEqual([200, 200, 200, 200, 200, 200, 200]);
+    expect([project.status, session.status, file.status, emptyDraw.status, savedDraw.status, draw.status, download.status]).toEqual([200, 200, 200, 200, 200, 200, 409]);
     expect(await file.text()).toBe("<h1>valid</h1>");
     expect(await emptyDraw.text()).toContain("<svg");
     expect(await draw.text()).toBe("<svg/>");
-    expect(await download.text()).toBe("archive");
+    expect(await download.text()).toContain("export_not_ready");
     expect(sessionId).not.toBe("");
   });
 
@@ -391,7 +392,7 @@ describe("serve and deletion routes", () => {
     const exportId = insertExport(projectId, outsideFile);
 
     const response = await createApp().request(`/api/exports/${exportId}/download`);
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(409);
   });
 
   test("does not recursively delete a project path outside the managed projects root", async () => {
