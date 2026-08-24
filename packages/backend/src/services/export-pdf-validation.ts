@@ -42,8 +42,16 @@ export async function validatePdf(input: { readonly bytes: Uint8Array; readonly 
   } catch (error) {
     const mapped = mapError(error, controller.signal); primaryError = mapped; throw mapped;
   } finally {
-    clearTimeout(timeout); const cleanup = [destroyDocument(), destroyLoading()].filter((promise): promise is Promise<void> => promise !== null); controller.signal.removeEventListener("abort", abortOwned); if (callerListener) input.signal?.removeEventListener("abort", callerAbort); const outcomes = await Promise.allSettled(cleanup); const lateDocumentCleanup = destroyDocument(); if (lateDocumentCleanup !== null && !cleanup.includes(lateDocumentCleanup)) outcomes.push(...await Promise.allSettled([lateDocumentCleanup])); if (primaryError === null) { const rejected = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected"); if (rejected !== undefined) throw rejected.reason; }
+    clearTimeout(timeout); controller.signal.removeEventListener("abort", abortOwned); if (callerListener) input.signal?.removeEventListener("abort", callerAbort);
+    const outcomes = await awaitMemoizedDestruction(destroyDocument, destroyLoading);
+    if (primaryError === null) { const rejected = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected"); if (rejected !== undefined) throw rejected.reason; }
   }
+}
+async function awaitMemoizedDestruction(destroyDocument: () => Promise<void> | null, destroyLoading: () => Promise<void> | null): Promise<PromiseSettledResult<void>[]> {
+  const started = [destroyDocument(), destroyLoading()].filter((promise): promise is Promise<void> => promise !== null);
+  const outcomes = await Promise.allSettled(started); const lateDocument = destroyDocument();
+  if (lateDocument !== null && !started.includes(lateDocument)) outcomes.push(...await Promise.allSettled([lateDocument]));
+  return outcomes;
 }
 type OwnedPage = { readonly page: PdfPage; readonly cleanup: () => void };
 function acquireOwnedPage(raw: Promise<PdfPage>, signal: AbortSignal): Promise<OwnedPage> { return new Promise((resolve, reject) => { let settled = false; const abort = (): void => { if (settled) return; settled = true; reject(new PdfValidationError("raster_aborted")); }; if (signal.aborted) abort(); else signal.addEventListener("abort", abort, { once: true }); raw.then((page) => { let cleaned = false; const cleanup = (): void => { if (cleaned) return; cleaned = true; page.cleanup(); }; if (signal.aborted || settled) { cleanup(); if (!settled) { settled = true; reject(new PdfValidationError("raster_aborted")); } return; } settled = true; signal.removeEventListener("abort", abort); resolve({ page, cleanup }); }, (error) => { if (settled) return; settled = true; signal.removeEventListener("abort", abort); reject(error); }); }); }

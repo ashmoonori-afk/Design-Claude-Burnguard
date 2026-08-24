@@ -27,6 +27,13 @@ describe("single PDF validation deadline", () => {
   test("stalled loading waits for its exact destroy promise before rejecting", async () => {
     const scope = controlled("load", false, 0); let settled = false; void scope.operation.finally(() => { settled = true; }).catch(() => {}); await scope.entered.promise; await scope.loadingStarted.promise; await turn(); expect(settled).toBe(false); expect(scope.counts.loading).toBe(1); scope.loadingRelease.resolve(); await expectAborted(scope.operation); expect(settled).toBe(true); expect(scope.counts.loading).toBe(1);
   });
+  test("finalization awaits both memoized in-flight destruction promises", async () => {
+    const scope = controlled("metadata"); let settled = false; void scope.operation.finally(() => { settled = true; }).catch(() => {});
+    await scope.entered.promise; scope.controller.abort(); await Promise.all([scope.loadingStarted.promise, scope.documentStarted.promise]);
+    expect(scope.counts).toEqual({ loading: 1, document: 1, page: 0 }); expect(settled).toBe(false);
+    scope.loadingRelease.resolve(); await turn(); expect(settled).toBe(false); scope.documentRelease.resolve();
+    await expectAborted(scope.operation); expect(settled).toBe(true); expect(scope.counts).toEqual({ loading: 1, document: 1, page: 0 });
+  });
   test("pre-aborted caller still destroys a loading resource acquired afterward", async () => {
     const release = deferred<void>(); const started = deferred<void>(); const controller = new AbortController(); controller.abort(); let destroys = 0; const operation = validatePdf({ bytes, context: {} as BrowserContext, expectedPages: 1, expectedWidthPoints: 200, expectedHeightPoints: 100, expectedTitle: "Deck", signal: controller.signal }, { deadlineMs: 60_000, load: () => ({ promise: new Promise(() => {}), destroy: async () => { destroys += 1; started.resolve(); await release.promise; } }), raster: () => Promise.resolve(rasterResult) }); let settled = false; void operation.finally(() => { settled = true; }).catch(() => {}); await started.promise; await turn(); expect(settled).toBe(false); release.resolve(); await expectAborted(operation); expect(destroys).toBe(1);
   });
