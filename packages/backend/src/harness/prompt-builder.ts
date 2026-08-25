@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { UserEvent } from "@bg/shared/events";
 import type { buildSessionContext } from "../services/context";
+import { parseStoredProjectOptions } from "../services/project-options";
 import { buildResearchPromptContext } from "../services/research-purpose";
 import { selectPromptLearning } from "../db/learning-store";
 import { getSqlite } from "../db/sqlite-client";
@@ -12,6 +13,7 @@ import {
   COMPACT_DECK_SKILL_MD,
   COMPACT_PROTOTYPE_SKILL_MD,
 } from "./prompt-compact-skills";
+import { appendDesignBriefContext } from "./prompt-design-brief";
 import { appendDesignSystemContext } from "./prompt-design-system";
 import {
   summarizeDeckHtml,
@@ -43,6 +45,7 @@ export async function buildPrompt(
   const lines: string[] = [];
   const project = context.project;
   const contextMode = options.contextMode ?? "full";
+  const projectOptions = parseStoredProjectOptions(project.options_json);
 
   lines.push("# BurnGuard Design project session");
   lines.push("");
@@ -84,9 +87,8 @@ export async function buildPrompt(
     lines.push(`<burnguard-learning-warning code="${learning.warning}" />`);
   }
   if (project.project_type === "slide_deck") {
-    const slideDeckOptions = parseSlideDeckOptions(project.options_json);
     lines.push(
-      `- use_speaker_notes: ${slideDeckOptions.use_speaker_notes ? "true" : "false"}`,
+      `- use_speaker_notes: ${projectOptions.use_speaker_notes ? "true" : "false"}`,
     );
   }
   lines.push("");
@@ -99,6 +101,7 @@ export async function buildPrompt(
   })));
   lines.push("</burnguard-research-context-v1>");
   lines.push("");
+  appendDesignBriefContext(lines, projectOptions.design_brief);
 
   // Structural summary of the entrypoint, when it's an HTML artifact we know
   // how to parse. This is the main lever against runaway prompt-cache growth:
@@ -227,30 +230,4 @@ const DIAGRAM_REQUEST_PATTERN =
 
 function isDiagramRequest(request: string): boolean {
   return DIAGRAM_REQUEST_PATTERN.test(request);
-}
-
-function parseSlideDeckOptions(optionsJson: string | null): {
-  use_speaker_notes: boolean;
-} {
-  if (!optionsJson) {
-    return { use_speaker_notes: false };
-  }
-
-  try {
-    const parsed = JSON.parse(optionsJson);
-    if (parsed && typeof parsed === "object") {
-      return {
-        use_speaker_notes:
-          typeof (parsed as Record<string, unknown>).use_speaker_notes ===
-          "boolean"
-            ? ((parsed as Record<string, unknown>)
-                .use_speaker_notes as boolean)
-            : false,
-      };
-    }
-  } catch {
-    // Ignore malformed options and fall back to the default deck contract.
-  }
-
-  return { use_speaker_notes: false };
 }

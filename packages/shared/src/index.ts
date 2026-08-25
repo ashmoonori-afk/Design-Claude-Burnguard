@@ -6,6 +6,7 @@ export * from "./catalog-contract";
 export * from "./comment";
 export * from "./contract-parser";
 export * from "./design-system";
+export * from "./design-brief";
 export * from "./events";
 export * from "./export";
 export * from "./export-attempt";

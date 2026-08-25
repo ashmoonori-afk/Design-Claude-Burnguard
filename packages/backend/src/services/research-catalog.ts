@@ -1,12 +1,16 @@
-import { RESEARCH_PROJECT_PURPOSES, type ResearchProjectPurpose } from "@bg/shared";
 import commonDocument from "../research-data/common-rules.json";
 import purposeDocument from "../research-data/purpose-references.json";
 import sourceDocument from "../research-data/sources.json";
+import {
+  isPromptPurpose,
+  PROMPT_PURPOSES,
+  type PromptPurpose,
+} from "./prompt-purpose";
 
 export type CatalogConfidence = "high" | "medium" | "low";
 export type CatalogSource = { readonly id: string; readonly retrieved: string; readonly url: string; readonly title_or_owner: string; readonly tags: readonly string[]; readonly evidence: string; readonly license_usage: string; readonly confidence: CatalogConfidence; readonly limitations: string };
 export type CatalogCommonRule = { readonly id: string; readonly authority_class: "normative_web_constraint" | "sampled_system_guidance"; readonly topic: string; readonly statement: string; readonly source_ids: readonly string[]; readonly confidence: CatalogConfidence; readonly limitations: string };
-export type CatalogPurpose = { readonly id: ResearchProjectPurpose; readonly axes: { readonly project_type: string; readonly request_intent: string; readonly creation_mode: string; readonly fallback: string }; readonly title: string; readonly guidance: readonly string[]; readonly common_rule_ids: readonly string[]; readonly source_ids: readonly string[]; readonly confidence: CatalogConfidence; readonly limitations: string };
+export type CatalogPurpose = { readonly id: PromptPurpose; readonly axes: { readonly project_type: string; readonly request_intent: string; readonly creation_mode: string; readonly fallback: string }; readonly title: string; readonly guidance: readonly string[]; readonly common_rule_ids: readonly string[]; readonly source_ids: readonly string[]; readonly confidence: CatalogConfidence; readonly limitations: string };
 export type ResearchCatalog = { readonly sources: readonly CatalogSource[]; readonly common_rules: readonly CatalogCommonRule[]; readonly purposes: readonly CatalogPurpose[] };
 
 export class ResearchCatalogError extends Error {
@@ -39,7 +43,7 @@ export function parseResearchCatalog(sourcesInput: unknown, commonInput: unknown
   version(purposeRoot, "purposes");
   const purposes = array(purposeRoot["purposes"], "purposes.purposes").map(parsePurpose);
   sortedUnique(purposes.map((purpose) => purpose.id), "purposes.purposes", 1);
-  if (purposes.length !== RESEARCH_PROJECT_PURPOSES.length || purposes.some((purpose, index) => purpose.id !== RESEARCH_PROJECT_PURPOSES[index])) fail("purposes.purposes");
+  if (purposes.length !== PROMPT_PURPOSES.length || purposes.some((purpose, index) => purpose.id !== PROMPT_PURPOSES[index])) fail("purposes.purposes");
   for (const purpose of purposes) {
     citations(purpose.source_ids, sourceIds, `purposes.${purpose.id}.source_ids`);
     citations(purpose.common_rule_ids, commonIds, `purposes.${purpose.id}.common_rule_ids`);
@@ -96,7 +100,9 @@ function identified(record: JsonObject, key: string, path: string, pattern: RegE
 function exact(record: JsonObject, keys: readonly string[], path: string): void { if (Object.keys(record).length !== keys.length || keys.some((key) => !(key in record))) fail(path); }
 function version(record: JsonObject, path: string): void { if (record["schema_version"] !== 1) fail(`${path}.schema_version`); }
 function confidence(value: unknown, path: string): CatalogConfidence { switch (value) { case "high": case "medium": case "low": return value; default: return fail(path); } }
-function purposeId(value: unknown, path: string): ResearchProjectPurpose { switch (value) { case "deck.pitch": case "prototype.dashboard": case "prototype.diagram": case "prototype.editorial": case "prototype.landing": case "prototype.sandbox": return value; default: return fail(path); } }
+function purposeId(value: unknown, path: string): PromptPurpose {
+  return isPromptPurpose(value) ? value : fail(path);
+}
 function sortedUnique(values: readonly string[], path: string, minimum: number): void { if (values.length < minimum) fail(path); for (let index = 1; index < values.length; index += 1) { const previous = values[index - 1]; const current = values[index]; if (previous === undefined || current === undefined || previous >= current) fail(path); } }
 function citations(values: readonly string[], known: ReadonlySet<string>, path: string): void { if (values.some((value) => !known.has(value))) fail(path); }
 function fail(path: string): never { throw new ResearchCatalogError(path); }

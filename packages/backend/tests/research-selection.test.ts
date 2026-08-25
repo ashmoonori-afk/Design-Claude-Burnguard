@@ -62,6 +62,21 @@ describe("research catalog selection", () => {
     expect(selected.limitations).toContain("not a universal investor-pitch narrative");
   });
 
+  test("Given a prompt-only deck purpose When selected Then catalog rules resolve while persisted selection rejects it", () => {
+    // Given
+    const catalog = loadResearchCatalog();
+    // When
+    const selected = selectCatalogRules(catalog, "deck.training");
+    // Then
+    expect(selected.purpose).toBe("deck.training");
+    expect(selected.confidence).toBe("medium");
+    expect(selected.low_confidence).toBe(true);
+    expect(selected.common_rules.map((rule) => rule.id)).toEqual(["CR-001", "CR-002", "CR-004", "CR-008"]);
+    expect(selected.purpose_rules.map((rule) => rule.id)).toEqual(["deck.training:1", "deck.training:2", "deck.training:3"]);
+    expect(selected.purpose_rules.every((rule) => rule.sources.length > 0 && rule.low_confidence)).toBe(true);
+    expect(() => selectResearchPromptContext(db, "deck.training")).toThrow(ResearchSelectionError);
+  });
+
   test("Given usable runtime results When selected Then newest valid result and citations are preserved", () => {
     // Given
     persistResult({ id: "run-a", completedAt: 20, directive: "Older" });

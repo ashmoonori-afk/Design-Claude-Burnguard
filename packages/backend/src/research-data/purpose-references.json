@@ -2,6 +2,33 @@
   "schema_version": 1,
   "purposes": [
     {
+      "id": "deck.company",
+      "axes": {
+        "project_type": "slide_deck",
+        "request_intent": "company",
+        "creation_mode": "authored",
+        "fallback": "other"
+      },
+      "title": "Company deck reference set",
+      "guidance": [
+        "Lead with the company purpose, audience, and decision context.",
+        "Separate verified company facts from positioning or future claims.",
+        "Keep section hierarchy and reading order clear across HTML, PDF, and PPTX."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-004",
+        "CR-008"
+      ],
+      "source_ids": [
+        "S-037",
+        "S-042"
+      ],
+      "confidence": "medium",
+      "limitations": "Sources support attention and accessible delivery, not a universal company-deck narrative or company-specific claims."
+    },
+    {
       "id": "deck.pitch",
       "axes": {
         "project_type": "slide_deck",
@@ -27,6 +54,87 @@
       ],
       "confidence": "medium",
       "limitations": "Sources support attention and accessible delivery, not a universal investor-pitch narrative or template."
+    },
+    {
+      "id": "deck.report",
+      "axes": {
+        "project_type": "slide_deck",
+        "request_intent": "report",
+        "creation_mode": "authored",
+        "fallback": "other"
+      },
+      "title": "Report deck reference set",
+      "guidance": [
+        "State the reporting period, audience, and decision objective before metrics.",
+        "Distinguish observed results, comparisons, causes, and next actions.",
+        "Keep metric labels and reading order explicit across HTML, PDF, and PPTX."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-004",
+        "CR-008"
+      ],
+      "source_ids": [
+        "S-037",
+        "S-042"
+      ],
+      "confidence": "medium",
+      "limitations": "Sources support attention and accessible delivery, not metric correctness, reporting policy, or a universal report outline."
+    },
+    {
+      "id": "deck.sales",
+      "axes": {
+        "project_type": "slide_deck",
+        "request_intent": "sales",
+        "creation_mode": "authored",
+        "fallback": "other"
+      },
+      "title": "Sales deck reference set",
+      "guidance": [
+        "Frame the customer's situation and desired decision before the offer.",
+        "Separate evidence, product capabilities, commercial terms, and requested action.",
+        "Keep claims and calls to action readable across HTML, PDF, and PPTX."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-004",
+        "CR-008"
+      ],
+      "source_ids": [
+        "S-037",
+        "S-042"
+      ],
+      "confidence": "medium",
+      "limitations": "Sources support attention and accessible delivery, not sales claims, pricing, or a universal proposal narrative."
+    },
+    {
+      "id": "deck.training",
+      "axes": {
+        "project_type": "slide_deck",
+        "request_intent": "training",
+        "creation_mode": "authored",
+        "fallback": "other"
+      },
+      "title": "Training deck reference set",
+      "guidance": [
+        "Start with the learner, learning objective, and expected action.",
+        "Sequence concepts, worked examples, checks, and recap explicitly.",
+        "Keep instructions and checkpoints readable across HTML, PDF, and PPTX."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-004",
+        "CR-008"
+      ],
+      "source_ids": [
+        "S-037",
+        "S-042"
+      ],
+      "confidence": "medium",
+      "limitations": "Sources support attention and accessible delivery, not learning efficacy, curriculum policy, or a universal training sequence."
     },
     {
       "id": "prototype.dashboard",

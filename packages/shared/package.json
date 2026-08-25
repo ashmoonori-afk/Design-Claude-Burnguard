@@ -12,6 +12,7 @@
     "./artifact": "./src/artifact.ts",
     "./harness": "./src/harness.ts",
     "./design-system": "./src/design-system.ts",
+    "./design-brief": "./src/design-brief.ts",
     "./home": "./src/home.ts",
     "./project": "./src/project.ts",
     "./contract-parser": "./src/contract-parser.ts",

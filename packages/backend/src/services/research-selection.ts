@@ -2,6 +2,10 @@ import type { Database } from "bun:sqlite";
 import { parseResearchResultV1, type ResearchConflict, type ResearchProjectPurpose, type ResearchRule, type ResearchSourceRecord } from "@bg/shared";
 import { ResearchCorruptionError, evidenceSetDigest, getResearchRun, listResearchSources } from "../db/research-repository";
 import { type CatalogConfidence, type CatalogSource, loadResearchCatalog, type ResearchCatalog } from "./research-catalog";
+import {
+  isPromptPurpose,
+  type PromptPurpose,
+} from "./prompt-purpose";
 
 export class ResearchSelectionError extends Error {
   readonly name = "ResearchSelectionError";
@@ -15,14 +19,14 @@ export type LayerConflict = { readonly axis: string; readonly winner_id: string;
 export type LayerResolution = { readonly rules: readonly ResolvedLayerRule[]; readonly conflicts: readonly LayerConflict[] };
 export type SelectedSource = { readonly id: string; readonly url: string };
 export type CatalogSelectedRule = { readonly id: string; readonly axis: string; readonly directive: string; readonly rationale: string; readonly confidence: CatalogConfidence; readonly low_confidence: boolean; readonly source_ids: readonly string[]; readonly sources: readonly SelectedSource[] };
-export type CatalogRuleSelection = { readonly purpose: ResearchProjectPurpose; readonly title: string; readonly confidence: CatalogConfidence; readonly low_confidence: boolean; readonly limitations: string; readonly common_rules: readonly CatalogSelectedRule[]; readonly purpose_rules: readonly CatalogSelectedRule[] };
+export type CatalogRuleSelection = { readonly purpose: PromptPurpose; readonly title: string; readonly confidence: CatalogConfidence; readonly low_confidence: boolean; readonly limitations: string; readonly common_rules: readonly CatalogSelectedRule[]; readonly purpose_rules: readonly CatalogSelectedRule[] };
 export type RuntimeSelectedRule = ResearchRule & { readonly low_confidence: boolean; readonly sources: readonly SelectedSource[] };
 export type ResearchPromptContext = { readonly schema_version: 1; readonly purpose: ResearchProjectPurpose; readonly run_id: string; readonly result_digest: string; readonly outcome: "completed" | "partial"; readonly common_rules: readonly RuntimeSelectedRule[]; readonly purpose_rules: readonly RuntimeSelectedRule[]; readonly conflicts: readonly ResearchConflict[] };
 
 type FlattenedDeclaration = { readonly layerId: string; readonly declaration: ResearchRule | RuleReference };
 
 export function selectCatalogRules(catalog: ResearchCatalog, purposeInput: unknown): CatalogRuleSelection {
-  const purpose = supportedPurpose(purposeInput);
+  const purpose = supportedPromptPurpose(purposeInput);
   const purposeRecord = catalog.purposes.find((item) => item.id === purpose);
   if (purposeRecord === undefined) throw new ResearchSelectionError("unknown_purpose", String(purposeInput));
   const sources = new Map(catalog.sources.map((source) => [source.id, source]));
@@ -84,7 +88,7 @@ export function resolveResearchRuleLayers(layers: readonly ResearchRuleLayer[]):
 }
 
 export function selectResearchPromptContext(db: Database, purposeInput: unknown): ResearchPromptContext | null {
-  const purpose = supportedPurpose(purposeInput);
+  const purpose = supportedResearchPurpose(purposeInput);
   const candidates = db.query<{ readonly id: string }, []>("SELECT id FROM research_runs WHERE usable=1 AND status IN ('completed','partial') ORDER BY completed_at DESC,id DESC").all();
   for (const candidate of candidates) {
     try {
@@ -121,5 +125,9 @@ function validatedContext(db: Database, runId: string, purpose: ResearchProjectP
 function selectedRuntimeRule(rule: ResearchRule, sources: ReadonlyMap<string, ResearchSourceRecord>, runId: string): RuntimeSelectedRule { return { ...rule, low_confidence: rule.confidence < 0.5, sources: runtimeSources(rule.source_ids, sources, runId) }; }
 function runtimeSources(ids: readonly string[], sources: ReadonlyMap<string, ResearchSourceRecord>, runId: string): readonly SelectedSource[] { return ids.map((id) => { const source = sources.get(id); if (source === undefined || source.run_id !== runId || source.status !== "succeeded") corrupt(`${runId}:${id}`); return { id, url: source.canonical_locator }; }); }
 function catalogSources(ids: readonly string[], sources: ReadonlyMap<string, CatalogSource>): readonly SelectedSource[] { return ids.map((id) => { const source = sources.get(id); if (source === undefined) throw new ResearchSelectionError("invalid_reference", id); return { id, url: source.url }; }); }
-function supportedPurpose(value: unknown): ResearchProjectPurpose { switch (value) { case "deck.pitch": case "prototype.dashboard": case "prototype.diagram": case "prototype.editorial": case "prototype.landing": case "prototype.sandbox": return value; default: throw new ResearchSelectionError("unknown_purpose", String(value)); } }
+function supportedPromptPurpose(value: unknown): PromptPurpose {
+  if (isPromptPurpose(value)) return value;
+  throw new ResearchSelectionError("unknown_purpose", String(value));
+}
+function supportedResearchPurpose(value: unknown): ResearchProjectPurpose { switch (value) { case "deck.pitch": case "prototype.dashboard": case "prototype.diagram": case "prototype.editorial": case "prototype.landing": case "prototype.sandbox": return value; default: throw new ResearchSelectionError("unknown_purpose", String(value)); } }
 function corrupt(detail: string): never { throw new ResearchSelectionError("corrupt_result", detail); }

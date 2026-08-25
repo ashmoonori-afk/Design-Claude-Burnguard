@@ -4,6 +4,7 @@ import type {
   ProjectType,
   ThemeMode,
 } from "./app";
+import type { DesignBriefV1 } from "./design-brief";
 
 export interface ProjectSummary {
   id: string;
@@ -33,6 +34,7 @@ export interface CreateProjectRequest {
   options?: {
     use_speaker_notes?: boolean;
     copy_as_is?: boolean;
+    design_brief?: DesignBriefV1;
   };
 }
 
