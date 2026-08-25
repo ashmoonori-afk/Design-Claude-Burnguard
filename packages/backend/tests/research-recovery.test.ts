@@ -5,9 +5,13 @@ import type { ResearchFindingV1, ResearchRequestV1, ResearchResultV1 } from "@bg
 import { runMigrationsFrom } from "../src/db/migrate";
 import { beginResearchFinalization, claimResearchSource, commitResearchResult, completeResearchSource, createResearchRun, getResearchRun, listResearchSources, startResearchRun } from "../src/db/research-repository";
 import { reconcileResearchState, type ResearchRecoveryDependencies } from "../src/services/research-recovery";
+import { executeResearch } from "../src/services/research-orchestrator";
+import { createProductionResearchDependencies } from "../src/routes/research";
+import { reconcileResearchOnStartup } from "../src/bootstrap";
 
 const digest = (character: string): string => character.repeat(64);
 const request: ResearchRequestV1 = { schema_version: 1, purposes: ["prototype.dashboard"], sources: [{ kind: "web", locator: "https://example.test/a" }, { kind: "web", locator: "https://example.test/b" }], limits: { concurrency: 2, per_source_timeout_ms: 1_000, max_sources: 2, max_bytes_per_source: 1_000 }, orchestrator_version: "research-v1", mode: "live", fixture_id: null };
+const fixtureRequest: ResearchRequestV1 = { schema_version: 1, purposes: ["prototype.dashboard", "prototype.landing"], sources: [{ kind: "fixture", locator: "fixture-a" }, { kind: "fixture", locator: "fixture-b" }], limits: { concurrency: 2, per_source_timeout_ms: 1_000, max_sources: 2, max_bytes_per_source: 1_024 }, orchestrator_version: "research-v1", mode: "fixture", fixture_id: "mass-research-v1" };
 let db: Database;
 let enqueued: string[];
 let synthesized: string[];
@@ -22,10 +26,35 @@ function result(input: Parameters<ResearchRecoveryDependencies["synthesize"]>[0]
 function dependencies(): ResearchRecoveryDependencies { return { now: () => 100, enqueue: async (runId) => { enqueued.push(runId); }, synthesize: async (input) => { synthesized.push(input.runId); return result(input); } }; }
 
 describe("research startup recovery", () => {
+  test("Given production startup finds a fixture run crashed during its second source When recovery starts without injected dependencies Then retryable work converges durably", async () => {
+    const executionIds = ["run-crashed", "source-succeeded", "source-running"];
+    const execution = await executeResearch(fixtureRequest, { ...createProductionResearchDependencies(fixtureRequest), newId: () => executionIds.shift() ?? "unused" });
+    const sourceOutcome = execution.sources[0];
+    expect(sourceOutcome).toMatchObject({ status: "succeeded", source: { id: "source-succeeded" } });
+    if (sourceOutcome?.finding === null || sourceOutcome?.finding === undefined || sourceOutcome.contentDigest === null) throw new TypeError("fixture execution did not produce evidence");
+
+    const persistedIds = ["run-crashed", "source-succeeded", "source-running"];
+    createResearchRun(db, { requestKey: "crashed-fixture", request: fixtureRequest, orchestratorDigest: digest("a"), now: 10, newId: () => persistedIds.shift() ?? "unused" });
+    startResearchRun(db, { runId: "run-crashed", now: 11 });
+    claimResearchSource(db, { runId: "run-crashed", sourceId: "source-succeeded", now: 12 });
+    completeResearchSource(db, { sourceId: "source-succeeded", attemptToken: 1, contentDigest: sourceOutcome.contentDigest, evidence: { final_url: "fixture-a" }, finding: sourceOutcome.finding, now: 13 });
+    claimResearchSource(db, { runId: "run-crashed", sourceId: "source-running", now: 14 });
+    const succeededBefore = db.query("SELECT content_digest,finding_json,finding_digest,attempt_count FROM research_sources WHERE id='source-succeeded'").get();
+
+    await reconcileResearchOnStartup(db);
+
+    expect(getResearchRun(db, "run-crashed")).toMatchObject({ status: "completed", usable: 1 });
+    expect(listResearchSources(db, "run-crashed").map((source) => ({ status: source.status, attempts: source.attempt_count }))).toEqual([{ status: "succeeded", attempts: 1 }, { status: "succeeded", attempts: 2 }]);
+    expect(db.query("SELECT content_digest,finding_json,finding_digest,attempt_count FROM research_sources WHERE id='source-succeeded'").get()).toEqual(succeededBefore);
+    const durableResult = db.query("SELECT status,result_json,result_digest FROM research_runs WHERE id='run-crashed'").get();
+    await reconcileResearchOnStartup(db);
+    expect(db.query("SELECT status,result_json,result_digest FROM research_runs WHERE id='run-crashed'").get()).toEqual(durableResult);
+  });
+
   test("Given bootstrap registration When startup order is inspected Then migrations precede research recovery", async () => {
     const source = await readFile(new URL("../src/bootstrap.ts", import.meta.url), "utf8");
     const migration = source.indexOf("await runMigrations();");
-    const recovery = source.indexOf("await reconcileResearchState(getSqlite(), researchRecovery);");
+    const recovery = source.indexOf("await reconcileResearchOnStartup(getSqlite(), researchRecovery);");
     expect(migration).toBeGreaterThan(-1);
     expect(recovery).toBeGreaterThan(migration);
   });

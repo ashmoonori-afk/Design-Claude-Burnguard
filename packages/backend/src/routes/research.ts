@@ -6,6 +6,7 @@ import { beginResearchFinalization, claimResearchSource, commitResearchResult, c
 import { getSqlite } from "../db/sqlite-client";
 import { canonicalJson, sha256 } from "../services/export-receipt";
 import { executeResearch, type ResearchDependencies, type ResearchExecution, type ResearchSynthesisInput } from "../services/research-orchestrator";
+import type { ResearchRecoveryDependencies } from "../services/research-recovery";
 import { loadNetworkResearchSource } from "../services/research-source-loader";
 
 const FIXTURE_ID = "mass-research-v1";
@@ -74,7 +75,7 @@ export function planResearchRequest(request: ResearchRequestV1) {
 
 async function runAndPersist(input: RunInput): Promise<void> {
   const executionIds = [input.runId, ...input.sourceIds];
-  const dependencies = { ...(input.dependencies ?? productionDependencies(input.request)), newId: () => executionIds.shift() ?? crypto.randomUUID() };
+  const dependencies = { ...(input.dependencies ?? createProductionResearchDependencies(input.request)), newId: () => executionIds.shift() ?? crypto.randomUUID() };
   const execution = await executeResearch(input.request, dependencies, input.signal);
   if (execution.status === "cancelled") { if (getResearchRun(input.db, input.runId).status !== "cancelled") requestResearchCancellation(input.db, { runId: input.runId, now: Date.now() }); return; }
   persistSources(input.db, input.runId, execution);
@@ -83,8 +84,7 @@ async function runAndPersist(input: RunInput): Promise<void> {
   commitResearchResult(input.db, { runId: input.runId, evidenceSetDigest, result: execution.result, now: Date.now() });
 }
 
-function persistSources(db: Database, runId: string, execution: ResearchExecution): void {
-  const records = listResearchSources(db, runId);
+function persistSources(db: Database, runId: string, execution: ResearchExecution, records = listResearchSources(db, runId)): void {
   for (const outcome of execution.sources) {
     const record = records[outcome.source.ordinal];
     if (record === undefined || record.status === "duplicate") continue;
@@ -97,12 +97,31 @@ function persistSources(db: Database, runId: string, execution: ResearchExecutio
   }
 }
 
-function productionDependencies(request: ResearchRequestV1): ResearchDependencies {
+export function createProductionResearchDependencies(request: ResearchRequestV1): ResearchDependencies {
   return {
     now: () => Date.now(), newId: () => crypto.randomUUID(),
     fetchSource: (input, signal) => loadNetworkResearchSource({ ...input, request: (url, init) => Bun.fetch(url, init) }, signal),
     runWorker: async ({ source, fetched }): Promise<ResearchFindingV1> => ({ schema_version: 1, source_id: source.id, content_digest: fetched.contentDigest, observations: fetched.document.claims.map((claim) => ({ axis: claim.axis, summary: `Structured evidence supplied for ${claim.axis}.`, source_locator: publicLocator(source.kind, source.locator) })), candidates: fetched.document.claims.flatMap((claim) => ["common" as const, ...request.purposes].map((purpose) => ({ purpose, axis: claim.axis, directive: `Apply source-grounded ${claim.axis} guidance.`, rationale: "A bounded structured source supports this axis.", confidence: 0.7 }))) }),
     synthesize: async (input) => synthesize(input),
+  };
+}
+
+export function createProductionResearchRecoveryDependencies(db: Database): ResearchRecoveryDependencies {
+  return {
+    now: () => Date.now(),
+    enqueue: async (runId) => {
+      const run = getResearchRun(db, runId);
+      const request = parseResearchRequestV1(run.request_json);
+      const pending = listResearchSources(db, runId).filter((source) => source.duplicate_of_source_id === null && source.status === "pending");
+      if (pending.length === 0) return;
+      const retryRequest = parseResearchRequestV1({ ...request, sources: pending.map((source) => ({ kind: source.kind, locator: source.canonical_locator })) });
+      startResearchRun(db, { runId, now: Date.now() });
+      const executionIds = [runId, ...pending.map((source) => source.id)];
+      const dependencies = { ...createProductionResearchDependencies(retryRequest), newId: () => executionIds.shift() ?? crypto.randomUUID() };
+      const execution = await executeResearch(retryRequest, dependencies);
+      persistSources(db, runId, execution, pending);
+    },
+    synthesize: async (input) => createProductionResearchDependencies(input.request).synthesize(input, new AbortController().signal),
   };
 }
 
