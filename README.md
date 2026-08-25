@@ -250,7 +250,7 @@ bun run scripts/qa/mass-research-dry-run.ts \
   --evidence-dir /tmp/bg-research-failures
 ```
 
-The happy receipt carries the digest, the selected common and purpose rules, per-rule provenance, and per-rule explanations with confidence. The adversarial receipt exercises eight named cases: timeout, fetch failure, malformed duplicate, partial worker failure, cancellation, restart recovery, override precedence, and unknown purpose. Both write `receipt.json` atomically and exit non-zero if any case fails.
+The happy receipt carries the digest, the selected common and purpose rules, per-rule provenance, and per-rule explanations with confidence. The adversarial fixture names eight product-backed QA cases: timeout, fetch failure, malformed duplicate, partial worker failure, cancellation, restart recovery, override precedence, and unknown purpose. The product-backed CLI exercises the applicable behavior, while restart recovery runs through the production bootstrap reconciliation path. Both write `receipt.json` atomically and exit non-zero if any case fails.
 
 ## Verification commands
 

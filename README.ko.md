@@ -250,7 +250,7 @@ bun run scripts/qa/mass-research-dry-run.ts \
   --evidence-dir /tmp/bg-research-failures
 ```
 
-정상 receipt에는 digest, 선택된 공통 규칙과 purpose 규칙, 규칙별 출처 추적, 신뢰도가 붙은 규칙별 설명이 담깁니다. 적대적 receipt는 여덟 가지 케이스를 확인합니다. 타임아웃, fetch 실패, malformed 중복, 부분 워커 실패, 취소, 재시작 복구, 오버라이드 우선순위, 알 수 없는 purpose입니다. 둘 다 `receipt.json`을 원자적으로 쓰고, 케이스가 하나라도 실패하면 0이 아닌 코드로 종료합니다.
+정상 receipt에는 digest, 선택된 공통 규칙과 purpose 규칙, 규칙별 출처 추적, 신뢰도가 붙은 규칙별 설명이 담깁니다. 적대적 fixture는 타임아웃, fetch 실패, malformed 중복, 부분 워커 실패, 취소, 재시작 복구, 오버라이드 우선순위, 알 수 없는 purpose라는 여덟 가지 제품 기반 QA 케이스를 정의합니다. 해당 동작은 제품 기반 CLI가 실행하고, 재시작 복구는 production bootstrap 조정 경로를 통해 실행됩니다. 둘 다 `receipt.json`을 원자적으로 쓰고, 케이스가 하나라도 실패하면 0이 아닌 코드로 종료합니다.
 
 ## 검증 명령
 

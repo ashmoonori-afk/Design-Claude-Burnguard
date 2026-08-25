@@ -11,6 +11,7 @@ type ResearchBlock = {
   readonly conflicts: readonly unknown[];
   readonly advice: readonly string[];
   readonly output_profile: string;
+  readonly precedence: readonly string[];
   readonly assembly: string;
 };
 
@@ -70,6 +71,11 @@ describe("research purpose prompt integration", () => {
     expect(prompt.match(/<burnguard-research-context-v1>/gu)).toHaveLength(1);
     expect(prompt.indexOf("<burnguard-research-context-v1>")).toBeLessThan(prompt.indexOf("## Design system"));
     expect(prompt.endsWith(`## Request\n${request}`)).toBe(true);
+  });
+
+  test("Given the research context When built Then precedence keeps research first and the request last", async () => {
+    const block = researchBlock(await buildPrompt(context(), { type: "user.message", text: "Create a landing page" }));
+    expect(block.precedence).toEqual(["research", "design_system", "project", "user_request"]);
   });
 
   test("Given fixed captured state When built repeatedly Then prompt bytes repeat", async () => {
