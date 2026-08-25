@@ -8,6 +8,9 @@ import { runMigrationsFrom } from "../src/db/migrate";
 import { getResearchRun } from "../src/db/research-repository";
 import { createResearchRoutes } from "../src/routes/research";
 import { classifyApiRoute } from "../src/server";
+import { buildHappyReceipt } from "../../../scripts/qa/mass-research-dry-run";
+import { executeResearch } from "../src/services/research-orchestrator";
+import { createProductionResearchDependencies } from "../src/routes/research";
 
 const fixtureRequest = { schema_version: 1, purposes: ["prototype.dashboard", "prototype.landing"], sources: [{ kind: "fixture", locator: "fixture-a" }, { kind: "fixture", locator: "fixture-b" }], limits: { concurrency: 2, per_source_timeout_ms: 1_000, max_sources: 8, max_bytes_per_source: 1_024 }, orchestrator_version: "research-v1", mode: "fixture", fixture_id: "mass-research-v1" } as const;
 let db: Database; let evidenceRoot = "";
@@ -56,6 +59,22 @@ describe("research API", () => {
 });
 
 describe("mass research CLI", () => {
+  test("Given executeResearch returns product-owned identity and rules When the happy receipt is built Then it serializes that execution without resynthesis", async () => {
+    // Given
+    const ids = ["qa-run", "qa-source-1", "qa-source-2"];
+    const execution = await executeResearch(fixtureRequest, { ...createProductionResearchDependencies(fixtureRequest), newId: () => ids.shift() ?? "unused" });
+    if (execution.result === null) throw new TypeError("fixture execution did not return a result");
+    const sentinelDigest = "f".repeat(64);
+    const sentinelExecution = { ...execution, resultDigest: sentinelDigest, result: { ...execution.result, common_rules: execution.result.common_rules.map((rule, index) => index === 0 ? { ...rule, directive: "product sentinel directive" } : rule) } };
+    // When
+    const receipt = await buildHappyReceipt(fixtureRequest, async () => sentinelExecution);
+    // Then
+    expect(receipt.digest).toBe(sentinelDigest);
+    expect(receipt.result).toBe(sentinelExecution.result);
+    expect(receipt.common_rules).toBe(sentinelExecution.result.common_rules);
+    expect(receipt.provenance[0]).toMatchObject({ rule_id: sentinelExecution.result.common_rules[0]?.id, source_id: sentinelExecution.result.common_rules[0]?.source_ids[0] });
+  });
+
   test("Given happy and adversarial fixtures When exact QA commands run Then cleanup receipts pass", async () => {
     // Given
     const root = path.resolve(import.meta.dir, "../../.."); const scenarios = [["--fixture", "scripts/qa/fixtures/mass-research.json", "--purpose", "prototype"], ["--fixture", "scripts/qa/fixtures/mass-research-adversarial.json", "--scenario", "failures"]] as const;
