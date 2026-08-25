@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "kind": "happy",
+  "request": {
+    "schema_version": 1,
+    "purposes": ["prototype.dashboard", "prototype.landing"],
+    "sources": [
+      { "kind": "fixture", "locator": "fixture-a" },
+      { "kind": "fixture", "locator": "fixture-b" }
+    ],
+    "limits": { "concurrency": 2, "per_source_timeout_ms": 1000, "max_sources": 8, "max_bytes_per_source": 1024 },
+    "orchestrator_version": "research-v1",
+    "mode": "fixture",
+    "fixture_id": "mass-research-v1"
+  }
+}

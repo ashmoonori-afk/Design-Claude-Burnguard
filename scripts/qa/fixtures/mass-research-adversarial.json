@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "kind": "adversarial",
+  "scenario": "failures",
+  "cases": [
+    "timeout",
+    "fetch_failure",
+    "malformed_duplicate",
+    "partial_worker_failure",
+    "cancellation",
+    "restart_recovery",
+    "override_precedence",
+    "unknown_purpose"
+  ]
+}

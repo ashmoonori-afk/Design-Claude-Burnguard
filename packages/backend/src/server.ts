@@ -130,10 +130,11 @@ export function createApp(authority?: RequestAuthorityOptions): Hono {
   return app;
 }
 
-export type ApiRouteDomain = "health" | "catalog" | "learning" | "system" | "managed-files" | "artifact-operations" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
+export type ApiRouteDomain = "health" | "research" | "catalog" | "learning" | "system" | "managed-files" | "artifact-operations" | "artifacts" | "comments" | "session" | "runtime" | "home" | "project" | "not-found";
 
 export function classifyApiRoute(pathname: string, method: string): ApiRouteDomain {
   if (pathname === "/api/health") return "health";
+  if (pathname.startsWith("/api/research")) return "research";
   if (pathname.startsWith("/api/learning")) return "learning";
   if (pathname.startsWith("/api/design-systems")) {
     return /\/(?:extract|upload|tokens|colors|fonts)(?:\/|$)/.test(pathname) ? "system" : "catalog";
@@ -158,6 +159,7 @@ export function classifyApiRoute(pathname: string, method: string): ApiRouteDoma
 async function apiRoutes(domain: ApiRouteDomain): Promise<Hono> {
   switch (domain) {
     case "health": return (await import("./routes/health")).healthRoutes;
+    case "research": return (await import("./routes/research")).researchRoutes;
     case "catalog": return (await import("./routes/catalog")).catalogRoutes;
     case "learning": return (await import("./routes/learning")).learningRoutes;
     case "system": return (await import("./routes/system")).systemRoutes;
