@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import { QaInputError, QaPreflightError, QaTimeoutError } from "./errors";
 
-export const ULW_SESSION_ID = "01a02e12-921d-71f9-9030-291d134ed7fa";
+export const ULW_SESSION_ID = "burnguard-mass-ulw-research-20260825";
 
 export type IsolatedHome = {
   readonly path: string;
