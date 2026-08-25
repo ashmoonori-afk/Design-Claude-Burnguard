@@ -27,6 +27,7 @@ import { reconcileCatalogState } from "./services/catalog-lifecycle";
 import { ensureAllProjectWatchers } from "./services/watchers";
 import { reconcileArtifactState } from "./services/artifact-recovery";
 import { reconcileExportState } from "./services/export-recovery";
+import { reconcileResearchState, type ResearchRecoveryDependencies } from "./services/research-recovery";
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -90,7 +91,7 @@ async function seedSampleDesignSystems(): Promise<void> {
   await seedBundledDesignSystems(repoRoot, systemsDir);
 }
 
-export async function bootstrapLocalAppData(): Promise<void> {
+export async function bootstrapLocalAppData(researchRecovery?: ResearchRecoveryDependencies): Promise<void> {
   await mkdir(appRootDir, { recursive: true });
   await Promise.all([
     mkdir(dataDir, { recursive: true }),
@@ -103,6 +104,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await ensureConfig();
   await seedSampleDesignSystems();
   await runMigrations();
+  if (researchRecovery !== undefined) await reconcileResearchState(getSqlite(), researchRecovery);
   await seedCoreData();
   await seedTutorialsOnce();
   seedLearningItems(getSqlite());
