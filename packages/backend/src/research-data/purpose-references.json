@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "purposes": [
+    {
+      "id": "deck.pitch",
+      "axes": {
+        "project_type": "slide_deck",
+        "request_intent": "pitch",
+        "creation_mode": "authored",
+        "fallback": "other"
+      },
+      "title": "Pitch deck reference set",
+      "guidance": [
+        "Front-load the audience value and decision context.",
+        "Keep slides adaptable in HTML and provide alternatives when distributing PDF.",
+        "Prefer concise, readable structure over copying a vendor pitch template."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-004",
+        "CR-008"
+      ],
+      "source_ids": [
+        "S-037",
+        "S-042"
+      ],
+      "confidence": "medium",
+      "limitations": "Sources support attention and accessible delivery, not a universal investor-pitch narrative or template."
+    },
+    {
+      "id": "prototype.dashboard",
+      "axes": {
+        "project_type": "prototype",
+        "request_intent": "dashboard",
+        "creation_mode": "generated",
+        "fallback": "other"
+      },
+      "title": "Dashboard prototype reference set",
+      "guidance": [
+        "Encode direction and desirability with text, signs, or shape in addition to color.",
+        "Prefer position and length for comparisons before area or angle.",
+        "Use tables for dense comparison tasks, retaining bounded horizontal scrolling where necessary."
+      ],
+      "common_rule_ids": [
+        "CR-002",
+        "CR-003",
+        "CR-007",
+        "CR-015"
+      ],
+      "source_ids": [
+        "S-031",
+        "S-038",
+        "S-039"
+      ],
+      "confidence": "high",
+      "limitations": "Practitioner comparison guidance is not a normative standard; live data behavior is outside this static prototype set."
+    },
+    {
+      "id": "prototype.diagram",
+      "axes": {
+        "project_type": "prototype",
+        "request_intent": "diagram",
+        "creation_mode": "generated",
+        "fallback": "other"
+      },
+      "title": "Diagram prototype reference set",
+      "guidance": [
+        "Treat essential two-dimensional layout as a bounded reflow exception.",
+        "Bind inline SVG title and description IDs through aria-labelledby.",
+        "Provide keyboard and non-color state cues for interactive nodes and edges."
+      ],
+      "common_rule_ids": [
+        "CR-002",
+        "CR-003",
+        "CR-004"
+      ],
+      "source_ids": [
+        "S-003",
+        "S-004",
+        "S-031",
+        "S-040"
+      ],
+      "confidence": "high",
+      "limitations": "The SVG pattern is practitioner-tested rather than normative; exception scope must be assessed per diagram."
+    },
+    {
+      "id": "prototype.editorial",
+      "axes": {
+        "project_type": "prototype",
+        "request_intent": "editorial_microsite",
+        "creation_mode": "generated",
+        "fallback": "other"
+      },
+      "title": "Editorial microsite prototype reference set",
+      "guidance": [
+        "Use semantic headings and labels independently from visual styling.",
+        "Begin narrow layouts with one column and a bounded reading measure.",
+        "Preserve text resizing, spacing overrides, and 320 CSS pixel reflow."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-003",
+        "CR-008",
+        "CR-012"
+      ],
+      "source_ids": [
+        "S-003",
+        "S-018",
+        "S-024",
+        "S-026",
+        "S-027",
+        "S-028",
+        "S-029"
+      ],
+      "confidence": "high",
+      "limitations": "Editorial is a prototype subgenre, not a separate project type; exact measures remain system guidance."
+    },
+    {
+      "id": "prototype.landing",
+      "axes": {
+        "project_type": "prototype",
+        "request_intent": "landing",
+        "creation_mode": "generated",
+        "fallback": "other"
+      },
+      "title": "Landing-page prototype reference set",
+      "guidance": [
+        "Front-load the value proposition without cramming all content above the fold.",
+        "Prioritize the largest visible content so representative LCP can meet the 2.5-second target.",
+        "Maintain semantic hierarchy, keyboard access, contrast, and 320 CSS pixel reflow."
+      ],
+      "common_rule_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-003",
+        "CR-004"
+      ],
+      "source_ids": [
+        "S-003",
+        "S-037",
+        "S-041"
+      ],
+      "confidence": "high",
+      "limitations": "Attention findings changed across study years; LCP is a performance target, not visual styling guidance."
+    },
+    {
+      "id": "prototype.sandbox",
+      "axes": {
+        "project_type": "prototype",
+        "request_intent": "design_sandbox",
+        "creation_mode": "generated",
+        "fallback": "other"
+      },
+      "title": "Design sandbox prototype reference set",
+      "guidance": [
+        "Expose role-based tokens and their component applications without copying vendor token names.",
+        "Demonstrate keyboard focus and distinct component states.",
+        "Keep spacing scales configurable rather than enforcing a universal eight-pixel grid."
+      ],
+      "common_rule_ids": [
+        "CR-004",
+        "CR-010",
+        "CR-011",
+        "CR-014"
+      ],
+      "source_ids": [
+        "S-010",
+        "S-011",
+        "S-012",
+        "S-013",
+        "S-014",
+        "S-021",
+        "S-025"
+      ],
+      "confidence": "high",
+      "limitations": "Sandbox is a prototype subgenre; exact fonts, values, components, and names remain product-specific."
+    }
+  ]
+}

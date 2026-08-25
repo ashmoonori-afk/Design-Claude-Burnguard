@@ -1,0 +1,637 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "S-001",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/TR/WCAG22/",
+      "title_or_owner": "W3C WCAG 2.2 Recommendation",
+      "tags": [
+        "accessibility",
+        "normative"
+      ],
+      "evidence": "Defines testable web accessibility success criteria and conformance levels.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Informative understanding pages are not normative."
+    },
+    {
+      "id": "S-002",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html",
+      "title_or_owner": "WAI Contrast Minimum",
+      "tags": [
+        "contrast",
+        "normative"
+      ],
+      "evidence": "Normal text requires 4.5:1 contrast; large text requires 3:1.",
+      "license_usage": "WAI terms; paraphrase and preserve exceptions.",
+      "confidence": "high",
+      "limitations": "Several criterion exceptions apply."
+    },
+    {
+      "id": "S-003",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/reflow.html",
+      "title_or_owner": "WAI Reflow",
+      "tags": [
+        "reflow",
+        "responsive"
+      ],
+      "evidence": "Content reflows at 320 CSS pixels except essential two-dimensional layouts.",
+      "license_usage": "WAI terms; paraphrase and preserve exceptions.",
+      "confidence": "high",
+      "limitations": "Tables, maps, and diagrams may qualify for scoped exceptions."
+    },
+    {
+      "id": "S-004",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html",
+      "title_or_owner": "WAI Keyboard",
+      "tags": [
+        "interaction",
+        "keyboard"
+      ],
+      "evidence": "Functionality must be keyboard operable unless its function requires path-dependent input.",
+      "license_usage": "WAI terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "The exception is functional, not implementation convenience."
+    },
+    {
+      "id": "S-005",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html",
+      "title_or_owner": "WAI Focus Visible",
+      "tags": [
+        "focus",
+        "interaction"
+      ],
+      "evidence": "Keyboard focus requires a visible, persistent indicator.",
+      "license_usage": "WAI terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Focus appearance has a separate criterion."
+    },
+    {
+      "id": "S-006",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+      "title_or_owner": "WAI Target Size Minimum",
+      "tags": [
+        "interaction",
+        "targets"
+      ],
+      "evidence": "Pointer targets require 24-by-24 CSS pixels or sufficient spacing.",
+      "license_usage": "WAI terms; paraphrase and preserve exceptions.",
+      "confidence": "high",
+      "limitations": "Inline, equivalent, user-agent, and essential exceptions apply."
+    },
+    {
+      "id": "S-007",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html",
+      "title_or_owner": "WAI Error Identification",
+      "tags": [
+        "errors",
+        "forms"
+      ],
+      "evidence": "Identify erroneous fields and describe errors in text.",
+      "license_usage": "WAI terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Color and icons may supplement, but not replace, text."
+    },
+    {
+      "id": "S-008",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html",
+      "title_or_owner": "WAI Status Messages",
+      "tags": [
+        "feedback",
+        "status"
+      ],
+      "evidence": "Status updates must be programmatically determinable without moving focus.",
+      "license_usage": "WAI terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Not every dynamic update is a status message."
+    },
+    {
+      "id": "S-009",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html",
+      "title_or_owner": "WAI Animation from Interactions",
+      "tags": [
+        "motion",
+        "preferences"
+      ],
+      "evidence": "Users can disable nonessential interaction-triggered motion.",
+      "license_usage": "WAI terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "This is Level AAA, not AA."
+    },
+    {
+      "id": "S-010",
+      "retrieved": "2026-08-25",
+      "url": "https://m3.material.io/foundations/layout/understanding-layout",
+      "title_or_owner": "Material 3 Layout",
+      "tags": [
+        "hierarchy",
+        "layout"
+      ],
+      "evidence": "Spacing, alignment, and grouping communicate relationships.",
+      "license_usage": "Google terms; use principles only, never assets.",
+      "confidence": "high",
+      "limitations": "Material grids and breakpoints are conventions."
+    },
+    {
+      "id": "S-011",
+      "retrieved": "2026-08-25",
+      "url": "https://m3.material.io/foundations/typography/overview",
+      "title_or_owner": "Material 3 Typography",
+      "tags": [
+        "hierarchy",
+        "typography"
+      ],
+      "evidence": "Semantic type roles establish hierarchy.",
+      "license_usage": "Google terms; do not copy branded fonts.",
+      "confidence": "high",
+      "limitations": "Font choices are brand-specific."
+    },
+    {
+      "id": "S-012",
+      "retrieved": "2026-08-25",
+      "url": "https://fluent2.microsoft.design/layout",
+      "title_or_owner": "Fluent 2 Layout",
+      "tags": [
+        "layout",
+        "responsive",
+        "spacing"
+      ],
+      "evidence": "Spacing and hierarchy express relationships across responsive and adaptive layouts.",
+      "license_usage": "Microsoft terms; principles only.",
+      "confidence": "high",
+      "limitations": "Fluent values and breakpoints are conventions."
+    },
+    {
+      "id": "S-013",
+      "retrieved": "2026-08-25",
+      "url": "https://fluent2.microsoft.design/accessibility",
+      "title_or_owner": "Fluent 2 Accessibility",
+      "tags": [
+        "accessibility",
+        "focus"
+      ],
+      "evidence": "Inclusive design guidance supplies concrete focus and navigation practices.",
+      "license_usage": "Microsoft terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "It does not replace WCAG conformance testing."
+    },
+    {
+      "id": "S-014",
+      "retrieved": "2026-08-25",
+      "url": "https://carbondesignsystem.com/guidelines/2x-grid/overview/",
+      "title_or_owner": "IBM Carbon 2x Grid",
+      "tags": [
+        "grid",
+        "spacing"
+      ],
+      "evidence": "A responsive grid and spacing vocabulary can be tokenized.",
+      "license_usage": "Apache-2.0 repository; attribute reused code.",
+      "confidence": "high",
+      "limitations": "Carbon token values are system conventions."
+    },
+    {
+      "id": "S-015",
+      "retrieved": "2026-08-25",
+      "url": "https://designsystem.digital.gov/documentation/accessibility/",
+      "title_or_owner": "USWDS Accessibility",
+      "tags": [
+        "accessibility",
+        "government"
+      ],
+      "evidence": "USWDS establishes accessible, mobile-friendly implementation guidance.",
+      "license_usage": "Mixed licenses; inspect each reused source path.",
+      "confidence": "high",
+      "limitations": "Federal service context is not universal product law."
+    },
+    {
+      "id": "S-016",
+      "retrieved": "2026-08-25",
+      "url": "https://designsystem.digital.gov/components/form/",
+      "title_or_owner": "USWDS Form",
+      "tags": [
+        "forms",
+        "government"
+      ],
+      "evidence": "Labels, grouping, instructions, and validation support usable forms.",
+      "license_usage": "Mixed licenses; paraphrase guidance.",
+      "confidence": "high",
+      "limitations": "Component classes are system-specific."
+    },
+    {
+      "id": "S-017",
+      "retrieved": "2026-08-25",
+      "url": "https://design-system.service.gov.uk/components/error-summary/",
+      "title_or_owner": "GOV.UK Error Summary",
+      "tags": [
+        "errors",
+        "forms",
+        "recovery"
+      ],
+      "evidence": "Summarize page errors and link each message to its field.",
+      "license_usage": "Crown copyright and GOV.UK terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Prescriptive for GOV.UK; adaptable elsewhere."
+    },
+    {
+      "id": "S-018",
+      "retrieved": "2026-08-25",
+      "url": "https://design-system.service.gov.uk/styles/layout/",
+      "title_or_owner": "GOV.UK Layout",
+      "tags": [
+        "layout",
+        "readability"
+      ],
+      "evidence": "Mobile-first layouts constrain page width and prose measure.",
+      "license_usage": "GOV.UK terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Numeric widths are guidance, not WCAG requirements."
+    },
+    {
+      "id": "S-019",
+      "retrieved": "2026-08-25",
+      "url": "https://atlassian.design/",
+      "title_or_owner": "Atlassian Design System",
+      "tags": [
+        "focus",
+        "forced-colors"
+      ],
+      "evidence": "Rendered styles demonstrate visible focus and forced-colors support.",
+      "license_usage": "Atlassian terms; reference principles only.",
+      "confidence": "medium",
+      "limitations": "Expected deep links returned 404."
+    },
+    {
+      "id": "S-020",
+      "retrieved": "2026-08-25",
+      "url": "https://shopify.dev/docs/api/polaris",
+      "title_or_owner": "Shopify Polaris References",
+      "tags": [
+        "admin-ui",
+        "forms"
+      ],
+      "evidence": "Official Polaris references cover Shopify administrative surfaces.",
+      "license_usage": "Shopify terms; do not copy proprietary templates or assets.",
+      "confidence": "high",
+      "limitations": "Legacy Polaris pages are unstable."
+    },
+    {
+      "id": "S-021",
+      "retrieved": "2026-08-25",
+      "url": "https://github.com/carbon-design-system/carbon/tree/57d6e29b9911baf5145b2e753e980e7ca4fd2ef5",
+      "title_or_owner": "Carbon repository at pinned SHA",
+      "tags": [
+        "licensing",
+        "tokens"
+      ],
+      "evidence": "Pinned source demonstrates semantic theme tokens and source-first Sass structure.",
+      "license_usage": "Apache-2.0; trademarks excluded.",
+      "confidence": "high",
+      "limitations": "Do not inherit telemetry or vendor token names."
+    },
+    {
+      "id": "S-022",
+      "retrieved": "2026-08-25",
+      "url": "https://github.com/uswds/uswds/blob/013d0bcb735da6f24dc1e37758e245783640d619/LICENSE.md",
+      "title_or_owner": "USWDS license matrix at pinned SHA",
+      "tags": [
+        "licensing",
+        "provenance"
+      ],
+      "evidence": "License boundaries vary by repository path.",
+      "license_usage": "Apply CC0, Apache, OFL, MIT, or public-domain terms per path.",
+      "confidence": "high",
+      "limitations": "Repository-wide license assumptions are unsafe."
+    },
+    {
+      "id": "S-023",
+      "retrieved": "2026-08-25",
+      "url": "https://github.com/material-components/material-web/blob/cac97678831d48d4eb4a606ca50f92673a1dc20c/package.json",
+      "title_or_owner": "Material Web build graph at pinned SHA",
+      "tags": [
+        "build",
+        "metadata"
+      ],
+      "evidence": "Pinned metadata declares build inputs, outputs, and task dependencies.",
+      "license_usage": "Apache-2.0; trademarks excluded.",
+      "confidence": "high",
+      "limitations": "Dependency ranges still require lockfile and tool pinning."
+    },
+    {
+      "id": "S-024",
+      "retrieved": "2026-08-25",
+      "url": "https://service-manual.nhs.uk/design-system/styles/layout",
+      "title_or_owner": "NHS Layout",
+      "tags": [
+        "layout",
+        "readability"
+      ],
+      "evidence": "NHS guidance favors bounded text measure and responsive single-column foundations.",
+      "license_usage": "NHS terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Its measure differs from GOV.UK guidance."
+    },
+    {
+      "id": "S-025",
+      "retrieved": "2026-08-25",
+      "url": "https://designsystem.digital.gov/design-tokens/spacing-units/",
+      "title_or_owner": "USWDS Spacing Units",
+      "tags": [
+        "spacing",
+        "tokens"
+      ],
+      "evidence": "USWDS defines a systematic spacing scale with exceptions.",
+      "license_usage": "Mixed licenses; paraphrase guidance.",
+      "confidence": "high",
+      "limitations": "An eight-pixel-oriented scale is not universal."
+    },
+    {
+      "id": "S-026",
+      "retrieved": "2026-08-25",
+      "url": "https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/20/info-and-relationships.html",
+      "title_or_owner": "WCAG Info and Relationships",
+      "tags": [
+        "hierarchy",
+        "semantics"
+      ],
+      "evidence": "Programmatic structure must preserve visually presented relationships.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Visual hierarchy alone is insufficient."
+    },
+    {
+      "id": "S-027",
+      "retrieved": "2026-08-25",
+      "url": "https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/20/headings-and-labels.html",
+      "title_or_owner": "WCAG Headings and Labels",
+      "tags": [
+        "content",
+        "hierarchy"
+      ],
+      "evidence": "Headings and labels describe topic or purpose.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "The criterion does not require headings or one H1."
+    },
+    {
+      "id": "S-028",
+      "retrieved": "2026-08-25",
+      "url": "https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/21/text-spacing.html",
+      "title_or_owner": "WCAG Text Spacing",
+      "tags": [
+        "resilience",
+        "typography"
+      ],
+      "evidence": "Content survives defined user text-spacing overrides.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Override values are tests, not design defaults."
+    },
+    {
+      "id": "S-029",
+      "retrieved": "2026-08-25",
+      "url": "https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/20/resize-text.html",
+      "title_or_owner": "WCAG Resize Text",
+      "tags": [
+        "resilience",
+        "typography"
+      ],
+      "evidence": "Text resizes to 200 percent without content or functionality loss.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "No minimum default font size follows."
+    },
+    {
+      "id": "S-030",
+      "retrieved": "2026-08-25",
+      "url": "https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/21/non-text-contrast.html",
+      "title_or_owner": "WCAG Non-text Contrast",
+      "tags": [
+        "contrast",
+        "controls"
+      ],
+      "evidence": "Required control, state, and graphic information reaches 3:1 contrast.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Inactive controls and other exceptions apply."
+    },
+    {
+      "id": "S-031",
+      "retrieved": "2026-08-25",
+      "url": "https://raw.githubusercontent.com/w3c/wcag/main/guidelines/sc/20/use-of-color.html",
+      "title_or_owner": "WCAG Use of Color",
+      "tags": [
+        "color",
+        "status"
+      ],
+      "evidence": "Color cannot be the only visual means conveying information.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Text, shape, pattern, or equivalent cues may supplement color."
+    },
+    {
+      "id": "S-032",
+      "retrieved": "2026-08-25",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-disabled",
+      "title_or_owner": "MDN aria-disabled",
+      "tags": [
+        "disabled",
+        "interaction"
+      ],
+      "evidence": "Aria-disabled exposes semantics without disabling behavior or focusability.",
+      "license_usage": "MDN CC BY-SA and document terms; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Prefer native disabled where appropriate."
+    },
+    {
+      "id": "S-033",
+      "retrieved": "2026-08-25",
+      "url": "https://design-system.service.gov.uk/patterns/validation/",
+      "title_or_owner": "GOV.UK Validation",
+      "tags": [
+        "forms",
+        "validation"
+      ],
+      "evidence": "Submit-first validation avoids premature blur errors.",
+      "license_usage": "GOV.UK terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Carbon guidance is more favorable to live validation."
+    },
+    {
+      "id": "S-034",
+      "retrieved": "2026-08-25",
+      "url": "https://github.com/design-tokens/community-group/commit/16c902d9327c18290e956a21130c445f1b88c40f",
+      "title_or_owner": "DTCG pinned repository revision",
+      "tags": [
+        "provenance",
+        "tokens"
+      ],
+      "evidence": "Pinned revision identifies the canonical Design Tokens repository state.",
+      "license_usage": "Mixed W3C document, CLA, and BSD terms.",
+      "confidence": "high",
+      "limitations": "Stable format is 2025.10, not a floating draft."
+    },
+    {
+      "id": "S-035",
+      "retrieved": "2026-08-25",
+      "url": "https://www.designtokens.org/TR/2025.10/format/",
+      "title_or_owner": "DTCG Format 2025.10",
+      "tags": [
+        "schema",
+        "tokens"
+      ],
+      "evidence": "Stable grammar defines tokens, groups, aliases, references, and extensions.",
+      "license_usage": "W3C terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "It does not define Burnguard provenance or policy."
+    },
+    {
+      "id": "S-036",
+      "retrieved": "2026-08-25",
+      "url": "https://github.com/design-tokens/community-group/blob/16c902d9327c18290e956a21130c445f1b88c40f/technical-reports/resolver/resolution-logic.md",
+      "title_or_owner": "DTCG Resolver Logic",
+      "tags": [
+        "precedence",
+        "tokens"
+      ],
+      "evidence": "Resolution uses declared order, later wins, then alias resolution and validation.",
+      "license_usage": "W3C terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "The resolver report is draft material."
+    },
+    {
+      "id": "S-037",
+      "retrieved": "2026-08-25",
+      "url": "https://www.nngroup.com/articles/scrolling-and-attention/",
+      "title_or_owner": "Nielsen Norman Group Scrolling and Attention",
+      "tags": [
+        "hierarchy",
+        "landing"
+      ],
+      "evidence": "Front-load value without forcing all content above the fold.",
+      "license_usage": "All rights reserved; cite and paraphrase only.",
+      "confidence": "high",
+      "limitations": "Reported attention figures differ between study years."
+    },
+    {
+      "id": "S-038",
+      "retrieved": "2026-08-25",
+      "url": "https://www.nngroup.com/articles/dashboards-preattentive/",
+      "title_or_owner": "Nielsen Norman Group Dashboards and Preattentive Processing",
+      "tags": [
+        "dashboard",
+        "data"
+      ],
+      "evidence": "Position and length are easier to compare than area and angle.",
+      "license_usage": "All rights reserved; cite and paraphrase only.",
+      "confidence": "high",
+      "limitations": "Practitioner guidance, not a standard."
+    },
+    {
+      "id": "S-039",
+      "retrieved": "2026-08-25",
+      "url": "https://www.nngroup.com/articles/data-tables/",
+      "title_or_owner": "Nielsen Norman Group Data Tables",
+      "tags": [
+        "dashboard",
+        "tables"
+      ],
+      "evidence": "Tables support comparison tasks better than repeated cards.",
+      "license_usage": "All rights reserved; cite and paraphrase only.",
+      "confidence": "high",
+      "limitations": "Data tables may still require horizontal scrolling."
+    },
+    {
+      "id": "S-040",
+      "retrieved": "2026-08-25",
+      "url": "https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/",
+      "title_or_owner": "Smashing Magazine Accessible SVG Patterns",
+      "tags": [
+        "accessibility",
+        "diagram"
+      ],
+      "evidence": "Inline SVG descriptions work well when title and description IDs are linked.",
+      "license_usage": "Cite and paraphrase; do not copy article text.",
+      "confidence": "high",
+      "limitations": "Practitioner test matrix, not a normative standard."
+    },
+    {
+      "id": "S-041",
+      "retrieved": "2026-08-25",
+      "url": "https://web.dev/articles/lcp",
+      "title_or_owner": "web.dev Largest Contentful Paint",
+      "tags": [
+        "landing",
+        "performance"
+      ],
+      "evidence": "Good LCP is at most 2.5 seconds at the 75th percentile.",
+      "license_usage": "Google and web.dev terms; cite and paraphrase.",
+      "confidence": "high",
+      "limitations": "A performance target is not a visual style rule."
+    },
+    {
+      "id": "S-042",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/teach-advocate/accessible-presentations/",
+      "title_or_owner": "WAI Accessible Presentations",
+      "tags": [
+        "accessibility",
+        "deck"
+      ],
+      "evidence": "Provide adaptable presentation formats rather than distributing only PDF.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "PDF remains acceptable when alternatives exist."
+    },
+    {
+      "id": "S-043",
+      "retrieved": "2026-08-25",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/error-prevention-legal-financial-data.html",
+      "title_or_owner": "WAI Error Prevention",
+      "tags": [
+        "confirmation",
+        "recovery"
+      ],
+      "evidence": "Consequential actions need reversible, checked, or confirmed safeguards.",
+      "license_usage": "W3C Document License; attribute paraphrases.",
+      "confidence": "high",
+      "limitations": "Normative scope covers legal, financial, and data actions."
+    },
+    {
+      "id": "S-044",
+      "retrieved": "2026-08-25",
+      "url": "https://design.va.gov/components/form/autosave",
+      "title_or_owner": "VA Design System Autosave",
+      "tags": [
+        "autosave",
+        "recovery"
+      ],
+      "evidence": "Expose save progress and the last successful persistence.",
+      "license_usage": "U.S. government terms; inspect asset licenses.",
+      "confidence": "high",
+      "limitations": "Domain-specific recovery precedent."
+    },
+    {
+      "id": "S-045",
+      "retrieved": "2026-08-25",
+      "url": "https://primer.style/product/components/spinner/accessibility/",
+      "title_or_owner": "Primer Spinner Accessibility",
+      "tags": [
+        "loading",
+        "status"
+      ],
+      "evidence": "A visual spinner alone does not announce status to assistive technology.",
+      "license_usage": "GitHub and Primer terms; paraphrase.",
+      "confidence": "high",
+      "limitations": "Spinner timing remains system-specific."
+    }
+  ]
+}
