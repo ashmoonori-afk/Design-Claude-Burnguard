@@ -17,5 +17,6 @@ export * from "./harness";
 export * from "./home";
 export * from "./learning-contract";
 export * from "./project";
+export * from "./reference-layout";
 export * from "./research-contract";
 export * from "./settings";

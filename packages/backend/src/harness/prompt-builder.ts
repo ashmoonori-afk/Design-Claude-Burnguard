@@ -15,6 +15,7 @@ import {
 } from "./prompt-compact-skills";
 import { appendDesignBriefContext } from "./prompt-design-brief";
 import { appendDesignSystemContext } from "./prompt-design-system";
+import { appendReferenceLayoutContext } from "./prompt-reference-layout";
 import {
   summarizeDeckHtml,
   summarizePrototypeHtml,
@@ -102,6 +103,11 @@ export async function buildPrompt(
   lines.push("</burnguard-research-context-v1>");
   lines.push("");
   appendDesignBriefContext(lines, projectOptions.design_brief);
+  appendReferenceLayoutContext(lines, {
+    request: userEvent.text,
+    attachments: context.attachments,
+    requestedPaths: userEvent.attachments ?? [],
+  });
 
   // Structural summary of the entrypoint, when it's an HTML artifact we know
   // how to parse. This is the main lever against runaway prompt-cache growth:
