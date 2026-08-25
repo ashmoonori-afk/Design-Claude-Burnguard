@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PDF_PRINT_CSS } from "../src/services/export-pdf";
+import { PDF_PRINT_CSS, pdfDimensionsForPaper } from "../src/services/export-pdf-contract";
 
 describe("PDF_PRINT_CSS", () => {
   test("overrides single-slide gate and hides the nav", () => {
@@ -27,5 +27,11 @@ describe("PDF_PRINT_CSS", () => {
     // choice via preferCSSPageSize behaviour, so this guard prevents
     // a regression that re-pins everyone to A4.
     expect(PDF_PRINT_CSS).not.toMatch(/@page\b/);
+  });
+
+  test("maps every persisted paper option to stable Chromium dimensions", () => {
+    expect(pdfDimensionsForPaper("a4")).toEqual({ format: "A4" });
+    expect(pdfDimensionsForPaper("letter")).toEqual({ format: "Letter" });
+    expect(pdfDimensionsForPaper("widescreen-16x9")).toEqual({ width: "13.333in", height: "7.5in" });
   });
 });

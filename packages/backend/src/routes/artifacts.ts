@@ -1,33 +1,18 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { Hono } from "hono";
+import { UpgradeContractError, parseExportOptions } from "@bg/shared";
 import type {
   ApiErrorBody,
   ApiSuccess,
   ArtifactSummary,
   ExportFormat,
   ExportJob,
-  ExportOptions,
   FileInfo,
-  PatchFileResponse,
 } from "@bg/shared";
-import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles, resolveDrawFile, resolveProjectFile } from "../services/files";
-import { enqueueProjectExport } from "../services/exports";
-import {
-  buildContentDisposition,
-  buildDownloadFilename,
-  formatMime,
-} from "../services/export-naming";
-import { noteEmittedFileChange } from "../services/file-change-broker";
-import {
-  FilePatchError,
-  getFileUndoState,
-  patchHtmlNode,
-  undoLastFilePatch,
-} from "../services/file-patch";
-import { getExportJob, listProjectExports } from "../db/exports";
-import { getProjectDetail } from "../db/seed";
-import { exportsDir, resolveManagedPath } from "../lib/paths";
+import { buildArtifactSummary, indexProjectFiles, listIndexedProjectFiles } from "../services/files";
+import { getExportAttemptDetail, getExportJob, listExportAttempts, listProjectExports } from "../db/exports";
+import { ExportLifecycleError } from "../db/export-lifecycle-repository";
+import { getProjectDetail } from "../db/project-read-repository";
+import type { ExportQaPhase } from "../services/export-qa-barrier";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -42,7 +27,7 @@ function fail(
 }
 
 function isExportFormat(value: unknown): value is ExportFormat {
-  return value === "html_zip" || value === "pdf" || value === "pptx" || value === "handoff";
+  return value === "html_zip" || value === "pdf" || value === "png" || value === "pptx" || value === "handoff";
 }
 
 export const artifactRoutes = new Hono();
@@ -83,277 +68,6 @@ artifactRoutes.post("/api/projects/:id/refresh", async (c) => {
   return c.json(ok(artifacts satisfies ArtifactSummary));
 });
 
-// Hono matches routes in declaration order. Keep the specific undo-info
-// route before the generic file route so its suffix is not treated as part
-// of the relative file path.
-artifactRoutes.get("/api/projects/:id/fs/*/undo-info", async (c) => {
-  const projectId = c.req.param("id");
-  const project = await getProjectDetail(projectId);
-  if (!project) {
-    return c.json(
-      fail("project_not_found", "Project not found", { projectId }),
-      404,
-    );
-  }
-  const prefix = `/api/projects/${projectId}/fs/`;
-  const rawPath = c.req.path.replace(/\/undo-info$/, "");
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!relPath) {
-    return c.json(fail("invalid_path", "File path is required"), 400);
-  }
-  return c.json(ok(getFileUndoState(projectId, relPath)));
-});
-
-artifactRoutes.get("/api/projects/:id/fs/*", async (c) => {
-  const projectId = c.req.param("id");
-  // Hono 4.x does not expose the wildcard match via c.req.param("*") for a
-  // bare `/*` pattern — that always returns empty. Parse the tail manually
-  // from the request path so `/api/projects/:id/fs/foo/bar.html` yields
-  // relPath=`foo/bar.html`.
-  const prefix = `/api/projects/${projectId}/fs/`;
-  const rawPath = c.req.path;
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  const resolved = await resolveProjectFile(projectId, relPath);
-  if (!resolved) {
-    // eslint-disable-next-line no-console
-    console.log(`[fs] 404 resolve failed: projectId=${projectId} relPath=${JSON.stringify(relPath)}`);
-    return c.json(fail("file_not_found", "Project file not found", { projectId, relPath }), 404);
-  }
-
-  try {
-    const info = await stat(resolved.absolutePath);
-    if (!info.isFile()) {
-      // eslint-disable-next-line no-console
-      console.log(`[fs] 400 not-a-file: ${resolved.absolutePath}`);
-      return c.json(fail("not_a_file", "Requested path is not a file", { relPath }), 400);
-    }
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.log(`[fs] 404 stat failed: ${resolved.absolutePath} err=${err instanceof Error ? err.message : String(err)}`);
-    return c.json(fail("file_not_found", "Project file not found", { projectId, relPath }), 404);
-  }
-
-  // eslint-disable-next-line no-console
-  console.log(`[fs] 200 serving: ${resolved.absolutePath}`);
-
-  const contentType = detectContentType(resolved.absolutePath);
-  c.header("Cache-Control", "no-cache");
-  c.header("Content-Type", contentType);
-  return new Response(Bun.file(resolved.absolutePath), {
-    headers: c.res.headers,
-  });
-});
-
-artifactRoutes.patch("/api/projects/:id/fs/*", async (c) => {
-  const projectId = c.req.param("id");
-  const project = await getProjectDetail(projectId);
-  if (!project) {
-    return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
-  }
-
-  const prefix = `/api/projects/${projectId}/fs/`;
-  const rawPath = c.req.path;
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!relPath) {
-    return c.json(fail("invalid_path", "File path is required"), 400);
-  }
-
-  const body = await c.req.json<unknown>().catch(() => null);
-  if (!body || typeof body !== "object") {
-    return c.json(fail("invalid_body", "Expected a JSON object"), 400);
-  }
-  const { node_bg_id, text, attributes, styles } = body as Record<string, unknown>;
-  if (typeof node_bg_id !== "string" || !node_bg_id.trim()) {
-    return c.json(
-      fail("invalid_node_bg_id", "node_bg_id is required", { node_bg_id }),
-      400,
-    );
-  }
-  if (text !== undefined && typeof text !== "string") {
-    return c.json(fail("invalid_text", "text must be a string"), 400);
-  }
-  let validatedAttributes: Record<string, string | null> | undefined;
-  if (attributes !== undefined) {
-    if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) {
-      return c.json(fail("invalid_attributes", "attributes must be an object"), 400);
-    }
-    const entries: Array<[string, string | null]> = [];
-    for (const [name, value] of Object.entries(attributes)) {
-      if (value !== null && typeof value !== "string") {
-        return c.json(
-          fail("invalid_attr_value", `attributes.${name} must be string or null`),
-          400,
-        );
-      }
-      entries.push([name, value]);
-    }
-    validatedAttributes = Object.fromEntries(entries);
-  }
-  let validatedStyles: Record<string, string | null> | undefined;
-  if (styles !== undefined) {
-    if (!styles || typeof styles !== "object" || Array.isArray(styles)) {
-      return c.json(fail("invalid_styles", "styles must be an object"), 400);
-    }
-    const entries: Array<[string, string | null]> = [];
-    for (const [name, value] of Object.entries(styles)) {
-      if (value !== null && typeof value !== "string") {
-        return c.json(
-          fail("invalid_style_value", `styles.${name} must be string or null`),
-          400,
-        );
-      }
-      entries.push([name, value]);
-    }
-    validatedStyles = Object.fromEntries(entries);
-  }
-
-  try {
-    const result = await patchHtmlNode(projectId, relPath, {
-      node_bg_id,
-      text,
-      attributes: validatedAttributes,
-      styles: validatedStyles,
-    });
-    // Record our own write before the fs watcher catches it (~120ms
-    // debounce later). Without this note, every Tweaks / Edit PATCH
-    // produces a duplicate `file.changed` event in chat because the
-    // watcher path treats our disk write as an external edit.
-    noteEmittedFileChange(projectId, relPath);
-    await indexProjectFiles(projectId);
-    return c.json(
-      ok({
-        rel_path: relPath,
-        node_bg_id,
-        updated_at: result.updatedAt,
-      } satisfies PatchFileResponse),
-    );
-  } catch (err) {
-    if (err instanceof FilePatchError) {
-      const status =
-        err.code === "file_not_found" || err.code === "node_not_found" ? 404 : 400;
-      return c.json(fail(err.code, err.message), status);
-    }
-    throw err;
-  }
-});
-
-// Single-step file-level undo for the GUI patch path (audit fix #7).
-// POST restores the pre-patch content and clears the entry.
-artifactRoutes.post("/api/projects/:id/fs/*/undo", async (c) => {
-  const projectId = c.req.param("id");
-  const project = await getProjectDetail(projectId);
-  if (!project) {
-    return c.json(
-      fail("project_not_found", "Project not found", { projectId }),
-      404,
-    );
-  }
-  const prefix = `/api/projects/${projectId}/fs/`;
-  const rawPath = c.req.path.replace(/\/undo$/, "");
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!relPath) {
-    return c.json(fail("invalid_path", "File path is required"), 400);
-  }
-  const result = await undoLastFilePatch(projectId, relPath);
-  if (!result) {
-    return c.json(
-      fail("no_undo_available", "No prior patch is available to undo", {
-        relPath,
-      }),
-      404,
-    );
-  }
-  // Same dedupe trick as PATCH: tell the file-change broker we wrote
-  // this so the watcher does not re-emit a duplicate `file.changed`.
-  noteEmittedFileChange(projectId, relPath);
-  await indexProjectFiles(projectId);
-  return c.json(
-    ok({
-      rel_path: relPath,
-      updated_at: result.updatedAt,
-    }),
-  );
-});
-
-/**
- * Draw mode (P3.2) annotations are stored per-file under
- * `<project>/.meta/draws/<rel_path>.svg`. GET returns the saved svg
- * (or 404 if the user hasn't drawn yet). PUT overwrites with the new
- * svg; body is a plain string.
- */
-artifactRoutes.get("/api/projects/:id/draws/*", async (c) => {
-  const projectId = c.req.param("id");
-  const prefix = `/api/projects/${projectId}/draws/`;
-  const rawPath = c.req.path;
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!relPath) {
-    return c.json(fail("invalid_path", "File path is required"), 400);
-  }
-  const resolved = await resolveDrawFile(projectId, relPath);
-  if (!resolved) {
-    return c.json(fail("project_not_found", "Project or path invalid", { projectId, relPath }), 404);
-  }
-
-  try {
-    const info = await stat(resolved.absolutePath);
-    if (!info.isFile()) {
-      return c.json(fail("not_a_file", "Draws sidecar is not a file", { relPath }), 400);
-    }
-  } catch {
-    // No saved draws yet — return an empty svg so the client doesn't
-    // have to special-case 404.
-    c.header("Content-Type", "image/svg+xml; charset=utf-8");
-    c.header("Cache-Control", "no-cache");
-    return c.body('<svg xmlns="http://www.w3.org/2000/svg"></svg>', 200);
-  }
-
-  const body = await readFile(resolved.absolutePath, "utf8");
-  c.header("Content-Type", "image/svg+xml; charset=utf-8");
-  c.header("Cache-Control", "no-cache");
-  return c.body(body, 200);
-});
-
-artifactRoutes.put("/api/projects/:id/draws/*", async (c) => {
-  const projectId = c.req.param("id");
-  const project = await getProjectDetail(projectId);
-  if (!project) {
-    return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
-  }
-
-  const prefix = `/api/projects/${projectId}/draws/`;
-  const rawPath = c.req.path;
-  const relPath = rawPath.startsWith(prefix)
-    ? decodeURIComponent(rawPath.slice(prefix.length))
-    : "";
-  if (!relPath) {
-    return c.json(fail("invalid_path", "File path is required"), 400);
-  }
-
-  const resolved = await resolveDrawFile(projectId, relPath);
-  if (!resolved) {
-    return c.json(fail("path_escape", "Resolved path escapes the draws root", { relPath }), 400);
-  }
-
-  const body = await c.req.text();
-  if (typeof body !== "string" || body.length > 2_000_000) {
-    return c.json(fail("invalid_body", "svg body required (string, <= 2MB)"), 400);
-  }
-
-  await mkdir(resolved.parentDir, { recursive: true });
-  await writeFile(resolved.absolutePath, body, "utf8");
-  return c.json(ok({ rel_path: resolved.relPath, bytes: body.length }));
-});
-
 artifactRoutes.get("/api/projects/:id/exports", async (c) => {
   const projectId = c.req.param("id");
   const project = await getProjectDetail(projectId);
@@ -377,19 +91,6 @@ artifactRoutes.post("/api/projects/:id/exports", async (c) => {
   if (!isExportFormat(format)) {
     return c.json(fail("invalid_export_format", "Unsupported export format", { format }), 400);
   }
-  if (
-    format !== "html_zip" &&
-    format !== "pdf" &&
-    format !== "pptx" &&
-    format !== "handoff"
-  ) {
-    return c.json(
-      fail("export_not_implemented", `Export format is not implemented yet: ${format}`, {
-        format,
-      }),
-      501,
-    );
-  }
   if ((format === "pdf" || format === "pptx") && project.type !== "slide_deck") {
     return c.json(
       fail(
@@ -401,57 +102,78 @@ artifactRoutes.post("/api/projects/:id/exports", async (c) => {
     );
   }
 
-  // Parse and validate the optional `options` block. Anything unknown
-  // is rejected so a typo in the client doesn't silently fall back to
-  // defaults — the user thinks they picked Letter, gets A4.
-  const optionsRaw =
-    body && typeof body === "object" && "options" in body
-      ? (body as { options: unknown }).options
-      : undefined;
-  const options: ExportOptions = {};
-  if (optionsRaw !== undefined) {
-    if (typeof optionsRaw !== "object" || optionsRaw === null) {
-      return c.json(
-        fail("invalid_export_options", "options must be an object", { optionsRaw }),
-        400,
-      );
-    }
-    const opts = optionsRaw as Record<string, unknown>;
-    if (opts.pdf_paper !== undefined) {
-      if (
-        opts.pdf_paper !== "a4" &&
-        opts.pdf_paper !== "letter" &&
-        opts.pdf_paper !== "widescreen-16x9"
-      ) {
-        return c.json(
-          fail(
-            "invalid_export_options",
-            "options.pdf_paper must be one of a4 | letter | widescreen-16x9",
-            { value: opts.pdf_paper },
-          ),
-          400,
-        );
-      }
-      options.pdf_paper = opts.pdf_paper;
-    }
-    if (opts.pptx_size !== undefined) {
-      if (opts.pptx_size !== "16x9" && opts.pptx_size !== "4x3") {
-        return c.json(
-          fail(
-            "invalid_export_options",
-            "options.pptx_size must be one of 16x9 | 4x3",
-            { value: opts.pptx_size },
-          ),
-          400,
-        );
-      }
-      options.pptx_size = opts.pptx_size;
-    }
+  const optionsRaw = body && typeof body === "object" && "options" in body ? Reflect.get(body, "options") : {};
+  let options;
+  try { options = parseExportOptions(format, optionsRaw); }
+  catch (error) {
+    if (error instanceof UpgradeContractError) return c.json(fail("invalid_export_options", "Export options are invalid", { path: error.path }), 400);
+    throw error;
   }
-
-  const job = await enqueueProjectExport(projectId, format, options);
+  const { enqueueProjectExport } = await import("../services/exports");
+  const { exportQaHooks } = await import("../services/export-qa-barrier");
+  const job = await enqueueProjectExport(projectId, format, options, exportQaHooks(c.req.header("x-bg-export-qa-barrier") ?? null));
+  if (job === null) return c.json(fail("export_create_failed", "Export job could not be created"), 500);
   return c.json(ok(job satisfies ExportJob), 202);
 });
+
+artifactRoutes.post("/api/exports/qa/barriers", async (c) => {
+  if (process.env.BG_EXPORT_QA !== "1") return c.notFound();
+  const body = await c.req.json<unknown>().catch(() => null); const token = recordValue(body, "token"); const phase = recordValue(body, "phase"); const behavior = recordValue(body, "behavior");
+  if (typeof token !== "string" || !isExportPhase(phase) || (behavior !== "pause" && behavior !== "fail")) return c.json(fail("invalid_qa_barrier", "Invalid export QA barrier"), 400);
+  const { armExportQaBarrier } = await import("../services/export-qa-barrier"); armExportQaBarrier(token, phase, behavior); return c.json(ok({ token, phase, behavior }), 201);
+});
+artifactRoutes.get("/api/exports/qa/barriers/:token/wait", async (c) => {
+  if (process.env.BG_EXPORT_QA !== "1") return c.notFound(); const { waitForExportQaBarrier } = await import("../services/export-qa-barrier"); const attempt_id = await waitForExportQaBarrier(c.req.param("token"), c.req.raw.signal); return c.json(ok({ attempt_id }));
+});
+artifactRoutes.post("/api/exports/qa/barriers/:token/release", async (c) => {
+  if (process.env.BG_EXPORT_QA !== "1") return c.notFound(); const { releaseExportQaBarrier } = await import("../services/export-qa-barrier"); return c.json(ok({ attempt_id: releaseExportQaBarrier(c.req.param("token")) }));
+});
+artifactRoutes.post("/api/exports/qa/gc", async (c) => {
+  if (process.env.BG_EXPORT_QA !== "1") return c.notFound(); const body = await c.req.json<unknown>().catch(() => null); const now = recordValue(body, "now"); const attemptId = recordValue(body, "attempt_id");
+  if (typeof now !== "number" || !Number.isSafeInteger(now) || typeof attemptId !== "string") return c.json(fail("invalid_qa_gc", "A bounded GC time and attempt are required"), 400);
+  const { getSqlite } = await import("../db/sqlite-client"); const { canonicalJson } = await import("../services/export-receipt");
+  const expired = getSqlite().prepare("UPDATE export_attempts SET retention_json=? WHERE id=? AND status='validated'").run(canonicalJson({ retained_until: now - 1, output_available: true }), attemptId);
+  if (expired.changes !== 1) return c.json(fail("invalid_qa_gc_attempt", "GC attempt must be validated"), 409);
+  const { exportGcQaHook } = await import("../services/export-qa-barrier"); const { pruneOldExports } = await import("../services/export-gc");
+  return c.json(ok(await pruneOldExports({ now, retentionMs: 0, signal: c.req.raw.signal, phase: exportGcQaHook(c.req.header("x-bg-export-qa-barrier") ?? null) })));
+});
+
+artifactRoutes.get("/api/exports/:id/attempts", async (c) => {
+  const job = await getExportJob(c.req.param("id"));
+  if (job === null) return c.json(fail("export_not_found", "Export job not found"), 404);
+  return c.json(ok(await listExportAttempts(job.id)));
+});
+
+artifactRoutes.get("/api/exports/:id/attempts/:attemptId", async (c) => {
+  const attempt = await getExportAttemptDetail(c.req.param("attemptId"));
+  if (attempt === null || attempt.job_id !== c.req.param("id")) return c.json(fail("export_attempt_not_found", "Export attempt not found"), 404);
+  return c.json(ok(attempt));
+});
+
+artifactRoutes.post("/api/exports/:id/cancel", async (c) => {
+  const job = await getExportJob(c.req.param("id"));
+  if (job === null) return c.json(fail("export_not_found", "Export job not found"), 404);
+  if (job.latest_attempt === null) return c.json(fail("export_not_ready", "Export has no active attempt"), 409);
+  const { cancelProjectExport } = await import("../services/exports");
+  if (!cancelProjectExport(job.latest_attempt.id)) return c.json(fail("export_terminal", "Export attempt is already terminal"), 409);
+  return c.json(ok(await getExportJob(job.id)), 202);
+});
+
+artifactRoutes.post("/api/exports/:id/retry", async (c) => {
+  const job = await getExportJob(c.req.param("id"));
+  if (job === null) return c.json(fail("export_not_found", "Export job not found"), 404);
+  const project = await getProjectDetail(job.project_id);
+  const body = await c.req.json<unknown>().catch(() => null);
+  const revision = body && typeof body === "object" ? Reflect.get(body, "project_revision") : undefined;
+  const digest = body && typeof body === "object" ? Reflect.get(body, "project_digest") : undefined;
+  if (project === null || revision !== project.current_revision || digest !== project.current_digest) return c.json(fail("stale_artifact_identity", "Current project revision and digest are required"), 412);
+  const { retryProjectExport } = await import("../services/exports"); const { exportQaHooks } = await import("../services/export-qa-barrier");
+  try { return c.json(ok(await retryProjectExport(job.id, exportQaHooks(c.req.header("x-bg-export-qa-barrier") ?? null))), 202); }
+  catch (error) { if (error instanceof ExportLifecycleError && error.code === "invalid_retry") return c.json(fail("export_retry_conflict", "Export retry already exists or parent is not retryable"), 409); throw error; }
+});
+
+function recordValue(value: unknown, key: string): unknown { return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined; }
+function isExportPhase(value: unknown): value is ExportQaPhase { return value === "after_snapshot" || value === "after_partial_render" || value === "after_render" || value === "after_validation" || value === "after_receipt" || value === "after_publish_before_db" || value === "gc_after_tombstone_before_unlink" || value === "gc_after_unlink"; }
 
 artifactRoutes.get("/api/exports/:id", async (c) => {
   const id = c.req.param("id");
@@ -462,73 +184,3 @@ artifactRoutes.get("/api/exports/:id", async (c) => {
 
   return c.json(ok(job satisfies ExportJob));
 });
-
-artifactRoutes.get("/api/exports/:id/download", async (c) => {
-  const id = c.req.param("id");
-  const job = await getExportJob(id);
-  if (!job) {
-    return c.json(fail("export_not_found", "Export job not found", { id }), 404);
-  }
-  if (job.status !== "succeeded" || !job.output_path) {
-    return c.json(fail("export_not_ready", "Export is not ready for download", { id }), 409);
-  }
-
-  let outputPath: string;
-  try {
-    outputPath = resolveManagedPath(exportsDir, job.output_path);
-    const info = await stat(outputPath);
-    if (!info.isFile()) {
-      return c.json(fail("export_not_found", "Export output file not found", { id }), 404);
-    }
-  } catch {
-    return c.json(fail("export_not_found", "Export output file not found", { id }), 404);
-  }
-
-  // Friendly user-facing filename (project-slug-format-date.ext) and
-  // the correct MIME type per format. Both fixes from the export audit:
-  // the previous response always claimed application/zip, even for PDF
-  // / PPTX, and the filename was the internal ulid-based staging name.
-  const project = await getProjectDetail(job.project_id);
-  const filename = buildDownloadFilename({
-    projectName: project?.name ?? null,
-    job,
-  });
-  c.header("Content-Disposition", buildContentDisposition(filename));
-  c.header("Content-Type", formatMime(job.format));
-  return new Response(Bun.file(outputPath), {
-    headers: c.res.headers,
-  });
-});
-
-function detectContentType(filePath: string) {
-  const ext = path.extname(filePath).toLowerCase();
-  switch (ext) {
-    case ".html":
-    case ".htm":
-      return "text/html; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".js":
-    case ".mjs":
-    case ".cjs":
-      return "application/javascript; charset=utf-8";
-    case ".json":
-      return "application/json; charset=utf-8";
-    case ".svg":
-      return "image/svg+xml";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".webp":
-      return "image/webp";
-    case ".gif":
-      return "image/gif";
-    case ".md":
-    case ".txt":
-      return "text/plain; charset=utf-8";
-    default:
-      return "application/octet-stream";
-  }
-}

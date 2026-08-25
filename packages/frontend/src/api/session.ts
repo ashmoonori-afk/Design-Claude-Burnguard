@@ -1,4 +1,4 @@
-import type { BackendId, NormalizedEvent, SessionInfo, UserEvent } from "@bg/shared";
+import type { BackendId, NormalizedEvent, SequencedEventEnvelope, SessionInfo, UserEvent } from "@bg/shared";
 import { apiFetch } from "./client";
 
 export async function getSession(id: string): Promise<SessionInfo> {
@@ -7,10 +7,11 @@ export async function getSession(id: string): Promise<SessionInfo> {
 
 export async function listSessionEvents(
   id: string,
-  since?: number,
+  afterSequence?: number,
 ): Promise<NormalizedEvent[]> {
-  const q = since != null ? `?since=${since}` : "";
-  return apiFetch<NormalizedEvent[]>(`/api/sessions/${id}/events${q}`);
+  const q = afterSequence != null ? `?after_sequence=${afterSequence}` : "";
+  const envelopes = await apiFetch<SequencedEventEnvelope[]>(`/api/sessions/${id}/events${q}`);
+  return envelopes.map((item) => item.event);
 }
 
 export async function sendUserEvent(
@@ -92,9 +93,9 @@ export function subscribeSessionStream(
 ): () => void {
   const source = new EventSource(`/api/sessions/${id}/stream`);
   const listener = (message: MessageEvent<string>) => {
-    let parsed: NormalizedEvent;
+    let parsed: SequencedEventEnvelope;
     try {
-      parsed = JSON.parse(message.data) as NormalizedEvent;
+      parsed = JSON.parse(message.data) as SequencedEventEnvelope;
     } catch (err) {
       // Malformed payload — call the optional error handler so the
       // caller can surface a toast, but don't bubble up because the
@@ -106,7 +107,7 @@ export function subscribeSessionStream(
       return;
     }
     try {
-      onEvent(parsed);
+      onEvent(parsed.event);
     } catch (err) {
       // Likewise: an exception inside the consumer must not kill the
       // EventSource subscription.

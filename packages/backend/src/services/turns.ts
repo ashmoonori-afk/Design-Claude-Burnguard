@@ -8,12 +8,12 @@ import {
   insertUserEvent,
   setSessionStatus,
 } from "../db/events";
-import { getSessionInfo } from "../db/seed";
-import { broker } from "./broker";
+import { getProjectDetail, getSessionInfo } from "../db/seed";
+import { getSqlite } from "../db/sqlite-client";
+import { broker, sequencedBroker } from "./broker";
 import { buildSessionContext } from "./context";
-import { noteEmittedFileChange } from "./file-change-broker";
-import { writePreTurnSnapshot, writeTurnCheckpoint } from "./checkpoints";
-import { indexProjectFiles } from "./files";
+import { writeTurnCheckpoint } from "./checkpoints";
+import { ArtifactCoordinator, ArtifactOperationError } from "./artifact-coordinator";
 import { appendSessionTrace } from "./trace";
 import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
@@ -46,12 +46,13 @@ async function listDirSafe(dir: string): Promise<string[] | string> {
 }
 
 async function persistAndPublish(sessionId: string, event: NormalizedEvent) {
-  await insertNormalizedEvent(sessionId, event);
+  const persisted = await insertNormalizedEvent(sessionId, event);
   await appendSessionTrace(sessionId, {
     level: "event",
     event,
   });
   broker.publish(sessionId, event);
+  sequencedBroker.publish(sessionId, persisted);
 }
 
 /**
@@ -116,30 +117,28 @@ export function submitToolDecisionToTurn(
   return "queued";
 }
 
-export function startUserTurn(
-  sessionId: string,
-  payload: Extract<UserEvent, { type: "user.message" }>,
-) {
-  if (activeTurns.has(sessionId)) {
-    return null;
-  }
-
-  const activeTurn: ActiveTurn = {
-    abortController: new AbortController(),
-    interrupted: false,
-    decisionQueue: [],
-    decisionHandler: null,
-  };
+export function startUserTurn(sessionId: string, payload: Extract<UserEvent, { type: "user.message" }>, requestedOperationId?: string) {
+  if (activeTurns.has(sessionId)) return null;
+  const activeTurn: ActiveTurn = { abortController: new AbortController(), interrupted: false, decisionQueue: [], decisionHandler: null };
+  const turnId = ulid();
+  const operationId = requestedOperationId ?? ulid();
+  let resolvePrepared: () => void = () => {};
+  let rejectPrepared: (error: unknown) => void = () => {};
+  const prepared = new Promise<void>((resolve, reject) => { resolvePrepared = resolve; rejectPrepared = reject; });
   activeTurns.set(sessionId, activeTurn);
-  return runUserTurnInternal(sessionId, payload, activeTurn).finally(() => {
-    activeTurns.delete(sessionId);
-  });
+  const promise = runUserTurnInternal(sessionId, payload, activeTurn, turnId, operationId, resolvePrepared)
+    .catch((error: unknown) => { rejectPrepared(error); throw error; })
+    .finally(() => activeTurns.delete(sessionId));
+  return { promise, prepared, turnId, operationId };
 }
 
 async function runUserTurnInternal(
   sessionId: string,
   payload: Extract<UserEvent, { type: "user.message" }>,
   activeTurn: ActiveTurn,
+  turnId: string,
+  operationId: string,
+  onPrepared: () => void,
 ) {
   const sessionContext = await buildSessionContext(sessionId);
   if (!sessionContext) {
@@ -152,7 +151,6 @@ async function runUserTurnInternal(
   }
 
   const backendId = session.backend_id;
-  const turnId = ulid();
   const attachmentCount = await assignAttachmentsToTurn(
     sessionId,
     payload.attachments ?? [],
@@ -206,140 +204,58 @@ async function runUserTurnInternal(
       stopReason: "error",
     });
     await setSessionStatus(sessionId, "idle");
-    return;
+    throw new Error("backend_unavailable");
   }
 
-  // Snapshot the project tree before the adapter touches anything so
-  // the rollback UI (P3.7) can restore to the exact pre-turn state.
-  // Non-fatal: if the copy blows up the turn still proceeds, just
-  // without an available checkpoint for this turn.
-  try {
-    const snapshot = await writePreTurnSnapshot(
-      sessionContext.project.project_id,
-      turnId,
-    );
-    if (snapshot) {
-      await appendSessionTrace(sessionId, {
-        level: "pre_turn_snapshot",
-        turnId,
-        path: snapshot.path,
-      });
-    }
-  } catch (err) {
-    await appendSessionTrace(sessionId, {
-      level: "pre_turn_snapshot_failed",
-      turnId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
+  const binaryPath = backend.binary_path;
   const config = await loadConfig();
-  const prompt = await buildPrompt(sessionContext, payload, {
-    contextMode: config.chat.contextMode,
-  });
-  await appendSessionTrace(sessionId, {
-    level: "prompt_built",
-    turnId,
-    prompt_chars: prompt.length,
-    context_mode: config.chat.contextMode,
-    backend_id: backendId,
-    binary: backend.binary_path,
-  });
-
+  const prompt = await buildPrompt(sessionContext, payload, { contextMode: config.chat.contextMode });
+  await appendSessionTrace(sessionId, { level: "prompt_built", turnId, prompt_chars: prompt.length, context_mode: config.chat.contextMode, backend_id: backendId, binary: binaryPath });
   const projectDir = sessionContext.project.project_dir;
-  const preTurnListing = await listDirSafe(projectDir);
-  console.log(
-    `[turn] pre-turn projectDir=${projectDir} contents=`,
-    preTurnListing,
-  );
-  await appendSessionTrace(sessionId, {
-    level: "pre_turn_dir",
-    turnId,
-    projectDir,
-    entries: preTurnListing,
-  });
-
+  const project = await getProjectDetail(sessionContext.project.project_id);
+  if (project === null) throw new Error("project_not_found");
+  const coordinator = new ArtifactCoordinator(getSqlite());
+  const base = await coordinator.initialize(project.id, projectDir);
+  let operationPrepared = false;
   try {
-    await runAdapterTurn(backendId, {
-      sessionId,
-      turnId,
-      projectDir: sessionContext.project.project_dir,
-      binaryPath: backend.binary_path,
-      prompt,
-      signal: activeTurn.abortController.signal,
-      userEvent: payload,
-      onEvent: async (event) => {
-        await persistAndPublish(sessionId, event);
-        if (event.type === "usage.delta") {
-          await bumpSessionUsage(sessionId, {
-            input: event.input,
-            output: event.output,
-            cached: event.cached ?? 0,
-          });
-        }
-        // Record adapter-emitted file.changed in the dedupe cache so
-        // the fs watcher suppresses its own echo of the CLI's write
-        // instead of firing a duplicate event ~100ms later.
-        if (event.type === "file.changed") {
-          noteEmittedFileChange(
-            sessionContext.project.project_id,
-            event.path,
-          );
-        }
-      },
-      onStderr: async (line) => {
-        await appendSessionTrace(sessionId, {
-          level: "stderr",
-          turnId,
-          line,
+    await coordinator.run({
+      projectId: project.id, projectDir, kind: "turn", operationId,
+      expectedRevision: project.current_revision, expectedArtifactDigest: base.tree_digest,
+      onPrepared: () => { operationPrepared = true; onPrepared(); },
+      mutate: async (stageDir) => {
+        const waitsForInterrupt = process.env.BG_ARTIFACT_QA === "1" && operationId === process.env.BG_ARTIFACT_TURN_OPERATION_ID && process.env.BG_ARTIFACT_TURN_BARRIER === "abort";
+        if (waitsForInterrupt && !activeTurn.abortController.signal.aborted) await new Promise<void>((resolve) => activeTurn.abortController.signal.addEventListener("abort", () => resolve(), { once: true }));
+        if (activeTurn.abortController.signal.aborted) throw new ArtifactOperationError("operation_cancelled", "Turn was interrupted");
+        await appendSessionTrace(sessionId, { level: "adapter_stage_dir", turnId, operationId, projectDir: stageDir });
+        await runAdapterTurn(backendId, {
+          sessionId, turnId, projectDir: stageDir, binaryPath, prompt,
+          signal: activeTurn.abortController.signal, userEvent: payload,
+          onEvent: async (event) => {
+            if (event.type === "file.changed") return;
+            await persistAndPublish(sessionId, event);
+            if (event.type === "usage.delta") await bumpSessionUsage(sessionId, { input: event.input, output: event.output, cached: event.cached ?? 0 });
+          },
+          onStderr: async (line) => { await appendSessionTrace(sessionId, { level: "stderr", turnId, line }); },
+          onDecision: (handler) => {
+            activeTurn.decisionHandler = handler;
+            for (const decision of activeTurn.decisionQueue.splice(0)) handler(decision);
+            return () => { if (activeTurn.decisionHandler === handler) activeTurn.decisionHandler = null; };
+          },
         });
-      },
-      onDecision: (handler) => {
-        activeTurn.decisionHandler = handler;
-        // Drain decisions that arrived before the adapter was ready.
-        if (activeTurn.decisionQueue.length > 0) {
-          const queued = activeTurn.decisionQueue.splice(0);
-          for (const decision of queued) {
-            try {
-              handler(decision);
-            } catch {
-              // Handler error — put the decision back so a future
-              // re-register can retry.
-              activeTurn.decisionQueue.push(decision);
-            }
-          }
-        }
-        return () => {
-          if (activeTurn.decisionHandler === handler) {
-            activeTurn.decisionHandler = null;
-          }
-        };
+        if (activeTurn.abortController.signal.aborted) throw new ArtifactOperationError("operation_cancelled", "Turn was interrupted");
       },
     });
-  } catch (err) {
+  } catch (error) {
+    if (!operationPrepared) throw error;
     if (activeTurn.interrupted || activeTurn.abortController.signal.aborted) {
-      await persistAndPublish(sessionId, {
-        id: ulid(),
-        ts: Date.now(),
-        type: "status.idle",
-        stopReason: "interrupted",
-      });
+      await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.idle", stopReason: "interrupted" });
     } else {
-      const message = err instanceof Error ? err.message : String(err);
-      await persistAndPublish(sessionId, {
-        id: ulid(),
-        ts: Date.now(),
-        type: "status.error",
-        message,
-        recoverable: true,
-      });
-      await persistAndPublish(sessionId, {
-        id: ulid(),
-        ts: Date.now(),
-        type: "status.idle",
-        stopReason: "error",
-      });
+      const message = error instanceof Error ? error.message : String(error);
+      await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.error", message, recoverable: true });
+      await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.idle", stopReason: "error" });
     }
+    await setSessionStatus(sessionId, "idle");
+    return;
   }
 
   const postTurnListing = await listDirSafe(projectDir);
@@ -363,8 +279,6 @@ async function runUserTurnInternal(
     entries: postTurnListing,
   });
 
-  // Reindex so any file the CLI wrote appears in the file tree + artifact API.
-  await indexProjectFiles(sessionContext.project.project_id);
   await setSessionStatus(sessionId, "idle");
 
   const checkpoint = await writeTurnCheckpoint(

@@ -1,187 +1,83 @@
 import { watch, type FSWatcher } from "node:fs";
-import { stat } from "node:fs/promises";
-import path from "node:path";
-import {
-  getLatestProjectSession,
-  getProjectDetail,
-  listProjectIds,
-} from "../db/seed";
-import {
-  publishFileChangeFromWatcher,
-  shouldEmitFileChange,
-} from "./file-change-broker";
-import { indexProjectFiles, isTransientFilePath } from "./files";
+import { getSqlite } from "../db/sqlite-client";
+import { getLatestProjectSession, getProjectDetail, listProjectIds } from "../db/project-read-repository";
+import { ArtifactCoordinator } from "./artifact-coordinator";
+import { isArtifactPublicationActive } from "./artifact-publication-registry";
 import { appendSessionTrace } from "./trace";
+import { isTransientFilePath } from "./files";
+import {
+  RESERVED_PROJECT_WATCHER,
+  projectSessionIds as sessionIdCache,
+  projectWatchers as watchers,
+} from "./watcher-registry";
 
-const IGNORED_TOP_LEVEL = new Set([".meta", ".attachments"]);
-
-const watchers = new Map<string, FSWatcher>();
-const pendingReindex = new Map<string, Timer>();
-const pendingEmit = new Map<string, Timer>();
-const sessionIdCache = new Map<string, string>();
+const IGNORED_TOP_LEVEL = new Set([".meta", ".attachments", ".git", ".omc", ".claude"]);
+const pendingSignals = new Set<string>();
 
 type ErrorAwareWatcher = FSWatcher & {
   on(event: "error", listener: (error: Error) => void): ErrorAwareWatcher;
 };
 
-export async function ensureProjectWatcher(projectId: string) {
-  if (watchers.has(projectId)) {
-    return;
-  }
-
+export async function ensureProjectWatcher(projectId: string): Promise<void> {
+  if (watchers.has(projectId)) return;
   const project = await getProjectDetail(projectId);
-  if (!project) {
-    return;
-  }
-
-  // Slot the projectId into the map *before* the await so two concurrent
-  // ensureProjectWatcher calls can't both see has()===false and create
-  // duplicate watchers (audit fix). The placeholder is swapped for the
-  // real watcher below; on failure we delete it so a retry can run.
-  watchers.set(projectId, RESERVED_WATCHER);
-
+  if (project === null) return;
+  watchers.set(projectId, RESERVED_PROJECT_WATCHER);
   let watcher: ErrorAwareWatcher;
   try {
-    await indexProjectFiles(projectId);
-
-    watcher = watch(
-      project.dir_path,
-      { recursive: true },
-      (_eventType, filename) => {
-        scheduleReindex(projectId);
-        if (!filename) return;
-        const relPath = String(filename).replaceAll("\\", "/");
-        if (shouldSkipPath(relPath)) return;
-        scheduleEmit(projectId, project.dir_path, relPath);
-      },
-    ) as ErrorAwareWatcher;
-  } catch (err) {
+    const coordinator = new ArtifactCoordinator(getSqlite());
+    if (project.current_digest === null) await coordinator.initialize(projectId, project.dir_path);
+    else await coordinator.observeExternal(projectId, project.dir_path);
+    watcher = watch(project.dir_path, { recursive: true }, (_eventType, filename) => {
+      if (filename === null) return;
+      const relPath = String(filename).replaceAll("\\", "/");
+      if (shouldSkipPath(relPath)) return;
+      void scheduleProjectSignal(projectId, project.dir_path);
+    }) as ErrorAwareWatcher;
+  } catch (error) {
     watchers.delete(projectId);
-    throw err;
+    throw error;
   }
-
-  watcher.on("error", async (error) => {
-    // Trace files are keyed by sessionId, not projectId — looking up
-    // here keeps the error in the same log file that the rest of the
-    // session already lives in. Previously this wrote to a stray
-    // <projectId>.trace.log that nothing else ever opens.
-    const sessionId = await resolveSessionId(projectId).catch(() => null);
-    if (!sessionId) return;
-    void appendSessionTrace(sessionId, {
-      level: "watcher_error",
-      project_id: projectId,
-      message: error.message,
-    });
-  });
-
+  watcher.on("error", (error) => { void recordWatcherFailure(projectId, error); });
   watchers.set(projectId, watcher);
 }
 
-const RESERVED_WATCHER = Symbol("bg-reserved-watcher") as unknown as FSWatcher;
-
-/**
- * Stops the FS watcher for a project and clears any pending debounce
- * timers + cache entries. Called from the project DELETE route so a
- * deleted project doesn't leak a watcher onto a directory the host
- * process can no longer reach. Safe to call when no watcher exists.
- */
-export function closeProjectWatcher(projectId: string): void {
-  const watcher = watchers.get(projectId);
-  if (watcher && watcher !== RESERVED_WATCHER) {
-    try {
-      watcher.close();
-    } catch {
-      // Already closed — nothing to do.
-    }
+export async function ensureAllProjectWatchers(projectIds?: readonly string[]): Promise<void> {
+  for (const projectId of projectIds ?? await listProjectIds()) {
+    try { await ensureProjectWatcher(projectId); }
+    catch (error) { console.warn("[watcher] project watcher unavailable", projectId, error); }
   }
-  watchers.delete(projectId);
-
-  const reindexTimer = pendingReindex.get(projectId);
-  if (reindexTimer) {
-    clearTimeout(reindexTimer);
-    pendingReindex.delete(projectId);
-  }
-
-  // pendingEmit is keyed by `${projectId}:${relPath}` — sweep all
-  // entries that match the deleted project.
-  const prefix = `${projectId}:`;
-  for (const [key, timer] of pendingEmit) {
-    if (key.startsWith(prefix)) {
-      clearTimeout(timer);
-      pendingEmit.delete(key);
-    }
-  }
-
-  sessionIdCache.delete(projectId);
-}
-
-export async function ensureAllProjectWatchers() {
-  const projectIds = await listProjectIds();
-  await Promise.all(projectIds.map((projectId) => ensureProjectWatcher(projectId)));
 }
 
 export function shouldSkipPath(relPath: string): boolean {
   const top = relPath.split("/")[0];
-  return IGNORED_TOP_LEVEL.has(top) || isTransientFilePath(relPath);
+  return top !== undefined && (IGNORED_TOP_LEVEL.has(top) || isTransientFilePath(relPath));
 }
 
-function scheduleReindex(projectId: string) {
-  const existing = pendingReindex.get(projectId);
-  if (existing) {
-    clearTimeout(existing);
-  }
-
-  const timer = setTimeout(() => {
-    pendingReindex.delete(projectId);
-    void indexProjectFiles(projectId);
-  }, 250);
-
-  pendingReindex.set(projectId, timer);
+export async function processProjectFilesystemSignal(projectId: string, projectDir: string) {
+  if (isArtifactPublicationActive(projectId)) return null;
+  return new ArtifactCoordinator(getSqlite()).observeExternal(projectId, projectDir);
 }
 
-/**
- * Watcher-driven `file.changed` emitter. Debounced per (projectId,
- * relPath) so a single VS Code save doesn't broadcast three events
- * for the same path. Dedupe against adapter-emitted events happens
- * inside `publishFileChangeFromWatcher` via `shouldEmitFileChange`
- * — an adapter write that the fs watcher catches ~10ms later gets
- * suppressed at the gate.
- */
-function scheduleEmit(projectId: string, projectDir: string, relPath: string) {
-  const key = `${projectId}:${relPath}`;
-  const existing = pendingEmit.get(key);
-  if (existing) clearTimeout(existing);
+export async function scheduleProjectSignal(projectId: string, projectDir: string): Promise<void> {
+  if (pendingSignals.has(projectId)) return;
+  pendingSignals.add(projectId);
+  try { await processProjectFilesystemSignal(projectId, projectDir); }
+  catch (error) { await recordWatcherFailure(projectId, error instanceof Error ? error : new Error("Watcher persistence failed")); }
+  finally { pendingSignals.delete(projectId); }
+}
 
-  const timer = setTimeout(async () => {
-    pendingEmit.delete(key);
-    try {
-      if (!shouldEmitFileChange(projectId, relPath)) return;
-      const sessionId = await resolveSessionId(projectId);
-      if (!sessionId) return;
-
-      const absolute = path.join(projectDir, relPath);
-      let action: "created" | "edited" | "deleted" = "edited";
-      try {
-        const info = await stat(absolute);
-        if (!info.isFile()) return;
-      } catch {
-        action = "deleted";
-      }
-      await publishFileChangeFromWatcher(projectId, sessionId, relPath, action);
-    } catch {
-      // Watcher failures are non-fatal; swallow so the debounce
-      // doesn't leave a dangling rejected promise.
-    }
-  }, 120);
-
-  pendingEmit.set(key, timer);
+async function recordWatcherFailure(projectId: string, error: Error): Promise<void> {
+  const sessionId = await resolveSessionId(projectId);
+  if (sessionId === null) throw error;
+  await appendSessionTrace(sessionId, { level: "watcher_error", project_id: projectId, message: error.message });
 }
 
 async function resolveSessionId(projectId: string): Promise<string | null> {
   const cached = sessionIdCache.get(projectId);
-  if (cached) return cached;
+  if (cached !== undefined) return cached;
   const session = await getLatestProjectSession(projectId);
-  if (!session) return null;
+  if (session === null) return null;
   sessionIdCache.set(projectId, session.id);
   return session.id;
 }

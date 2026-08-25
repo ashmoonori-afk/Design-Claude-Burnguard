@@ -6,7 +6,19 @@
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./app": "./src/app.ts",
+    "./api": "./src/api.ts",
+    "./artifact": "./src/artifact.ts",
+    "./harness": "./src/harness.ts",
+    "./design-system": "./src/design-system.ts",
+    "./home": "./src/home.ts",
+    "./project": "./src/project.ts",
+    "./contract-parser": "./src/contract-parser.ts",
+    "./export": "./src/export.ts",
+    "./extraction-domain": "./src/extraction-domain.ts",
+    "./events": "./src/events.ts",
+    "./learning-contract": "./src/learning-contract.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -1,0 +1,202 @@
+import { Hono } from "hono";
+import type { ApiErrorBody, ApiSuccess, PatchFileResponse } from "@bg/shared";
+import { getSqlite } from "../db/sqlite-client";
+import { getArtifactOperation, listArtifactOperations } from "../db/artifact-operation-query";
+import { getProjectDetail } from "../db/project-read-repository";
+import { ArtifactCoordinator, ArtifactOperationError } from "../services/artifact-coordinator";
+import { PersistedArtifactOperationError } from "../services/artifact-operation-record";
+import { FilePatchError } from "../services/file-patch";
+
+function ok<T>(data: T): ApiSuccess<T> { return { data }; }
+function fail(code: string, message: string, details?: unknown): ApiErrorBody { return { error: { code, message, details } }; }
+
+export const artifactOperationRoutes = new Hono();
+
+// Hono matches routes in declaration order. Keep the specific undo-info
+// route before the generic file route so its suffix is not treated as part
+// of the relative file path.
+artifactOperationRoutes.get("/api/projects/:id/fs/*/undo-info", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(
+      fail("project_not_found", "Project not found", { projectId }),
+      404,
+    );
+  }
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path.replace(/\/undo-info$/, "");
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+  try {
+    const row = listArtifactOperations(getSqlite(), projectId).find((operation) => operation.status === "committed" && operation.replay.kind !== "initialize");
+    return row === undefined ? c.json(ok({ can_undo: false, operation_id: null })) : c.json(ok({ can_undo: row.retention.replayable, operation_id: row.id }));
+  } catch (error) {
+    if (error instanceof PersistedArtifactOperationError) return c.json(fail(error.code, error.message), 409);
+    throw error;
+  }
+});
+
+artifactOperationRoutes.patch("/api/projects/:id/fs/*", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
+  }
+
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path;
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+
+  const body = await c.req.json<unknown>().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return c.json(fail("invalid_body", "Expected a JSON object"), 400);
+  }
+  const { expected_revision, expected_artifact_digest, expected_file_hash, node_bg_id, node_fingerprint, text, attributes, styles } = body as Record<string, unknown>;
+  if (typeof expected_revision !== "number" || !Number.isSafeInteger(expected_revision) || expected_revision < 0 || typeof expected_artifact_digest !== "string" || typeof expected_file_hash !== "string" || typeof node_fingerprint !== "string") {
+    return c.json(fail("invalid_artifact_identity", "expected_revision, expected_artifact_digest, expected_file_hash, and node_fingerprint are required"), 400);
+  }
+  if (typeof node_bg_id !== "string" || !node_bg_id.trim()) {
+    return c.json(
+      fail("invalid_node_bg_id", "node_bg_id is required", { node_bg_id }),
+      400,
+    );
+  }
+  if (text !== undefined && typeof text !== "string") {
+    return c.json(fail("invalid_text", "text must be a string"), 400);
+  }
+  let validatedAttributes: Record<string, string | null> | undefined;
+  if (attributes !== undefined) {
+    if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) {
+      return c.json(fail("invalid_attributes", "attributes must be an object"), 400);
+    }
+    const entries: Array<[string, string | null]> = [];
+    for (const [name, value] of Object.entries(attributes)) {
+      if (value !== null && typeof value !== "string") {
+        return c.json(
+          fail("invalid_attr_value", `attributes.${name} must be string or null`),
+          400,
+        );
+      }
+      entries.push([name, value]);
+    }
+    validatedAttributes = Object.fromEntries(entries);
+  }
+  let validatedStyles: Record<string, string | null> | undefined;
+  if (styles !== undefined) {
+    if (!styles || typeof styles !== "object" || Array.isArray(styles)) {
+      return c.json(fail("invalid_styles", "styles must be an object"), 400);
+    }
+    const entries: Array<[string, string | null]> = [];
+    for (const [name, value] of Object.entries(styles)) {
+      if (value !== null && typeof value !== "string") {
+        return c.json(
+          fail("invalid_style_value", `styles.${name} must be string or null`),
+          400,
+        );
+      }
+      entries.push([name, value]);
+    }
+    validatedStyles = Object.fromEntries(entries);
+  }
+
+  try {
+    const result = await new ArtifactCoordinator(getSqlite()).patch({
+      projectId,
+      projectDir: project.dir_path,
+      relPath,
+      expectedRevision: expected_revision,
+      expectedArtifactDigest: expected_artifact_digest,
+      expectedFileHash: expected_file_hash,
+      nodeBgId: node_bg_id,
+      nodeFingerprint: node_fingerprint,
+      patch: { node_bg_id, text, attributes: validatedAttributes, styles: validatedStyles },
+    });
+    return c.json(ok({ rel_path: relPath, node_bg_id, operation_id: result.id, result_revision: result.resultRevision, result_digest: result.resultDigest, diff: result.diff, updated_at: Date.now() } satisfies PatchFileResponse));
+  } catch (err) {
+    if (err instanceof FilePatchError) {
+      const status = err.code === "file_not_found" || err.code === "node_not_found" ? 404 : 422;
+      return c.json(fail(err.code, err.message), status);
+    }
+    if (err instanceof ArtifactOperationError) {
+      const status = err.code.startsWith("stale_") || err.code === "operation_conflict" ? 409 : 422;
+      return c.json(fail(err.code, err.message), status);
+    }
+    throw err;
+  }
+});
+
+// Single-step file-level undo for the GUI patch path (audit fix #7).
+// POST restores the pre-patch content and clears the entry.
+artifactOperationRoutes.post("/api/projects/:id/fs/*/undo", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (!project) {
+    return c.json(
+      fail("project_not_found", "Project not found", { projectId }),
+      404,
+    );
+  }
+  const prefix = `/api/projects/${projectId}/fs/`;
+  const rawPath = c.req.path.replace(/\/undo$/, "");
+  const relPath = rawPath.startsWith(prefix)
+    ? decodeURIComponent(rawPath.slice(prefix.length))
+    : "";
+  if (!relPath) {
+    return c.json(fail("invalid_path", "File path is required"), 400);
+  }
+  let operationId: string | null = null;
+  try { operationId = listArtifactOperations(getSqlite(), projectId).find((operation) => operation.status === "committed" && operation.replay.kind !== "initialize")?.id ?? null; }
+  catch (error) { if (error instanceof PersistedArtifactOperationError) return c.json(fail(error.code, error.message), 409); throw error; }
+  if (operationId === null || project.current_digest === null) return c.json(fail("no_undo_available", "No prior patch is available to undo", { relPath }), 404);
+  try {
+    const result = await new ArtifactCoordinator(getSqlite()).undo({ projectId, projectDir: project.dir_path, operationId, expectedRevision: project.current_revision, expectedArtifactDigest: project.current_digest });
+    return c.json(ok({ rel_path: relPath, operation_id: result.id, result_revision: result.resultRevision, result_digest: result.resultDigest, diff: result.diff, updated_at: Date.now() }));
+  } catch (error) {
+    if (error instanceof ArtifactOperationError) return c.json(fail(error.code, error.message), error.code === "undo_pruned" ? 410 : 409);
+    throw error;
+  }
+});
+
+artifactOperationRoutes.get("/api/projects/:id/operations", async (c) => {
+  const projectId = c.req.param("id");
+  if (await getProjectDetail(projectId) === null) return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
+  try { return c.json(ok(listArtifactOperations(getSqlite(), projectId))); }
+  catch (error) { if (error instanceof PersistedArtifactOperationError) return c.json(fail(error.code, error.message), 409); throw error; }
+});
+
+artifactOperationRoutes.get("/api/projects/:id/operations/:operationId", async (c) => {
+  const projectId = c.req.param("id");
+  const operationId = c.req.param("operationId");
+  try {
+    const row = getArtifactOperation(getSqlite(), projectId, operationId);
+    return row === null ? c.json(fail("operation_not_found", "Artifact operation not found", { operationId }), 404) : c.json(ok(row));
+  } catch (error) {
+    if (error instanceof PersistedArtifactOperationError) return c.json(fail(error.code, error.message), 409);
+    throw error;
+  }
+});
+
+artifactOperationRoutes.post("/api/projects/:id/operations/:operationId/undo", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await getProjectDetail(projectId);
+  if (project === null) return c.json(fail("project_not_found", "Project not found", { projectId }), 404);
+  const body = await c.req.json<unknown>().catch(() => null);
+  if (typeof body !== "object" || body === null || !("expected_revision" in body) || !("expected_artifact_digest" in body) || typeof body.expected_revision !== "number" || typeof body.expected_artifact_digest !== "string") return c.json(fail("invalid_artifact_identity", "Expected artifact identity is required"), 400);
+  try {
+    const result = await new ArtifactCoordinator(getSqlite()).undo({ projectId, projectDir: project.dir_path, operationId: c.req.param("operationId"), expectedRevision: body.expected_revision, expectedArtifactDigest: body.expected_artifact_digest });
+    return c.json(ok({ operation_id: result.id, status: result.status, base_revision: result.baseRevision, base_digest: result.baseDigest, result_revision: result.resultRevision, result_digest: result.resultDigest, diff: result.diff }));
+  } catch (error) {
+    if (error instanceof ArtifactOperationError) return c.json(fail(error.code, error.message), error.code === "undo_pruned" ? 410 : 409);
+    throw error;
+  }
+});

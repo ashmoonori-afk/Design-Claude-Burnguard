@@ -1,15 +1,17 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { UserEvent } from "@bg/shared";
+import type { UserEvent } from "@bg/shared/events";
 import {
   attachmentExtractedTextPath,
   attachmentSummaryPath,
-} from "../services/attachments";
+} from "../services/attachment-paths";
 import type { buildSessionContext } from "../services/context";
+import { selectPromptLearning } from "../db/learning-store";
+import { getSqlite } from "../db/sqlite-client";
 import {
-  readUploadManifest,
-  type UploadManifest,
-} from "../services/design-system-extract";
+  readAttachmentSummaryFile,
+  type AttachmentSummary,
+} from "../services/attachment-summary";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
 import { DIAGRAM_SKILL_MD } from "./skills/diagram-skill";
 import { PROTOTYPE_SKILL_MD } from "./skills/prototype-skill";
@@ -77,6 +79,14 @@ export async function buildPrompt(
   lines.push(`- type: ${project.project_type}`);
   lines.push(`- entrypoint: ${project.entrypoint}`);
   lines.push(`- directory: ${project.project_dir}`);
+  const learning = selectPromptLearning(getSqlite(), project.project_id);
+  if (learning.context !== null) {
+    lines.push("<burnguard-learning-context-v1>");
+    lines.push(JSON.stringify(learning.context));
+    lines.push("</burnguard-learning-context-v1>");
+  } else if (learning.warning !== null) {
+    lines.push(`<burnguard-learning-warning code="${learning.warning}" />`);
+  }
   if (project.project_type === "slide_deck") {
     const slideDeckOptions = parseSlideDeckOptions(project.options_json);
     lines.push(
@@ -331,15 +341,11 @@ async function readOptional(filePath: string): Promise<string | null> {
 
 async function readAttachmentSummary(
   filePath: string,
-): Promise<UploadManifest | null> {
-  try {
-    return await readUploadManifest(attachmentSummaryPath(filePath));
-  } catch {
-    return null;
-  }
+): Promise<AttachmentSummary | null> {
+  return readAttachmentSummaryFile(attachmentSummaryPath(filePath));
 }
 
-function renderAttachmentSummary(summary: UploadManifest): string[] {
+function renderAttachmentSummary(summary: AttachmentSummary): string[] {
   const lines = [
     `summary: ${summary.kind.toUpperCase()} | ${summary.page_count} page(s) | brand=${summary.brand_name ?? "unknown"}`,
   ];

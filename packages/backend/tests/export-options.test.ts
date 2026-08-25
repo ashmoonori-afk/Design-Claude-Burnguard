@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pdfDimensionsForPaper } from "../src/services/export-pdf";
+import { pdfDimensionsForPaper } from "../src/services/export-pdf-contract";
 import { pptxLayoutForSize } from "../src/services/export-pptx";
 
 describe("pdfDimensionsForPaper", () => {

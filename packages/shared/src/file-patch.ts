@@ -8,7 +8,11 @@
  * in the file is preserved verbatim.
  */
 export interface PatchFileRequest {
+  expected_revision?: number;
+  expected_artifact_digest?: string;
+  expected_file_hash?: string;
   node_bg_id: string;
+  node_fingerprint?: string;
   text?: string;
   attributes?: Record<string, string | null>;
   /**
@@ -23,5 +27,16 @@ export interface PatchFileRequest {
 export interface PatchFileResponse {
   rel_path: string;
   node_bg_id: string;
+  operation_id: string;
+  result_revision: number;
+  result_digest: string;
+  diff: readonly {
+    path: string;
+    action: "created" | "edited" | "deleted";
+    before_hash: string | null;
+    after_hash: string | null;
+    before_bytes: number;
+    after_bytes: number;
+  }[];
   updated_at: number;
 }

@@ -1,16 +1,11 @@
 import { rm } from "node:fs/promises";
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { closeProjectWatcher } from "../services/watchers";
+import { closeProjectWatcher } from "../services/watcher-registry";
 import type { ApiErrorBody, ApiSuccess, ProjectDetail, SessionInfo } from "@bg/shared";
-import { getDb } from "../db/client";
-import { projectsTable } from "../db/schema";
+import { getSqlite } from "../db/sqlite-client";
 import { projectsDir, resolveManagedPath } from "../lib/paths";
-import {
-  getLatestProjectSession,
-  getProjectDetail,
-  getSessionInfo,
-} from "../db/seed";
+import { getLatestProjectSession, getProjectDetail } from "../db/project-read-repository";
+import { processProjectFilesystemSignal } from "../services/watchers";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -44,13 +39,13 @@ projectRoutes.get("/api/projects/:id/session", async (c) => {
   return c.json(ok(session satisfies SessionInfo));
 });
 
-projectRoutes.get("/api/sessions/:id", async (c) => {
+projectRoutes.post("/api/projects/:id/qa/filesystem-signal", async (c) => {
   const id = c.req.param("id");
-  const session = await getSessionInfo(id);
-  if (!session) {
-    return c.json(fail("session_not_found", "Session not found", { id }), 404);
-  }
-  return c.json(ok(session satisfies SessionInfo));
+  if (process.env.BG_ARTIFACT_QA !== "1" || c.req.header("x-burnguard-qa-operation") !== process.env.BG_ARTIFACT_TURN_OPERATION_ID) return c.json(fail("not_found", "Not found"), 404);
+  const project = await getProjectDetail(id);
+  if (project === null) return c.json(fail("project_not_found", "Project not found", { id }), 404);
+  const operation = await processProjectFilesystemSignal(id, project.dir_path);
+  return c.json(ok({ operation_id: operation?.id ?? null, status: operation?.status ?? "unchanged" }));
 });
 
 projectRoutes.delete("/api/projects/:id", async (c) => {
@@ -77,7 +72,7 @@ projectRoutes.delete("/api/projects/:id", async (c) => {
 
   // ON DELETE CASCADE on sessions/events/attachments/files/comments/tweaks/exports
   // removes the rest.
-  await getDb().delete(projectsTable).where(eq(projectsTable.id, id));
+  getSqlite().prepare("DELETE FROM projects WHERE id=?").run(id);
 
   return c.body(null, 204);
 });

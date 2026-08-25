@@ -1,160 +1,59 @@
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { chromium, type Browser, type LaunchOptions } from "playwright-core";
+import { readFile, writeFile } from "node:fs/promises";
+import { PDFDocument } from "pdf-lib";
 import type { PdfPaper } from "@bg/shared";
+import { PDF_PRINT_CSS, pdfDimensionsForPaper, pdfPointsForPaper } from "./export-pdf-contract";
+import { openRenderSession, RenderSessionError, type RenderPhase } from "./export-render-session";
+import { validatePdf, type PdfValidation } from "./export-pdf-validation";
 
 export class PdfExportError extends Error {
-  readonly code: "chromium_not_installed" | "deck_not_ready" | "render_failed";
-
-  constructor(code: PdfExportError["code"], message: string) {
-    super(message);
-    this.code = code;
-  }
-}
-
-/**
- * CSS injected by Playwright before `page.pdf()`. Overrides the slide-deck
- * template's `data-deck-ready` single-slide gate so every `<section data-slide>`
- * renders, each on its own page, with no nav-bar artifact.
- *
- * Note: no `@page { size: ... }` rule here. Page dimensions are now
- * driven entirely by the `paper` option below so the user can pick
- * A4 / Letter / 16:9 widescreen without recompiling.
- */
-export const PDF_PRINT_CSS = `
-html, body {
-  margin: 0 !important;
-  padding: 0 !important;
-  background: #ffffff !important;
-}
-[data-deck-nav], [data-deck-nav-style] { display: none !important; }
-[data-slide] {
-  display: block !important;
-  page-break-after: always;
-  break-after: page;
-  page-break-inside: avoid;
-  break-inside: avoid;
-}
-[data-slide]:last-of-type {
-  page-break-after: auto;
-  break-after: auto;
-}
-`;
-
-interface PdfPageDimensions {
-  format?: "A4" | "Letter";
-  width?: string;
-  height?: string;
-}
-
-export function pdfDimensionsForPaper(paper: PdfPaper): PdfPageDimensions {
-  switch (paper) {
-    case "letter":
-      return { format: "Letter" };
-    case "widescreen-16x9":
-      // A real 16:9 frame so screen-shaped decks fill every PDF page
-      // without margins, instead of being letterboxed onto A4.
-      return { width: "13.333in", height: "7.5in" };
-    case "a4":
-    default:
-      return { format: "A4" };
-  }
+  readonly name = "PdfExportError";
+  constructor(readonly code: "chromium_not_installed" | "deck_not_ready" | "render_failed", message: string) { super(message); }
 }
 
 export async function renderDeckToPdf(input: {
-  stagedDir: string;
-  entrypoint: string;
-  outputPath: string;
-  /** Defaults to A4 when omitted — preserves prior behavior. */
-  paper?: PdfPaper;
-}): Promise<void> {
-  const browser = await launchChromium();
+  readonly stagedDir: string;
+  readonly entrypoint: string;
+  readonly outputPath: string;
+  readonly paper?: PdfPaper;
+  readonly title?: string;
+  readonly signal?: AbortSignal;
+  readonly onPhase?: (phase: RenderPhase) => void;
+}): Promise<PdfValidation> {
+  const controller = input.signal === undefined ? new AbortController() : null;
+  const signal = input.signal ?? controller?.signal;
+  if (signal === undefined) throw new PdfExportError("render_failed", "Abort signal unavailable");
+  let session;
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-    const page = await context.newPage();
-    const htmlPath = path.join(input.stagedDir, input.entrypoint);
-    const fileUrl = pathToFileURL(htmlPath).toString();
-
-    try {
-      await page.goto(`${fileUrl}?print=1`, { waitUntil: "networkidle" });
-    } catch (err) {
-      throw new PdfExportError(
-        "render_failed",
-        `Failed to load deck ${htmlPath}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    try {
-      await page.waitForFunction(
-        () => document.body?.hasAttribute("data-deck-ready") === true,
-        undefined,
-        { timeout: 10_000 },
-      );
-    } catch {
-      throw new PdfExportError(
-        "deck_not_ready",
-        "deck-stage runtime never signalled data-deck-ready — deck may be missing [data-slide] elements or the runtime script failed to load.",
-      );
-    }
-
-    await page.addStyleTag({ content: PDF_PRINT_CSS });
-
-    try {
-      const dims = pdfDimensionsForPaper(input.paper ?? "a4");
-      await page.pdf({
-        path: input.outputPath,
-        format: dims.format,
-        width: dims.width,
-        height: dims.height,
-        // Decks are inherently landscape; only A4 / Letter actually
-        // need the flag. The 16:9 widescreen path uses explicit width
-        // / height so `landscape` is moot for it.
-        landscape: dims.format !== undefined,
-        printBackground: true,
-        // Never let the document's CSS @page rules override the chosen
-        // paper. We strip @page from PDF_PRINT_CSS but the user's deck
-        // could still ship its own @page rule.
-        preferCSSPageSize: false,
+    session = await openRenderSession({ stagedDir: input.stagedDir, entrypoint: input.entrypoint, viewport: { width: 1280, height: 720, dpr: 1 }, deck: true, signal, ...(input.onPhase === undefined ? {} : { onPhase: input.onPhase }) });
+  } catch (error) {
+    if (error instanceof RenderSessionError) throw new PdfExportError(error.code === "render_aborted" ? "render_failed" : error.code, error.message);
+    throw error;
+  }
+  try {
+    const title = input.title ?? await session.page.title();
+    await session.page.evaluate((value) => { document.title = value; }, title);
+    await session.page.addStyleTag({ content: PDF_PRINT_CSS });
+    const preflight = await session.page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-slide]")].map((slide) => {
+      const bounds = slide.getBoundingClientRect();
+      const clipped = [...slide.querySelectorAll<HTMLElement>("*")].some((element) => {
+        const style = getComputedStyle(element); if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+        const rect = element.getBoundingClientRect(); return rect.right > bounds.right + 1 || rect.bottom > bounds.bottom + 1 || rect.left < bounds.left - 1 || rect.top < bounds.top - 1;
       });
-    } catch (err) {
-      throw new PdfExportError(
-        "render_failed",
-        `page.pdf() failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      return { width: bounds.width, height: bounds.height, clipped };
+    }));
+    if (preflight.some((slide) => slide.clipped || slide.width <= 0 || slide.height <= 0)) throw new PdfExportError("render_failed", "Slide content is clipped");
+    const paper = input.paper ?? "a4"; const dimensions = pdfDimensionsForPaper(paper); const combined = await PDFDocument.create();
+    await session.page.addStyleTag({ content: "[data-slide]{display:none!important}[data-slide][data-bg-export-page]{display:block!important}" });
+    for (let index = 0; index < preflight.length; index += 1) {
+      await session.page.evaluate((pageIndex) => { for (const [slideIndex, slide] of [...document.querySelectorAll<HTMLElement>("[data-slide]")].entries()) slide.toggleAttribute("data-bg-export-page", slideIndex === pageIndex); }, index);
+      const pageBytes = await session.page.pdf({ format: dimensions.format, width: dimensions.width, height: dimensions.height, landscape: dimensions.format !== undefined, printBackground: true, preferCSSPageSize: false, displayHeaderFooter: false });
+      const part = await PDFDocument.load(pageBytes); const copied = await combined.copyPages(part, part.getPageIndices()); for (const page of copied) combined.addPage(page);
     }
-  } finally {
-    await browser.close();
-  }
-}
-
-async function launchChromium(): Promise<Browser> {
-  // Try the playwright-managed install first, then system Chrome, then Edge.
-  // None installed → throw a typed error so the route layer can surface a
-  // "install via Settings" hint (P2.9).
-  const candidates: LaunchOptions[] = [
-    { headless: true },
-    { headless: true, channel: "chrome" },
-    { headless: true, channel: "msedge" },
-  ];
-  const errors: string[] = [];
-  for (const opts of candidates) {
-    try {
-      return await chromium.launch(opts);
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
-  throw new PdfExportError(
-    "chromium_not_installed",
-    [
-      "No Chromium-compatible browser is available for PDF export.",
-      "Install one of:",
-      "  - `npx playwright install chromium` (recommended)",
-      "  - Google Chrome (will be picked up via channel=chrome)",
-      "  - Microsoft Edge (will be picked up via channel=msedge)",
-      "",
-      "Underlying errors:",
-      ...errors.map((e, i) => `  [${i}] ${e}`),
-    ].join("\n"),
-  );
+    combined.setTitle(title); combined.setProducer("BurnGuard"); await writeFile(input.outputPath, await combined.save({ useObjectStreams: false }));
+    const points = pdfPointsForPaper(paper);
+    return await validatePdf({ bytes: new Uint8Array(await readFile(input.outputPath)), context: session.context, expectedPages: preflight.length, expectedWidthPoints: points.width, expectedHeightPoints: points.height, expectedTitle: title, signal });
+  } catch (error) {
+    if (error instanceof PdfExportError) throw error;
+    throw new PdfExportError("render_failed", error instanceof Error ? error.message : String(error));
+  } finally { await session.close(); }
 }

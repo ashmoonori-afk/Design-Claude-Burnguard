@@ -1,124 +1,26 @@
-/**
- * Garbage-collects stale export artifacts so `~/.burnguard/cache/exports/`
- * doesn't grow without bound.
- *
- * Policy:
- *   - Succeeded jobs older than the retention window have their output
- *     file removed and the DB row deleted.
- *   - Failed jobs are kept (they preserve error_message for triage) —
- *     they also have no output file to delete.
- *   - Pending / running jobs are never touched (a runner may be holding
- *     them).
- *
- * Called once at bootstrap. The retention window is small enough that
- * a single pass per process start is plenty for a desktop app — long
- * sessions can opt into a periodic timer later if needed.
- */
-import { stat, unlink } from "node:fs/promises";
-import path from "node:path";
-import type { ExportJob } from "@bg/shared";
-import {
-  deleteExportJob,
-  listStaleSucceededExports,
-} from "../db/exports";
-import { exportsDir } from "../lib/paths";
-import { resolveWithin } from "../security/path-boundary";
+export const DEFAULT_EXPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export type PruneOptions = { readonly retentionMs?: number; readonly now?: number; readonly dryRun?: boolean; readonly signal?: AbortSignal; readonly phase?: (attemptId: string, phase: "gc_after_tombstone_before_unlink" | "gc_after_unlink", signal: AbortSignal) => Promise<void> };
+export type ExpiredAttempt = { readonly attemptId: string; readonly jobId: string; readonly retainedUntil: number; readonly outputAvailable: boolean };
+export type PruneResult = { readonly removedJobs: number; readonly removedBytes: number; readonly removedFiles: readonly string[]; readonly missingFiles: readonly string[]; readonly warnings: readonly string[] };
+export type PruneDeps = {
+  readonly listExpired?: (cutoff: number) => Promise<readonly ExpiredAttempt[]>;
+  readonly claim?: (attemptId: string, now: number) => Promise<boolean>;
+  readonly removeDirectory?: (attemptId: string) => Promise<number>;
+};
 
-export const DEFAULT_EXPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-export interface PruneOptions {
-  /** How long a succeeded job is allowed to live. Defaults to 7 days. */
-  retentionMs?: number;
-  /** Override "now" for deterministic tests. */
-  now?: number;
-  /** When true, plan the work but do not delete anything. */
-  dryRun?: boolean;
-}
-
-export interface PruneResult {
-  removedJobs: number;
-  removedBytes: number;
-  /** Files that were on disk and got deleted. */
-  removedFiles: string[];
-  /** Jobs whose output_path was already missing — DB row still pruned. */
-  missingFiles: string[];
-  /** Unsafe output paths that were deliberately not touched. */
-  warnings: string[];
-}
-
-/**
- * Injectable side effects so the loop can be unit-tested without
- * touching the real DB or filesystem. Production code uses the
- * defaults; tests substitute fakes.
- */
-export interface PruneDeps {
-  listStale?: (cutoffMs: number) => Promise<ExportJob[]>;
-  deleteJob?: (id: string) => Promise<void>;
-  statFile?: (path: string) => Promise<{ size: number }>;
-  unlinkFile?: (path: string) => Promise<void>;
-  exportsRoot?: string;
-}
-
-export async function pruneOldExports(
-  options: PruneOptions = {},
-  deps: PruneDeps = {},
-): Promise<PruneResult> {
-  const listStale = deps.listStale ?? listStaleSucceededExports;
-  const deleteJob = deps.deleteJob ?? deleteExportJob;
-  const statFile =
-    deps.statFile ??
-    (async (filePath) => {
-      const info = await stat(filePath);
-      return { size: info.size };
-    });
-  const unlinkFile = deps.unlinkFile ?? unlink;
-  const exportsRoot = deps.exportsRoot ?? exportsDir;
-
-  const retention = options.retentionMs ?? DEFAULT_EXPORT_RETENTION_MS;
-  const now = options.now ?? Date.now();
-  const cutoff = now - retention;
-
-  const stale = await listStale(cutoff);
-  const result: PruneResult = {
-    removedJobs: 0,
-    removedBytes: 0,
-    removedFiles: [],
-    missingFiles: [],
-    warnings: [],
-  };
-
-  for (const job of stale) {
-    if (job.output_path) {
-      let safeOutputPath: string | null = null;
-      try {
-        const relativeOutputPath = path.relative(exportsRoot, job.output_path);
-        safeOutputPath = resolveWithin(exportsRoot, relativeOutputPath);
-      } catch (error) {
-        result.warnings.push(
-          `Skipped unsafe output_path for export ${job.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-
-      if (safeOutputPath) {
-        try {
-          const info = await statFile(safeOutputPath);
-          if (!options.dryRun) {
-            await unlinkFile(safeOutputPath);
-          }
-          result.removedBytes += info.size;
-          result.removedFiles.push(job.output_path);
-        } catch {
-          // File already gone — still drop the DB row so it doesn't
-          // forever advertise a non-existent download URL.
-          result.missingFiles.push(job.output_path);
-        }
-      }
-    }
-    if (!options.dryRun) {
-      await deleteJob(job.id);
-    }
+export async function pruneOldExports(options: PruneOptions = {}, deps: PruneDeps = {}): Promise<PruneResult> {
+  const now = options.now ?? Date.now(); const cutoff = now - (options.retentionMs ?? DEFAULT_EXPORT_RETENTION_MS); const signal = options.signal ?? AbortSignal.timeout(120_000);
+  const defaults = deps.listExpired === undefined || deps.claim === undefined || deps.removeDirectory === undefined ? (await import("./export-gc-storage")).exportGcStorage : null;
+  const listExpired = deps.listExpired ?? defaults?.listExpired; const claim = deps.claim ?? defaults?.claim; const removeDirectory = deps.removeDirectory ?? defaults?.removeDirectory;
+  if (listExpired === undefined || claim === undefined || removeDirectory === undefined) throw new TypeError("Export GC dependencies unavailable");
+  const result = { removedJobs: 0, removedBytes: 0, removedFiles: [] as string[], missingFiles: [] as string[], warnings: [] as string[] };
+  for (const attempt of await listExpired(cutoff)) {
+    if (options.dryRun) { result.removedJobs += 1; continue; }
+    if (attempt.outputAvailable && !await claim(attempt.attemptId, now)) continue;
+    await options.phase?.(attempt.attemptId, "gc_after_tombstone_before_unlink", signal);
+    try { const bytes = await removeDirectory(attempt.attemptId); result.removedBytes += bytes; result.removedFiles.push(attempt.attemptId); await options.phase?.(attempt.attemptId, "gc_after_unlink", signal); }
+    catch (error) { result.warnings.push(error instanceof Error ? error.message : String(error)); continue; }
     result.removedJobs += 1;
   }
-
   return result;
 }

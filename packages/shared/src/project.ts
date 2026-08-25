@@ -7,6 +7,8 @@ export interface ProjectDetail extends ProjectSummary {
   entrypoint: string;
   backend_id: BackendId;
   options_json: string | null;
+  current_revision: number;
+  current_digest: string | null;
 }
 
 export interface SessionInfo {

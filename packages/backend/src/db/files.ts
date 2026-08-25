@@ -1,66 +1,20 @@
-import { and, eq } from "drizzle-orm";
 import { ulid } from "ulid";
-import type { FileInfo } from "@bg/shared";
-import { getDb } from "./client";
-import { filesTable } from "./schema";
+import type { FileInfo } from "@bg/shared/harness";
+import { getSqlite } from "./sqlite-client";
 
-export async function replaceProjectFiles(projectId: string, files: FileInfo[]) {
-  const db = getDb();
-
-  // Wrap delete+insert in a transaction so two concurrent callers
-  // (fs-watcher + post-turn reindex + context-builder) can't interleave and
-  // trigger UNIQUE(project_id, rel_path) violations.
-  db.transaction((tx) => {
-    tx.delete(filesTable).where(eq(filesTable.projectId, projectId)).run();
-
-    if (files.length === 0) {
-      return;
-    }
-
-    tx.insert(filesTable)
-      .values(
-        files.map((file) => ({
-          id: ulid(),
-          projectId,
-          relPath: file.rel_path,
-          category: file.category,
-          sizeBytes: file.size_bytes ?? null,
-          updatedAt: file.updated_at ?? Date.now(),
-        })),
-      )
-      .run();
-  });
+export async function replaceProjectFiles(projectId: string, files: readonly FileInfo[]): Promise<void> {
+  const db = getSqlite();
+  db.transaction(() => {
+    db.prepare("DELETE FROM files WHERE project_id=?").run(projectId);
+    const insert = db.prepare("INSERT INTO files(id,project_id,rel_path,category,size_bytes,hash,updated_at) VALUES (?,?,?,?,?,?,?)");
+    for (const file of files) insert.run(ulid(), projectId, file.rel_path, file.category, file.size_bytes ?? null, file.hash ?? null, file.updated_at ?? Date.now());
+  })();
 }
 
-export async function listProjectFiles(projectId: string) {
-  const db = getDb();
-  const rows = await db
-    .select({
-      rel_path: filesTable.relPath,
-      category: filesTable.category,
-      size_bytes: filesTable.sizeBytes,
-      updated_at: filesTable.updatedAt,
-    })
-    .from(filesTable)
-    .where(eq(filesTable.projectId, projectId))
-    .orderBy(filesTable.relPath);
-
-  return rows satisfies FileInfo[];
+export async function listProjectFiles(projectId: string): Promise<FileInfo[]> {
+  return getSqlite().query<FileInfo, [string]>("SELECT rel_path,category,size_bytes,hash,updated_at FROM files WHERE project_id=? ORDER BY rel_path").all(projectId);
 }
 
-export async function getProjectFile(projectId: string, relPath: string) {
-  const db = getDb();
-  const rows = await db
-    .select({
-      rel_path: filesTable.relPath,
-      category: filesTable.category,
-      size_bytes: filesTable.sizeBytes,
-      updated_at: filesTable.updatedAt,
-    })
-    .from(filesTable)
-    .where(and(eq(filesTable.projectId, projectId), eq(filesTable.relPath, relPath)))
-    .limit(1);
-
-  return (rows[0] ?? null) as FileInfo | null;
+export async function getProjectFile(projectId: string, relPath: string): Promise<FileInfo | null> {
+  return getSqlite().query<FileInfo, [string, string]>("SELECT rel_path,category,size_bytes,hash,updated_at FROM files WHERE project_id=? AND rel_path=? LIMIT 1").get(projectId, relPath);
 }
-

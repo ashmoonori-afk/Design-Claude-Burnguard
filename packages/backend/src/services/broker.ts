@@ -1,4 +1,4 @@
-import type { NormalizedEvent } from "@bg/shared";
+import type { NormalizedEvent, SequencedEventEnvelope } from "@bg/shared/events";
 
 type Listener = (event: NormalizedEvent) => void | Promise<void>;
 
@@ -45,4 +45,23 @@ export class EventBroker {
   }
 }
 
+export class SequencedEventBroker {
+  private readonly listeners = new Map<string, Set<(item: SequencedEventEnvelope) => void | Promise<void>>>();
+
+  subscribe(sessionId: string, listener: (item: SequencedEventEnvelope) => void | Promise<void>): () => void {
+    const set = this.listeners.get(sessionId) ?? new Set();
+    set.add(listener);
+    this.listeners.set(sessionId, set);
+    return () => { set.delete(listener); if (set.size === 0) this.listeners.delete(sessionId); };
+  }
+
+  publish(sessionId: string, item: SequencedEventEnvelope): void {
+    for (const listener of [...(this.listeners.get(sessionId) ?? [])]) {
+      const result = listener(item);
+      if (result instanceof Promise) void result.catch((error: unknown) => { console.warn("[broker] sequenced listener failed", error); });
+    }
+  }
+}
+
 export const broker = new EventBroker();
+export const sequencedBroker = new SequencedEventBroker();

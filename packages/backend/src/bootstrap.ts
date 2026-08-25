@@ -5,9 +5,12 @@ import {
   bundledDesignSystemId,
   bundledDesignSystems,
 } from "./data/bundled-design-systems";
-import { runMigrations } from "./db/migrate";
+import { getDb, getSqlite } from "./db/client";
+import { runMigrations } from "./db/migrate-local";
+import { reconcilePipelineRows } from "./db/pipeline-repository";
 import { seedCoreData } from "./db/seed";
 import { seedTutorialsOnce } from "./db/seed-tutorials";
+import { seedLearningItems } from "./services/learning-service";
 import {
   appRootDir,
   cacheDir,
@@ -19,7 +22,11 @@ import {
   systemsDir,
 } from "./lib/paths";
 import { pruneOldExports } from "./services/export-gc";
+import { reconcileExtractionState } from "./services/extraction-recovery";
+import { reconcileCatalogState } from "./services/catalog-lifecycle";
 import { ensureAllProjectWatchers } from "./services/watchers";
+import { reconcileArtifactState } from "./services/artifact-recovery";
+import { reconcileExportState } from "./services/export-recovery";
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -98,9 +105,12 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await runMigrations();
   await seedCoreData();
   await seedTutorialsOnce();
+  seedLearningItems(getSqlite());
+  reconcilePipelineRows(getDb());
+  await reconcileCatalogState(getSqlite(), systemsDir);
+  await reconcileExtractionState();
+  await reconcileArtifactState(getSqlite());
+  await reconcileExportState(getSqlite());
+  await pruneOldExports();
   await ensureAllProjectWatchers();
-  // Best-effort export GC — never block startup on it.
-  void pruneOldExports().catch(() => {
-    /* swallow: GC failure must not crash the app */
-  });
 }

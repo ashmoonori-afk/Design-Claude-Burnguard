@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { ulid } from "ulid";
@@ -20,6 +20,8 @@ import { homeDesignSystemFixtures, homeProjectFixtures } from "../data/home";
 import { projectsDir, systemsDir } from "../lib/paths";
 import { DECK_STAGE_JS } from "../runtime/deck-stage";
 import { getDb } from "./client";
+import { getSqlite } from "./sqlite-client";
+import { ArtifactCoordinator } from "../services/artifact-coordinator";
 import {
   designSystemsTable,
   metaSchemaTable,
@@ -122,23 +124,7 @@ export async function seedCoreData() {
     const entrypoint =
       project.type === "slide_deck" ? "deck.html" : "index.html";
 
-    // Each fixture project ships with a real starter artifact so the
-    // canvas isn't empty on first open (P4.7f). Archived rows skip the
-    // file write since the user never sees them.
-    if (project.archived_at == null) {
-      const html = SEEDED_PROJECT_HTML[project.id];
-      if (html) {
-        await writeFile(path.join(dirPath, entrypoint), html, "utf8");
-        if (project.type === "slide_deck") {
-          await mkdir(path.join(dirPath, "runtime"), { recursive: true });
-          await writeFile(
-            path.join(dirPath, "runtime", "deck-stage.js"),
-            DECK_STAGE_JS,
-            "utf8",
-          );
-        }
-      }
-    }
+    const html = project.archived_at == null ? SEEDED_PROJECT_HTML[project.id] : undefined;
 
     await db.insert(projectsTable).values({
       id: project.id,
@@ -163,6 +149,14 @@ export async function seedCoreData() {
       createdAt: project.updated_at,
       updatedAt: project.updated_at,
       lastActiveAt: project.updated_at,
+    });
+    await new ArtifactCoordinator(getSqlite()).initializeProject(project.id, dirPath, async (stage) => {
+      if (html === undefined) return;
+      await writeFile(path.join(stage, entrypoint), html, "utf8");
+      if (project.type === "slide_deck") {
+        await mkdir(path.join(stage, "runtime"), { recursive: true });
+        await writeFile(path.join(stage, "runtime", "deck-stage.js"), DECK_STAGE_JS, "utf8");
+      }
     });
   }
 }
@@ -355,15 +349,11 @@ export async function createProjectRecord(input: {
 
   await mkdir(path.join(dirPath, ".attachments"), { recursive: true });
   await mkdir(path.join(dirPath, ".meta", "checkpoints"), { recursive: true });
-  await writeFile(
-    path.join(dirPath, input.entrypoint),
-    renderInitialArtifact({
-      name: input.name,
-      type: input.type,
-      options: parseSlideDeckOptions(input.optionsJson),
-    }),
-    "utf8",
-  );
+  const initialArtifact = renderInitialArtifact({
+    name: input.name,
+    type: input.type,
+    options: parseSlideDeckOptions(input.optionsJson),
+  });
 
   // Insert project + session atomically — without the transaction a
   // session-insert failure between the two statements would leave the
@@ -399,6 +389,16 @@ export async function createProjectRecord(input: {
       .run();
   });
 
+  try {
+    await new ArtifactCoordinator(getSqlite()).initializeProject(projectId, dirPath, async (stage) => {
+      await writeFile(path.join(stage, input.entrypoint), initialArtifact, "utf8");
+    });
+  } catch (error) {
+    getSqlite().prepare("DELETE FROM projects WHERE id=?").run(projectId);
+    await rm(dirPath, { recursive: true, force: true });
+    throw error;
+  }
+
   return {
     id: projectId,
     session_id: sessionId,
@@ -423,6 +423,8 @@ export async function getProjectDetail(projectId: string) {
       entrypoint: projectsTable.entrypoint,
       backend_id: projectsTable.backendId,
       options_json: projectsTable.optionsJson,
+      current_revision: projectsTable.currentRevision,
+      current_digest: projectsTable.currentDigest,
     })
     .from(projectsTable)
     .leftJoin(
@@ -508,12 +510,6 @@ export async function getSessionInfo(sessionId: string) {
     updated_at: row.updated_at,
     last_active_at: row.last_active_at,
   } satisfies SessionInfo;
-}
-
-export async function listProjectIds() {
-  const db = getDb();
-  const rows = await db.select({ id: projectsTable.id }).from(projectsTable);
-  return rows.map((row) => row.id);
 }
 
 function parseSlideDeckOptions(optionsJson: string | null): SlideDeckOptions {

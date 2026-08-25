@@ -1,7 +1,4 @@
-import path from "node:path";
-import { pathToFileURL } from "node:url";
 import PptxGenJS from "pptxgenjs";
-import { chromium, type Browser, type LaunchOptions } from "playwright-core";
 import type { PptxSize } from "@bg/shared";
 
 interface PptxLayoutDims {
@@ -45,7 +42,7 @@ interface ExtractedText {
   align: "left" | "center" | "right" | "justify";
 }
 
-interface ExtractedSlide {
+export interface ExtractedSlide {
   width: number;
   height: number;
   background: string | null; // hex without leading '#'
@@ -147,74 +144,6 @@ export const EXTRACT_SLIDES_FN = `() => {
   return slides.map(extractSlide);
 }`;
 
-const PRINT_ALL_SLIDES_CSS = `
-[data-deck-nav], [data-deck-nav-style] { display: none !important; }
-[data-slide] { display: block !important; }
-`;
-
-export async function renderDeckToPptx(input: {
-  stagedDir: string;
-  entrypoint: string;
-  outputPath: string;
-  /** Defaults to 16:9 widescreen — preserves prior behavior. */
-  size?: PptxSize;
-}): Promise<void> {
-  const browser = await launchChromium();
-  try {
-    const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-    const htmlPath = path.join(input.stagedDir, input.entrypoint);
-    const fileUrl = pathToFileURL(htmlPath).toString();
-
-    try {
-      await page.goto(`${fileUrl}?print=1`, { waitUntil: "networkidle" });
-    } catch (err) {
-      throw new PptxExportError(
-        "render_failed",
-        `Failed to load deck ${htmlPath}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    try {
-      await page.waitForFunction(
-        () => document.body?.hasAttribute("data-deck-ready") === true,
-        undefined,
-        { timeout: 10_000 },
-      );
-    } catch {
-      throw new PptxExportError(
-        "deck_not_ready",
-        "deck-stage runtime never signalled data-deck-ready — deck may be missing [data-slide] elements or the runtime script failed to load.",
-      );
-    }
-
-    await page.addStyleTag({ content: PRINT_ALL_SLIDES_CSS });
-
-    let extracted: ExtractedSlide[];
-    try {
-      extracted = (await page.evaluate(EXTRACT_SLIDES_FN)) as ExtractedSlide[];
-    } catch (err) {
-      throw new PptxExportError(
-        "render_failed",
-        `slide extraction failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    try {
-      await writePptx(extracted, input.outputPath, input.size ?? "16x9");
-    } catch (err) {
-      throw new PptxExportError(
-        "render_failed",
-        `pptx write failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  } finally {
-    await browser.close();
-  }
-}
-
 /**
  * Builds a PptxGenJS presentation from the extracted slide content and writes
  * it to `outputPath`. Separated from the rendering pipeline so `writePptx`
@@ -281,33 +210,4 @@ function pxToPt(px: number): number {
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
-}
-
-async function launchChromium(): Promise<Browser> {
-  const candidates: LaunchOptions[] = [
-    { headless: true },
-    { headless: true, channel: "chrome" },
-    { headless: true, channel: "msedge" },
-  ];
-  const errors: string[] = [];
-  for (const opts of candidates) {
-    try {
-      return await chromium.launch(opts);
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
-  throw new PptxExportError(
-    "chromium_not_installed",
-    [
-      "No Chromium-compatible browser is available for PPTX export.",
-      "Install one of:",
-      "  - `npx playwright install chromium` (recommended)",
-      "  - Google Chrome (channel=chrome)",
-      "  - Microsoft Edge (channel=msedge)",
-      "",
-      "Underlying errors:",
-      ...errors.map((e, i) => `  [${i}] ${e}`),
-    ].join("\n"),
-  );
 }

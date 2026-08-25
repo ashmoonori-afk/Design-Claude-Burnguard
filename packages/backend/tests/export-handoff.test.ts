@@ -14,9 +14,13 @@ import {
   copyProjectIntoBundle,
   EXTRACT_HANDOFF_FN,
   HANDOFF_STYLE_KEYS,
+  HandoffExportError,
 } from "../src/services/export-handoff";
 
 describe("buildHandoffSpec", () => {
+  test("preserves typed renderer failure codes", () => {
+    expect(new HandoffExportError("artifact_not_ready", "not ready").code).toBe("artifact_not_ready");
+  });
   test("wraps extracted pages with project + design-system metadata", () => {
     const spec = buildHandoffSpec({
       project: {

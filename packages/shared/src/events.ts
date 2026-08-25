@@ -47,6 +47,28 @@ export type NormalizedEvent =
   | {
       id: string;
       ts: number;
+      type: "artifact.operation";
+      operationId: string;
+      revision: number;
+      digest: string;
+      changedPaths: readonly string[];
+      outcome: "committed" | "cancelled" | "failed" | "conflicted" | "recovered";
+    }
+  | {
+      id: string;
+      ts: number;
+      type: "export.attempt";
+      jobId: string;
+      attemptId: string;
+      status: import("./export-attempt").ExportAttemptStatus;
+      progress: import("./export-attempt").ExportProgress;
+      projectRevision: number;
+      projectDigest: string;
+      stopReason: import("./export-attempt").ExportStopReason | null;
+    }
+  | {
+      id: string;
+      ts: number;
       type: "file.changed";
       turnId: string;
       action: "created" | "edited" | "deleted";
@@ -74,6 +96,11 @@ export type NormalizedEvent =
       output: number;
       cached?: number;
     };
+
+export type SequencedEventEnvelope = {
+  readonly sequence: number;
+  readonly event: NormalizedEvent;
+};
 
 export type UserEvent =
   | { type: "user.message"; text: string; attachments?: string[] }

@@ -1,8 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { writePreTurnSnapshot } from "../src/services/checkpoints";
+import { hasSnapshot, restoreFromSnapshot, writePreTurnSnapshot, writeTurnCheckpoint } from "../src/services/checkpoints";
+import { runMigrations } from "../src/db/migrate-local";
+import { getSqlite } from "../src/db/sqlite-client";
+import { indexProjectFiles, isTransientFilePath, resolveDrawFile, resolveProjectFile } from "../src/services/managed-project-files";
+import { buildArtifactSummary, listIndexedProjectFiles } from "../src/services/files";
+import { getLatestProjectSession, listProjectIds } from "../src/db/project-read-repository";
+import { getProjectFile, replaceProjectFiles } from "../src/db/files";
+import { getManagedExportJob } from "../src/db/managed-file-repository";
 
 /**
  * Checkpoint / restore round-trip test. The production helpers live in
@@ -15,6 +22,12 @@ import { writePreTurnSnapshot } from "../src/services/checkpoints";
  */
 
 const EXCLUDED = new Set([".meta", ".attachments"]);
+let projectSequence = 0;
+const projectIds: string[] = [];
+
+beforeAll(async () => {
+  await runMigrations();
+});
 
 function listTopLevel(dir: string): string[] {
   return require("node:fs").readdirSync(dir);
@@ -93,6 +106,7 @@ describe("checkpoint snapshot / restore round-trip", () => {
 
   afterEach(() => {
     rmSync(projectDir, { recursive: true, force: true });
+    for (const projectId of projectIds.splice(0)) getSqlite().prepare("DELETE FROM projects WHERE id=?").run(projectId);
   });
 
   test("snapshot excludes .meta and .attachments", () => {
@@ -155,5 +169,43 @@ describe("checkpoint snapshot / restore round-trip", () => {
 
   test("restore against a missing snapshot returns null", () => {
     expect(restoreSnapshot(projectDir, "never-existed")).toBeNull();
+  });
+
+  test("Given a real project When production snapshot and restore run Then bytes and checkpoint receipt round-trip", async () => {
+    // Given
+    projectSequence += 1;
+    const projectId = `checkpoint-production-${process.pid}-${projectSequence}`;
+    projectIds.push(projectId);
+    getSqlite().prepare("INSERT INTO projects(id,name,type,dir_path,entrypoint,backend_id,created_at,updated_at) VALUES (?,?,'prototype',?,'index.html','codex',1,1)").run(projectId, projectId, projectDir);
+    getSqlite().prepare("INSERT INTO sessions(id,project_id,backend_id,status,created_at,updated_at,last_active_at) VALUES (?,?,'codex','idle',1,1,1)").run(`${projectId}-session`, projectId);
+    await indexProjectFiles(projectId);
+
+    // When
+    const snapshot = await writePreTurnSnapshot(projectId, "turn-production");
+    writeFileSync(path.join(projectDir, "index.html"), "changed", "utf8");
+    writeFileSync(path.join(projectDir, "new.txt"), "new", "utf8");
+    const restored = await restoreFromSnapshot(projectId, "turn-production");
+    await indexProjectFiles(projectId);
+    const checkpoint = await writeTurnCheckpoint(projectId, "turn-production");
+
+    // Then
+    expect(snapshot?.turnId).toBe("turn-production");
+    expect(await hasSnapshot(projectId, "turn-production")).toBe(true);
+    expect(restored?.turnId).toBe("turn-production");
+    expect(readFileSync(path.join(projectDir, "index.html"), "utf8")).toBe("<h1>v1</h1>");
+    expect(existsSync(path.join(projectDir, "new.txt"))).toBe(false);
+    expect(checkpoint?.turnId).toBe("turn-production");
+    const indexed = await listIndexedProjectFiles(projectId);
+    expect(indexed.length).toBeGreaterThan(0);
+    await replaceProjectFiles(projectId, indexed);
+    expect((await buildArtifactSummary(projectId))?.current_digest).toBeString();
+    expect((await getProjectFile(projectId, "index.html"))?.hash).toBeString();
+    expect((await getLatestProjectSession(projectId))?.id).toBe(`${projectId}-session`);
+    expect(await listProjectIds()).toContain(projectId);
+    expect((await resolveProjectFile(projectId, "index.html"))?.relPath).toBe("index.html");
+    expect(await resolveProjectFile(projectId, "../escape")).toBeNull();
+    expect((await resolveDrawFile(projectId, "notes/layer"))?.relPath).toBe("notes/layer");
+    expect(isTransientFilePath(".index.1.2.tmp")).toBe(true);
+    expect(getManagedExportJob("missing-export")).toBeNull();
   });
 });

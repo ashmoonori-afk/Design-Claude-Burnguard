@@ -1,17 +1,18 @@
+import type { Database } from "bun:sqlite";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { getSqlite } from "./client";
 
-export async function runMigrations() {
-  const db = getSqlite();
-  const migrationsDir = path.join(import.meta.dir, "migrations");
+export async function runMigrationsFrom(
+  db: Database,
+  migrationsDir: string,
+): Promise<void> {
   db.exec(
     "CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);",
   );
 
   const rows = db
-    .query("SELECT id FROM schema_migrations")
-    .all() as Array<{ id: string }>;
+    .query<{ readonly id: string }, []>("SELECT id FROM schema_migrations")
+    .all();
   const applied = new Set(rows.map((row) => row.id));
   const files = (await readdir(migrationsDir))
     .filter((name) => name.endsWith(".sql"))

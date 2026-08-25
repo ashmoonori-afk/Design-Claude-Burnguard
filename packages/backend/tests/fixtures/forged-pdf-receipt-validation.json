@@ -1,0 +1,23 @@
+{
+  "pages": 1,
+  "title": "Deck",
+  "observations": [{
+    "page": 1,
+    "width_points": 200,
+    "height_points": 100,
+    "operators": 9,
+    "raster_width": 400,
+    "raster_height": 200,
+    "statistics": {
+      "pixels": 80000,
+      "visible_pixels": 10,
+      "painted_pixels": 80000,
+      "differing_pixels": 10,
+      "color_count": 32768,
+      "dominant_ratio": 0,
+      "luminance_variance": 12.5,
+      "entropy": 0.3
+    },
+    "content_bounds": null
+  }]
+}

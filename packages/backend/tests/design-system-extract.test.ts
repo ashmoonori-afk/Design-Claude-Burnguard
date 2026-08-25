@@ -1,27 +1,192 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  contentTypeForDesignSystemFile,
   ensureTokensCssImportsFonts,
   extractCssCustomProperties,
   extractCssStyleSignals,
-  extractHtmlComponentSamples,
-  inferSourceType,
-  inferUploadKind,
+  extractFontFamilies,
+  isColorTokenValue,
+  MAX_CSS_DECLARATIONS,
+  MAX_CSS_PARSE_BYTES,
+  parseCssSource,
+  upsertCssCustomProperty,
+} from "../src/services/extraction-css";
+import { collectCandidateWebsitePages, extractHtmlComponentSamples } from "../src/services/extraction-html";
+import {
+  contentTypeForDesignSystemFile,
+  inferExtractionSourceType as inferSourceType,
   isUnsafeImportHostname,
+  listFilesRecursive,
+} from "../src/services/extraction-path";
+import {
+  assertUploadSize,
+  inferUploadKind,
   normalizeUploadPages,
   normalizeUploadStringList,
   readUploadManifest,
-  upsertCssCustomProperty,
-} from "../src/services/design-system-extract";
+} from "../src/services/extraction-upload";
+import {
+  abortable,
+  awaitChildWithAbort,
+  createAcquisitionBudget,
+  acquisitionLimits,
+  ExtractionAcquisitionError,
+  MAX_AGGREGATE_SOURCE_BYTES,
+  MAX_LOCAL_DEPTH,
+  MAX_LOCAL_FILES,
+  MAX_SOURCE_FILE_BYTES,
+} from "../src/services/extraction-acquisition";
+import { analyzeLocalTree } from "../src/services/extraction-local-tree";
+
+async function awaitBounded<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error("bounded child exit deadline exceeded")), 10_000);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+describe("bounded extraction acquisition", () => {
+  test("Given a parent abort When an operation is pending Then cancellation is propagated exactly", async () => {
+    // Given
+    const parent = new AbortController();
+    const budget = createAcquisitionBudget(parent.signal, 30_000);
+    let cancelled = false;
+    const pending = abortable(new Promise<never>(() => {}), budget.signal, () => { cancelled = true; });
+
+    // When
+    parent.abort();
+
+    // Then
+    await expect(pending).rejects.toBeInstanceOf(ExtractionAcquisitionError);
+    expect(cancelled).toBe(true);
+    budget.dispose();
+  });
+
+  test("Given a TERM-resistant owned child When its signal aborts Then KILL is reaped and an unrelated sentinel survives", async () => {
+    // Given
+    const child = Bun.spawn([process.execPath, "-e", "process.on('SIGTERM',()=>{});console.log('READY');await new Promise(()=>{})"], { stdout: "pipe", stderr: "ignore" });
+    const sentinel = Bun.spawn([process.execPath, "-e", "process.on('SIGTERM',()=>process.exit(0));console.log('READY');await new Promise(()=>{})"], { stdout: "pipe", stderr: "ignore" });
+    const childReader = child.stdout.getReader();
+    const sentinelReader = sentinel.stdout.getReader();
+    await Promise.all([childReader.read(), sentinelReader.read()]);
+    const exactChildExit = child.exited;
+    const exactSentinelExit = sentinel.exited;
+    const controller = new AbortController();
+    const operation = awaitChildWithAbort(child, controller.signal);
+
+    // When
+    controller.abort();
+    const rejection = await operation.catch((error: unknown) => error);
+    const awaitedExitCode = await awaitBounded(exactChildExit);
+
+    // Then
+    expect(rejection).toBeInstanceOf(ExtractionAcquisitionError);
+    if (!(rejection instanceof ExtractionAcquisitionError)) throw rejection;
+    expect(rejection.cleanupReceipt).toEqual({ pid: child.pid, exitCode: 137, termSent: true, killSent: true, pidAbsent: true });
+    expect(awaitedExitCode).toBe(137);
+    expect(Bun.spawnSync(["/bin/kill", "-0", String(child.pid)]).exitCode).not.toBe(0);
+    expect(Bun.spawnSync(["/bin/kill", "-0", String(sentinel.pid)]).exitCode).toBe(0);
+    sentinel.kill("SIGTERM");
+    expect(await awaitBounded(exactSentinelExit)).toBe(0);
+    await Promise.all([childReader.cancel(), sentinelReader.cancel()]);
+  });
+  test("Given a real CSS tree When production analysis runs Then bounded reads produce declarations and border signals", async () => {
+    // Given
+    const root = await mkdtemp(path.join(tmpdir(), "bg-css-tree-"));
+    try {
+      await writeFile(path.join(root, "tokens.css"), ":root{--brand:#123456}.card{font-family:Inter,sans-serif;border:1px solid #123456}");
+
+      // When
+      const analysis = await analyzeLocalTree(root, "Fixture", new AbortController().signal);
+
+      // Then
+      expect(analysis.cssDeclarations).toHaveLength(3);
+      expect(analysis.cssVars.get("brand")).toBe("#123456");
+      expect(analysis.fontFamilies).toEqual(["Inter"]);
+      expect(analysis.borders).toEqual(["1px solid #123456"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("Given local depth, file count, per-file bytes, and aggregate bytes beyond each boundary When production analysis runs Then exact typed limits reject", async () => {
+    // Given
+    const fixtures: string[] = [];
+    try {
+      const depthRoot = await mkdtemp(path.join(tmpdir(), "bg-depth-limit-"));
+      fixtures.push(depthRoot);
+      let nested = depthRoot;
+      for (let depth = 0; depth <= MAX_LOCAL_DEPTH; depth += 1) {
+        nested = path.join(nested, "d");
+        await mkdir(nested);
+      }
+      const filesRoot = await mkdtemp(path.join(tmpdir(), "bg-file-limit-"));
+      fixtures.push(filesRoot);
+      await Promise.all(Array.from({ length: MAX_LOCAL_FILES + 1 }, (_, index) => writeFile(path.join(filesRoot, `${index}.txt`), "x")));
+      const perFileRoot = await mkdtemp(path.join(tmpdir(), "bg-per-file-limit-"));
+      fixtures.push(perFileRoot);
+      const oversized = path.join(perFileRoot, "large.css");
+      await writeFile(oversized, "");
+      await truncate(oversized, MAX_SOURCE_FILE_BYTES + 1);
+      const aggregateRoot = await mkdtemp(path.join(tmpdir(), "bg-aggregate-limit-"));
+      fixtures.push(aggregateRoot);
+      const aggregateCount = Math.floor(MAX_AGGREGATE_SOURCE_BYTES / MAX_SOURCE_FILE_BYTES) + 1;
+      for (let index = 0; index < aggregateCount; index += 1) {
+        const fixture = path.join(aggregateRoot, `${index}.md`);
+        await writeFile(fixture, "");
+        await truncate(fixture, MAX_SOURCE_FILE_BYTES);
+      }
+      const signal = new AbortController().signal;
+
+      // When / Then
+      await expect(analyzeLocalTree(depthRoot, "Depth", signal)).rejects.toMatchObject({ limit: "local_depth" });
+      await expect(analyzeLocalTree(filesRoot, "Files", signal)).rejects.toMatchObject({ limit: "local_files" });
+      await expect(analyzeLocalTree(perFileRoot, "File", signal)).rejects.toMatchObject({ limit: "source_file_bytes" });
+      await expect(analyzeLocalTree(aggregateRoot, "Aggregate", signal)).rejects.toMatchObject({ limit: "aggregate_source_bytes" });
+    } finally {
+      await Promise.all(fixtures.map((fixture) => rm(fixture, { recursive: true, force: true })));
+    }
+  });
+
+  test("Given CSS byte and declaration complexity beyond each boundary When the real parser runs Then bounded typed evidence is deterministic", async () => {
+    // Given
+    const oversized = " ".repeat(MAX_CSS_PARSE_BYTES + 1);
+    const complex = `.x{${Array.from({ length: MAX_CSS_DECLARATIONS + 1 }, (_, index) => `--x${index}:${index};`).join("")}}`;
+
+    // When
+    const byteResult = await parseCssSource({ content: oversized, sourceId: "large.css" });
+    const itemResult = await parseCssSource({ content: complex, sourceId: "complex.css" });
+
+    // Then
+    expect(byteResult.issues).toEqual([{ key: "css-input", reason: "css_input_too_large", sourceLocator: "large.css:1:1" }]);
+    expect(itemResult.issues.some((issue) => issue.reason === "css_declaration_limit")).toBe(true);
+    expect(itemResult.declarations).toHaveLength(MAX_CSS_DECLARATIONS);
+  });
+});
 
 describe("inferSourceType", () => {
-  test("treats git-style URLs as github source", () => {
+  test("accepts credential-free HTTPS Git transports", () => {
     expect(inferSourceType("https://github.com/acme/design-system")).toBe("github");
-    expect(inferSourceType("git@github.com:acme/design-system.git")).toBe("github");
     expect(inferSourceType("https://gitlab.com/acme/design-system.git")).toBe("github");
+  });
+
+  test.each([
+    "file:///tmp/design-system",
+    "git@github.com:acme/design-system.git",
+    "ssh://git@github.com/acme/design-system.git",
+    "git://github.com/acme/design-system.git",
+    "https://user:secret@github.com/acme/design-system.git",
+    "../design-system",
+    "/tmp/design-system",
+  ])("rejects local, SSH, Git, and credential-bearing transport %s", (sourceUrl) => {
+    expect(() => inferSourceType(sourceUrl)).toThrow();
   });
 
   test("treats regular web pages as website source", () => {
@@ -34,6 +199,11 @@ describe("inferUploadKind", () => {
   test("detects supported upload kinds by file extension", () => {
     expect(inferUploadKind("brand-deck.pptx")).toBe("pptx");
     expect(inferUploadKind("tokens.pdf")).toBe("pdf");
+  });
+
+  test("rejects declared upload bytes before stream consumption", () => {
+    const file = new File(["12345"], "fixture.pdf", { type: "application/pdf" });
+    expect(() => assertUploadSize(file, acquisitionLimits({ uploadBytes: 4 }))).toThrow();
   });
 
   test("falls back to content type when extension is ambiguous", () => {
@@ -49,8 +219,8 @@ describe("inferUploadKind", () => {
 });
 
 describe("extractCssCustomProperties", () => {
-  test("extracts custom properties from css blocks", () => {
-    const vars = extractCssCustomProperties(`
+  test("extracts custom properties from css blocks", async () => {
+    const vars = await extractCssCustomProperties(`
       :root {
         --primary-blue: #0057B8;
         --font-sans: "Inter";
@@ -107,8 +277,8 @@ describe("design system token css editing", () => {
 });
 
 describe("extractCssStyleSignals", () => {
-  test("extracts colors, font sizes, spacing, radii, and shadows from plain css declarations", () => {
-    const signals = extractCssStyleSignals(`
+  test("extracts colors, font sizes, spacing, radii, and shadows from plain css declarations", async () => {
+    const signals = await extractCssStyleSignals(`
       .hero {
         color: #112233;
         background-color: rgb(1, 2, 3);
@@ -126,6 +296,15 @@ describe("extractCssStyleSignals", () => {
     expect(signals.spacingValues).toContain("16px 24px");
     expect(signals.radii).toContain("12px");
     expect(signals.shadows[0]).toContain("0 8px 24px");
+  });
+});
+
+describe("CSS extraction helpers", () => {
+  test("extracts first font families and validates color token forms", async () => {
+    expect(await extractFontFamilies(".a{font-family:'Inter',sans-serif;}.b{font-family:Roboto,Arial;}")).toEqual(["Inter", "Roboto"]);
+    expect(isColorTokenValue("#123456")).toBe(true);
+    expect(isColorTokenValue("rgb(1, 2, 3)")).toBe(true);
+    expect(isColorTokenValue("url(https://example.com/a.png)")).toBe(false);
   });
 });
 
@@ -149,6 +328,34 @@ describe("extractHtmlComponentSamples", () => {
     expect(samples.forms).toContain("Email");
     expect(samples.badges).toContain("Published");
     expect(samples.tables).toContain("Row 1");
+  });
+});
+
+describe("collectCandidateWebsitePages", () => {
+  test("keeps unique same-origin pages and rejects fragments, contacts, assets, and remote links", () => {
+    const controller = new AbortController();
+    const pages = collectCandidateWebsitePages(
+      new URL("https://example.com/"),
+      `<a href="/about">About</a><a href="/about">Again</a><a href="#part">Part</a><a href="mailto:x@example.com">Mail</a><a href="/asset.png">Image</a><a href="https://remote.example/page">Remote</a>`,
+      controller.signal,
+    );
+    expect(pages.map((page) => page.toString())).toEqual(["https://example.com/about"]);
+  });
+});
+
+describe("listFilesRecursive", () => {
+  test("walks files, ignores dependency directories, and honors the shared signal", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "bg-list-tree-"));
+    try {
+      await mkdir(path.join(directory, "nested"), { recursive: true });
+      await mkdir(path.join(directory, "node_modules"), { recursive: true });
+      await writeFile(path.join(directory, "nested", "kept.css"), "a{}");
+      await writeFile(path.join(directory, "node_modules", "ignored.css"), "a{}");
+      const files = await listFilesRecursive(directory, new AbortController().signal);
+      expect(files.map((file) => path.relative(directory, file))).toEqual([path.join("nested", "kept.css")]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 

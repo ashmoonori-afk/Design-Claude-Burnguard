@@ -1,9 +1,13 @@
 import { cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { CheckpointRef } from "@bg/shared";
-import { getProjectDetail } from "../db/seed";
+import type { CheckpointRef } from "@bg/shared/harness";
+import { getProjectDetail } from "../db/project-read-repository";
 import { assertSafeName, resolveWithin } from "../security/path-boundary";
 import { listIndexedProjectFiles } from "./files";
+import { inspectCanonicalTree } from "./canonical-tree-manifest";
+import { getSqlite } from "../db/sqlite-client";
+import { ArtifactCoordinator } from "./artifact-coordinator";
+import { materializeManagedTree } from "./artifact-tree-storage";
 
 const EXCLUDED_DIR_NAMES = new Set([".meta", ".attachments"]);
 
@@ -57,6 +61,18 @@ export async function writePreTurnSnapshot(
   };
 }
 
+export async function getVerifiedSnapshotPath(projectId: string, turnId: string): Promise<string | null> {
+  assertSafeName(turnId);
+  const project = await getProjectDetail(projectId);
+  if (project === null) return null;
+  const destination = snapshotDir(project.dir_path, turnId);
+  try { await inspectCanonicalTree(destination); return destination; }
+  catch (error) {
+    if (error instanceof Error) return null;
+    throw error;
+  }
+}
+
 export async function hasSnapshot(
   projectId: string,
   turnId: string,
@@ -95,42 +111,15 @@ export async function restoreFromSnapshot(
   const project = await getProjectDetail(projectId);
   if (!project) return null;
 
-  const source = snapshotDir(project.dir_path, turnId);
-  try {
-    const info = await stat(source);
-    if (!info.isDirectory()) return null;
-  } catch {
-    return null;
-  }
-
-  const removed: string[] = [];
-  const topLevel = await readdir(project.dir_path, { withFileTypes: true });
-  for (const entry of topLevel) {
-    if (EXCLUDED_DIR_NAMES.has(entry.name)) continue;
-    const target = path.join(project.dir_path, entry.name);
-    await rm(target, { recursive: true, force: true });
-    removed.push(entry.name);
-  }
-
-  const copied: string[] = [];
-  const snapEntries = await readdir(source, { withFileTypes: true });
-  for (const entry of snapEntries) {
-    const src = path.join(source, entry.name);
-    const dest = path.join(project.dir_path, entry.name);
-    if (entry.isDirectory()) {
-      await cp(src, dest, { recursive: true });
-    } else if (entry.isFile()) {
-      await cp(src, dest);
-    }
-    copied.push(entry.name);
-  }
-
-  return {
-    turnId,
-    restoredAt: Date.now(),
-    removedEntries: removed,
-    copiedEntries: copied,
-  };
+  const source = await getVerifiedSnapshotPath(projectId, turnId);
+  if (source === null) return null;
+  const coordinator = new ArtifactCoordinator(getSqlite());
+  if (project.current_digest === null) await coordinator.initialize(projectId, project.dir_path);
+  else await coordinator.observeExternal(projectId, project.dir_path);
+  const current = await getProjectDetail(projectId);
+  if (current?.current_digest === null || current === null) return null;
+  const operation = await coordinator.run({ projectId, projectDir: project.dir_path, kind: "restore", expectedRevision: current.current_revision, expectedArtifactDigest: current.current_digest, mutate: async (stage) => { await materializeManagedTree(source, stage); } });
+  return { turnId, restoredAt: Date.now(), removedEntries: operation.diff.filter((entry) => entry.action === "deleted").map((entry) => entry.path), copiedEntries: operation.diff.filter((entry) => entry.action !== "deleted").map((entry) => entry.path) };
 }
 
 export async function writeTurnCheckpoint(
