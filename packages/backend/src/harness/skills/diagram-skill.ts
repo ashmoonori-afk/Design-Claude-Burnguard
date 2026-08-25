@@ -40,8 +40,11 @@ fewest marks. Do not combine types unless separate, titled panels are clearer.
   Google Fonts), sprites, scripts, stylesheets, SVG \`use\` references, or
   URL-backed assets: external references do not resolve reliably in the
   sandboxed srcDoc iframe.
-- Give the SVG \`role="img"\` and an accessible name via inline \`<title>\` and
-  \`<desc>\`. Use a responsive \`viewBox\`; do not rely on canvas or Mermaid.
+- Give each SVG \`role="img"\`, unique \`<title id="...">\` and
+  \`<desc id="...">\` elements, and \`aria-labelledby="title-id desc-id"\` that
+  references both IDs. Use a responsive \`viewBox\`; do not rely on canvas or Mermaid.
+- At 320 CSS pixels, preserve essential two-dimensional relationships in one
+  bounded scroll owner; surrounding labels and controls still reflow.
 - Every visible node and label needs a unique \`data-bg-node-id\` so edit and
   comment modes can target it.
 - Reference existing design-system tokens by CSS variable name with \`var(--...)\`.

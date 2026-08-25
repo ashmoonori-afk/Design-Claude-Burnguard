@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "rules": [
+    {
+      "id": "CR-001",
+      "authority_class": "normative_web_constraint",
+      "topic": "semantic_hierarchy",
+      "statement": "Preserve presented relationships programmatically, and make headings and labels describe their purpose.",
+      "source_ids": [
+        "S-026",
+        "S-027"
+      ],
+      "confidence": "high",
+      "limitations": "Visual hierarchy alone does not satisfy semantic structure; headings are not universally required."
+    },
+    {
+      "id": "CR-002",
+      "authority_class": "normative_web_constraint",
+      "topic": "contrast_and_color",
+      "statement": "Meet criterion-specific contrast thresholds and never use color as the only information cue.",
+      "source_ids": [
+        "S-002",
+        "S-030",
+        "S-031"
+      ],
+      "confidence": "high",
+      "limitations": "Thresholds and exceptions differ for text, controls, states, and inactive elements."
+    },
+    {
+      "id": "CR-003",
+      "authority_class": "normative_web_constraint",
+      "topic": "reflow",
+      "statement": "Support reflow at 320 CSS pixels except where two-dimensional presentation is essential.",
+      "source_ids": [
+        "S-003"
+      ],
+      "confidence": "high",
+      "limitations": "Tables, maps, video, and diagrams require scoped exception analysis, not blanket exemption."
+    },
+    {
+      "id": "CR-004",
+      "authority_class": "normative_web_constraint",
+      "topic": "keyboard_and_focus",
+      "statement": "Keep functionality keyboard operable and keyboard focus visibly indicated.",
+      "source_ids": [
+        "S-004",
+        "S-005"
+      ],
+      "confidence": "high",
+      "limitations": "Path-dependent functions have a narrow keyboard exception; focus appearance is separately governed."
+    },
+    {
+      "id": "CR-005",
+      "authority_class": "normative_web_constraint",
+      "topic": "target_size",
+      "statement": "Provide 24-by-24 CSS pixel pointer targets or qualifying spacing at WCAG AA.",
+      "source_ids": [
+        "S-001",
+        "S-006"
+      ],
+      "confidence": "high",
+      "limitations": "Preserve inline, equivalent, user-agent, and essential exceptions; 44-by-44 is not the AA threshold."
+    },
+    {
+      "id": "CR-006",
+      "authority_class": "normative_web_constraint",
+      "topic": "error_identification",
+      "statement": "Identify erroneous items and describe each error in text without relying on color alone.",
+      "source_ids": [
+        "S-007",
+        "S-031"
+      ],
+      "confidence": "high",
+      "limitations": "This rule does not prescribe a specific summary layout or validation timing."
+    },
+    {
+      "id": "CR-007",
+      "authority_class": "normative_web_constraint",
+      "topic": "status_messages",
+      "statement": "Expose applicable status updates programmatically without moving focus.",
+      "source_ids": [
+        "S-008"
+      ],
+      "confidence": "high",
+      "limitations": "Not every dynamic content change qualifies as a status message."
+    },
+    {
+      "id": "CR-008",
+      "authority_class": "normative_web_constraint",
+      "topic": "text_resilience",
+      "statement": "Preserve content and functionality at 200 percent text resize and under specified spacing overrides.",
+      "source_ids": [
+        "S-028",
+        "S-029"
+      ],
+      "confidence": "high",
+      "limitations": "Test override values are not default typography prescriptions, and WCAG sets no default font size."
+    },
+    {
+      "id": "CR-009",
+      "authority_class": "normative_web_constraint",
+      "topic": "interaction_motion",
+      "statement": "Allow users to disable nonessential motion triggered by interaction.",
+      "source_ids": [
+        "S-001",
+        "S-009"
+      ],
+      "confidence": "high",
+      "limitations": "Animation from interactions is WCAG Level AAA, not an AA conformance requirement."
+    },
+    {
+      "id": "CR-010",
+      "authority_class": "sampled_system_guidance",
+      "topic": "systematic_spacing",
+      "statement": "Use a named, configurable spacing scale rather than assuming a universal pixel grid.",
+      "source_ids": [
+        "S-010",
+        "S-012",
+        "S-014",
+        "S-025"
+      ],
+      "confidence": "high",
+      "limitations": "The sampled systems differ in exact values; the sample is not universal or statistically representative."
+    },
+    {
+      "id": "CR-011",
+      "authority_class": "sampled_system_guidance",
+      "topic": "semantic_tokens",
+      "statement": "Use role-based layout and typography tokens to communicate hierarchy while keeping values system-specific.",
+      "source_ids": [
+        "S-010",
+        "S-011",
+        "S-012",
+        "S-021"
+      ],
+      "confidence": "high",
+      "limitations": "Fonts, tonal algorithms, breakpoints, radii, and token names remain product-specific conventions."
+    },
+    {
+      "id": "CR-012",
+      "authority_class": "sampled_system_guidance",
+      "topic": "readable_layout",
+      "statement": "Start narrow layouts with one column and bound prose measure for readability.",
+      "source_ids": [
+        "S-018",
+        "S-024"
+      ],
+      "confidence": "high",
+      "limitations": "The two systems recommend different measures; neither value is a WCAG requirement."
+    },
+    {
+      "id": "CR-013",
+      "authority_class": "sampled_system_guidance",
+      "topic": "form_validation",
+      "statement": "Default to submit-first validation, preserve entered values, and link summaries to inline errors.",
+      "source_ids": [
+        "S-016",
+        "S-017",
+        "S-033"
+      ],
+      "confidence": "high",
+      "limitations": "Use live validation only for bounded, evidence-backed cases; other systems permit it more broadly."
+    },
+    {
+      "id": "CR-014",
+      "authority_class": "sampled_system_guidance",
+      "topic": "explicit_states",
+      "statement": "Distinguish focus, hover, active, selected, disabled, error, and loading states with semantic cues.",
+      "source_ids": [
+        "S-013",
+        "S-019",
+        "S-032"
+      ],
+      "confidence": "medium",
+      "limitations": "Atlassian deep-link availability reduced source precision; native disabled behavior remains preferable."
+    },
+    {
+      "id": "CR-015",
+      "authority_class": "sampled_system_guidance",
+      "topic": "resilient_async_states",
+      "statement": "Model loading, partial or ready, success, empty, error, cancelled, retrying, and stale states explicitly.",
+      "source_ids": [
+        "S-008",
+        "S-044",
+        "S-045"
+      ],
+      "confidence": "high",
+      "limitations": "The taxonomy is synthesized; no universal spinner or skeleton timing threshold survived review."
+    }
+  ]
+}

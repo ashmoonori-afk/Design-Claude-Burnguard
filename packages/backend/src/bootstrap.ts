@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import { cp, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureConfig } from "./config";
@@ -27,6 +28,8 @@ import { reconcileCatalogState } from "./services/catalog-lifecycle";
 import { ensureAllProjectWatchers } from "./services/watchers";
 import { reconcileArtifactState } from "./services/artifact-recovery";
 import { reconcileExportState } from "./services/export-recovery";
+import { createProductionResearchRecoveryDependencies } from "./routes/research";
+import { reconcileResearchState, type ResearchRecoveryDependencies } from "./services/research-recovery";
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -90,7 +93,15 @@ async function seedSampleDesignSystems(): Promise<void> {
   await seedBundledDesignSystems(repoRoot, systemsDir);
 }
 
-export async function bootstrapLocalAppData(): Promise<void> {
+export async function reconcileResearchOnStartup(db: Database, researchRecovery = createProductionResearchRecoveryDependencies(db)): Promise<void> {
+  for (let pass = 0; pass < 2; pass += 1) {
+    const receipt = await reconcileResearchState(db, researchRecovery);
+    if (receipt.enqueued === 0) return;
+  }
+  throw new Error("Research startup recovery did not converge");
+}
+
+export async function bootstrapLocalAppData(researchRecovery?: ResearchRecoveryDependencies): Promise<void> {
   await mkdir(appRootDir, { recursive: true });
   await Promise.all([
     mkdir(dataDir, { recursive: true }),
@@ -103,6 +114,7 @@ export async function bootstrapLocalAppData(): Promise<void> {
   await ensureConfig();
   await seedSampleDesignSystems();
   await runMigrations();
+  await reconcileResearchOnStartup(getSqlite(), researchRecovery);
   await seedCoreData();
   await seedTutorialsOnce();
   seedLearningItems(getSqlite());

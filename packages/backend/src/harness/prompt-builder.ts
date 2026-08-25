@@ -6,6 +6,7 @@ import {
   attachmentSummaryPath,
 } from "../services/attachment-paths";
 import type { buildSessionContext } from "../services/context";
+import { buildResearchPromptContext } from "../services/research-purpose";
 import { selectPromptLearning } from "../db/learning-store";
 import { getSqlite } from "../db/sqlite-client";
 import {
@@ -93,6 +94,15 @@ export async function buildPrompt(
       `- use_speaker_notes: ${slideDeckOptions.use_speaker_notes ? "true" : "false"}`,
     );
   }
+  lines.push("");
+
+  lines.push("<burnguard-research-context-v1>");
+  lines.push(JSON.stringify(buildResearchPromptContext({
+    projectType: project.project_type,
+    request: userEvent.text,
+    hasCapturedFiles: context.files.length > 0,
+  })));
+  lines.push("</burnguard-research-context-v1>");
   lines.push("");
 
   // Structural summary of the entrypoint, when it's an HTML artifact we know

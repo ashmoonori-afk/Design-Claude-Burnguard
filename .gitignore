@@ -20,7 +20,11 @@ Thumbs.db
 
 # Local draft notes
 reddit-launch-post-draft.md
+.omo/evidence/
 .omo/plans/
+.omo/senpi-task/
+.omo/ulw-loop/
+.omo/ulw-research/
 
 # Sample design-system uploads bucket — guards against committing
 # customer / IR / sensitive material dropped into this folder. Keep
