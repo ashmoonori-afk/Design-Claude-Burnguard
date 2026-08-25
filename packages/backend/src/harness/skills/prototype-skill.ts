@@ -15,10 +15,6 @@
  */
 export const PROTOTYPE_SKILL_MD = `# Prototype authoring conventions
 
-\`index.html\` renders live in the canvas iframe and feeds edit, comment,
-and export modes. Output must be a single self-contained HTML file — no
-bundler, no framework, no build step.
-
 ## Artifact contract
 
 - One \`index.html\` at the project root with all CSS inline in a top
@@ -79,9 +75,8 @@ bundler, no framework, no build step.
 
 ## Interaction conventions
 
-- Use CSS for entrance/hover effects and smooth anchor scrolling.
 - For scroll reveals, one \`IntersectionObserver\` toggles \`[data-revealed]\`.
-- No external JS libraries unless explicitly requested; keep JS under ~100 lines.
+- Keep JS under ~100 lines.
 
 ## Node IDs (required for edit / comment modes)
 
@@ -99,8 +94,13 @@ bundler, no framework, no build step.
 - Do not introduce new palettes, font stacks, or typefaces. The design
   system owns visual identity; archetypes describe STRUCTURE only.
 - Icons (LUCIDE_ICON_REFERENCE): on demand, Read \`packages/backend/src/harness/assets/lucide/reference.md\`. Use only its inline \`<svg>\`; keep \`stroke="currentColor"\` and size with \`--icon-size\`. Never use external URLs, sprites, or icon fonts.
-- Mobile first. \`@media (min-width: 640px)\` for tablet,
-  \`(min-width: 1024px)\` for desktop. Must not break below 360 px.
+- Mobile first; reflow at 320 CSS pixels. Tables and diagrams may use bounded
+  two-dimensional scrolling only when their relationships require it.
+- Interactive targets are at least 24 by 24 CSS pixels or have equivalent spacing.
+- Pair color-coded status with text, sign, shape, or pattern cues.
+- Disable nonessential animation and smooth scrolling in
+  \`@media (prefers-reduced-motion: reduce)\`.
+- Use \`@media (min-width: 640px)\` for tablet and \`(min-width: 1024px)\` for desktop.
 
 ## Video & media
 
@@ -110,9 +110,6 @@ bundler, no framework, no build step.
 
 ## Don'ts
 
-- No React, Vue, Svelte, Next.js, Vite, or any bundler-only syntax.
-- No \`npm install\` or external package references in the output.
-- No files outside the project directory.
-- Do not override design-system tokens for colour or typography.
-- Do not embed user secrets or API keys in the HTML.
+- No React, Vue, Svelte, Next.js, Vite, \`npm install\`, or external packages.
+- No files outside the project directory, token overrides, secrets, or API keys.
 `;

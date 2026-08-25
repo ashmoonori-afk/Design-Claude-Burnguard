@@ -256,7 +256,7 @@ Layout shell:
 - Top bar: page title on the left ("Overview · April 25, 2026"), a date-range selector pill in the middle, and a small avatar + status dot on the right.
 
 Content of the Overview page:
-1. Four KPI tiles in a single row — "AUM under advisement", "Net management margin (TTM)", "Open reconciliation breaks", "Cash buffer (90d)". Each tile shows the headline number, a delta vs. last period (with green/red), and a 1-line label. Use mock numbers consistent with the Series A / quarterly review samples (AUM ~ $1.21B, margin ~ 2.39%, breaks ~ 7, cash buffer ~ 36 months).
+1. Four KPI tiles in a single row — "AUM under advisement", "Net management margin (TTM)", "Open reconciliation breaks", "Cash buffer (90d)". Each tile shows the headline number, a delta vs. last period with an arrow and "improved" / "worsened" text in addition to green/red, and a 1-line label. Use mock numbers consistent with the Series A / quarterly review samples (AUM ~ $1.21B, margin ~ 2.39%, breaks ~ 7, cash buffer ~ 36 months).
 2. A "Top holdings" table — 6 rows. Columns: Position, Strategy, Quarter return, MTD, AUM share. Use mixed positive / negative quarter returns coloured green / red.
 3. A "Recent activity" feed on the right — 5 items (e.g., "Reconciliation break #112 cleared by ops · 14 minutes ago", "Trade ticket NVC-2841 settled · 1 hour ago", etc.) with timestamp.
 4. Footer line: small print, "Sample dashboard artifact in BurnGuard. Numbers are illustrative."
@@ -269,6 +269,8 @@ Hover and focus states:
 Accessibility:
 - Real semantic HTML (<nav>, <main>, <table>, <thead>, <tbody>, <th scope="col">).
 - Sufficient contrast on muted text.
+- Reflow at 320 CSS pixels; keep the comparison table as a bounded horizontal-scroll exception.
+- Respect prefers-reduced-motion and keep pointer targets at least 24 by 24 CSS pixels or equivalently spaced.
 
 Use data-bg-node-id on the page title, every KPI tile (parent + value + delta + label), every table row (parent + cells), and every activity feed item.`,
   },
@@ -732,6 +734,7 @@ function renderDashboardSample(sample: PromptSample): string {
     .kpi .label { font-size: 12px; color: rgba(245,247,251,0.55); }
     .panels { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 28px; }
     .panel { background: #161b24; border-radius: 10px; padding: 20px; }
+    .table-panel { overflow-x: auto; }
     .panel h3 { margin: 0 0 16px; font-size: 14px; font-weight: 600; color: rgba(245,247,251,0.78); text-transform: uppercase; letter-spacing: 0.08em; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th { text-align: left; padding: 10px 0; color: rgba(245,247,251,0.55); border-bottom: 1px solid rgba(255,255,255,0.06); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
@@ -747,6 +750,8 @@ function renderDashboardSample(sample: PromptSample): string {
     .info { display: grid; grid-template-columns: 0.6fr 1.4fr; gap: 18px; margin-top: 28px; }
     ${commonInfoStyles()}
     @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .sidebar { display: none; } .kpi-grid { grid-template-columns: repeat(2, 1fr); } .panels { grid-template-columns: 1fr; } .info { grid-template-columns: 1fr; } }
+    @media (max-width: 480px) { main { padding: 20px 14px; } .topbar, .kpi-grid { display: grid; grid-template-columns: 1fr; gap: 12px; } table { min-width: 600px; } }
+    @media (prefers-reduced-motion: reduce) { .kpi { transition: none; } }
     `,
     body: `
     <div class="shell">
@@ -766,13 +771,13 @@ function renderDashboardSample(sample: PromptSample): string {
           <div class="date-pill" data-bg-node-id="date-pill">Last 30 days · Apr 25, 2026</div>
         </div>
         <div class="kpi-grid">
-          <div class="kpi" data-bg-node-id="kpi-aum"><div class="num" data-bg-node-id="kpi-aum-value">$1.21B</div><div class="delta up" data-bg-node-id="kpi-aum-delta">+8.4% QoQ</div><div class="label" data-bg-node-id="kpi-aum-label">AUM under advisement</div></div>
-          <div class="kpi" data-bg-node-id="kpi-margin"><div class="num" data-bg-node-id="kpi-margin-value">2.39%</div><div class="delta up" data-bg-node-id="kpi-margin-delta">+118 bps TTM</div><div class="label" data-bg-node-id="kpi-margin-label">Net management margin</div></div>
-          <div class="kpi" data-bg-node-id="kpi-breaks"><div class="num" data-bg-node-id="kpi-breaks-value">7</div><div class="delta down" data-bg-node-id="kpi-breaks-delta">+2 vs last week</div><div class="label" data-bg-node-id="kpi-breaks-label">Open reconciliation breaks</div></div>
-          <div class="kpi" data-bg-node-id="kpi-cash"><div class="num" data-bg-node-id="kpi-cash-value">36 mo</div><div class="delta" data-bg-node-id="kpi-cash-delta">held</div><div class="label" data-bg-node-id="kpi-cash-label">Cash buffer (90d)</div></div>
+          <div class="kpi" data-bg-node-id="kpi-aum"><div class="num" data-bg-node-id="kpi-aum-value">$1.21B</div><div class="delta up" data-bg-node-id="kpi-aum-delta">▲ +8.4% QoQ · improved</div><div class="label" data-bg-node-id="kpi-aum-label">AUM under advisement</div></div>
+          <div class="kpi" data-bg-node-id="kpi-margin"><div class="num" data-bg-node-id="kpi-margin-value">2.39%</div><div class="delta up" data-bg-node-id="kpi-margin-delta">▲ +118 bps TTM · improved</div><div class="label" data-bg-node-id="kpi-margin-label">Net management margin</div></div>
+          <div class="kpi" data-bg-node-id="kpi-breaks"><div class="num" data-bg-node-id="kpi-breaks-value">7</div><div class="delta down" data-bg-node-id="kpi-breaks-delta">▼ +2 vs last week · worsened</div><div class="label" data-bg-node-id="kpi-breaks-label">Open reconciliation breaks</div></div>
+          <div class="kpi" data-bg-node-id="kpi-cash"><div class="num" data-bg-node-id="kpi-cash-value">36 mo</div><div class="delta" data-bg-node-id="kpi-cash-delta">— held · unchanged</div><div class="label" data-bg-node-id="kpi-cash-label">Cash buffer (90d)</div></div>
         </div>
         <div class="panels">
-          <section class="panel" data-bg-node-id="panel-holdings">
+          <section class="panel table-panel" data-bg-node-id="panel-holdings">
             <h3>Top holdings</h3>
             <table data-bg-node-id="holdings-table">
               <thead><tr><th>Position</th><th>Strategy</th><th class="num-col">Quarter</th><th class="num-col">MTD</th><th class="num-col">AUM share</th></tr></thead>

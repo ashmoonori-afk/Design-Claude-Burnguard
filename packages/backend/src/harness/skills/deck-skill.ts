@@ -87,6 +87,8 @@ export const DECK_SKILL_MD = `# Slide deck authoring conventions
 - Icons (LUCIDE_ICON_REFERENCE): Read \`packages/backend/src/harness/assets/lucide/reference.md\`. Use its inline \`<svg>\` with \`stroke="currentColor"\` and \`--icon-size\`; no external sources.
 - Keep \`.deck-slide { aspect-ratio: 16 / 9 }\` unless the user requests
   otherwise.
+- When PowerPoint/PPTX output is requested, stay text-first: use real HTML text,
+  simple shapes, and flat layouts; avoid effects that only survive raster capture.
 
 ## Speaker notes (optional)
 
