@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "fixture_id": "mass-research-v1",
+  "sources": [
+    {
+      "locator": "fixture-a",
+      "document": {
+        "schema_version": 1,
+        "title": "Fixture baseline",
+        "claims": [
+          {
+            "axis": "accessibility",
+            "text": "Retain keyboard-visible focus."
+          }
+        ]
+      },
+      "observations": [
+        {
+          "axis": "accessibility",
+          "summary": "Keyboard focus remains visible.",
+          "source_locator": "fixture-a"
+        }
+      ],
+      "candidates": [
+        {
+          "purpose": "common",
+          "axis": "accessibility",
+          "directive": "Retain keyboard-visible focus.",
+          "rationale": "The fixture records an observable baseline.",
+          "confidence": 0.9
+        },
+        {
+          "purpose": "prototype.dashboard",
+          "axis": "comparison",
+          "directive": "Use aligned values for comparison.",
+          "rationale": "Aligned values support scanning.",
+          "confidence": 0.8
+        }
+      ]
+    },
+    {
+      "locator": "fixture-b",
+      "document": {
+        "schema_version": 1,
+        "title": "Fixture landing",
+        "claims": [
+          {
+            "axis": "hierarchy",
+            "text": "Front-load the value proposition."
+          }
+        ]
+      },
+      "observations": [
+        {
+          "axis": "hierarchy",
+          "summary": "The primary value appears first.",
+          "source_locator": "fixture-b"
+        }
+      ],
+      "candidates": [
+        {
+          "purpose": "prototype.landing",
+          "axis": "hierarchy",
+          "directive": "Front-load the value proposition.",
+          "rationale": "Early hierarchy communicates intent.",
+          "confidence": 0.85
+        }
+      ]
+    }
+  ]
+}
