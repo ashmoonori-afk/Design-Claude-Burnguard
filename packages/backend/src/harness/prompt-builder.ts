@@ -1,33 +1,28 @@
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { UserEvent } from "@bg/shared/events";
-import {
-  attachmentExtractedTextPath,
-  attachmentSummaryPath,
-} from "../services/attachment-paths";
 import type { buildSessionContext } from "../services/context";
 import { buildResearchPromptContext } from "../services/research-purpose";
 import { selectPromptLearning } from "../db/learning-store";
 import { getSqlite } from "../db/sqlite-client";
-import {
-  readAttachmentSummaryFile,
-  type AttachmentSummary,
-} from "../services/attachment-summary";
 import { DECK_SKILL_MD } from "./skills/deck-skill";
 import { DIAGRAM_SKILL_MD } from "./skills/diagram-skill";
 import { PROTOTYPE_SKILL_MD } from "./skills/prototype-skill";
+import { appendAttachmentContext } from "./prompt-attachments";
+import {
+  COMPACT_DECK_SKILL_MD,
+  COMPACT_PROTOTYPE_SKILL_MD,
+} from "./prompt-compact-skills";
+import { appendDesignSystemContext } from "./prompt-design-system";
 import {
   summarizeDeckHtml,
   summarizePrototypeHtml,
 } from "./structure-extractor";
 
+export { MAX_SKILL_CHARS } from "./prompt-design-system";
+
 type SessionContext = NonNullable<Awaited<ReturnType<typeof buildSessionContext>>>;
 
 const MAX_FILES_LISTED = 60;
-export const MAX_SKILL_CHARS = 5000;
-const MAX_TOKENS_CSS_LINES = 150;
-const MAX_README_LINES = 120;
-const MAX_ATTACHMENT_PAGES = 4;
 
 export type PromptContextMode = "compact" | "full";
 
@@ -148,90 +143,15 @@ export async function buildPrompt(
   }
 
   if (context.designSystem) {
-    const ds = context.designSystem;
-    lines.push("## Design system");
-    lines.push(`- name: ${ds.name}`);
-    lines.push(`- directory: ${ds.dir_path}`);
-    if (ds.skill_md_path) lines.push(`- skill: ${ds.skill_md_path}`);
-    if (ds.tokens_css_path) lines.push(`- tokens: ${ds.tokens_css_path}`);
-    if (ds.readme_md_path) lines.push(`- readme: ${ds.readme_md_path}`);
-    lines.push("");
-
-    if (contextMode === "compact") {
-      lines.push("### Compact design-system handling");
-      lines.push(
-        "- Use the design-system paths above as source of truth. Read SKILL.md, tokens, or README only when exact brand rules or token names are needed for this request.",
-      );
-      lines.push(
-        "- Prefer targeted Grep/Read ranges over loading full design-system files. Reuse existing CSS variables instead of inventing new palettes or type stacks.",
-      );
-      lines.push("");
-    } else if (ds.skill_md_path) {
-      const content = await readOptional(ds.skill_md_path);
-      if (content) {
-        lines.push("### SKILL.md");
-        lines.push("```markdown");
-        lines.push(content.slice(0, MAX_SKILL_CHARS));
-        lines.push("```");
-        lines.push("");
-      }
-    }
-    if (contextMode === "full" && ds.tokens_css_path) {
-      const content = await readOptional(ds.tokens_css_path);
-      if (content) {
-        lines.push("### colors_and_type.css (excerpt)");
-        lines.push("```css");
-        lines.push(content.split("\n").slice(0, MAX_TOKENS_CSS_LINES).join("\n"));
-        lines.push("```");
-        lines.push("");
-      }
-    }
-    if (contextMode === "full" && ds.readme_md_path) {
-      const content = await readOptional(ds.readme_md_path);
-      if (content) {
-        lines.push("### README.md (excerpt)");
-        lines.push("```markdown");
-        lines.push(content.split("\n").slice(0, MAX_README_LINES).join("\n"));
-        lines.push("```");
-        lines.push("");
-      }
-    }
+    await appendDesignSystemContext(lines, context.designSystem, contextMode);
   }
 
   if (userEvent.attachments && userEvent.attachments.length > 0) {
-    lines.push("## Attachments");
-    const selected = context.attachments.filter((attachment) =>
-      userEvent.attachments?.includes(attachment.file_path),
+    await appendAttachmentContext(
+      lines,
+      context.attachments,
+      userEvent.attachments,
     );
-    for (const attachment of selected) {
-      lines.push(
-        `- ${attachment.original_name} (${attachment.mime_type}, ${attachment.size_bytes}B)`,
-      );
-      const summary = await readAttachmentSummary(attachment.file_path);
-      if (summary) {
-        const extractedTextPath = attachmentExtractedTextPath(attachment.file_path);
-        const hasExtractedText = (await readOptional(extractedTextPath)) != null;
-        lines.push(
-          `  source_path: ${attachment.file_path} (binary attachment; do not Read/Glob/Bash this file directly)`,
-        );
-        if (hasExtractedText) {
-          lines.push(
-            `  extracted_text_path: ${extractedTextPath} (safe text version for Read)`,
-          );
-        }
-        for (const summaryLine of renderAttachmentSummary(summary)) {
-          lines.push(`  ${summaryLine}`);
-        }
-      } else {
-        lines.push(`  path: ${attachment.file_path}`);
-      }
-    }
-    for (const p of userEvent.attachments) {
-      if (!selected.some((attachment) => attachment.file_path === p)) {
-        lines.push(`- ${p}`);
-      }
-    }
-    lines.push("");
   }
 
   if (context.openComments.length > 0) {
@@ -307,89 +227,6 @@ const DIAGRAM_REQUEST_PATTERN =
 
 function isDiagramRequest(request: string): boolean {
   return DIAGRAM_REQUEST_PATTERN.test(request);
-}
-
-const COMPACT_DECK_SKILL_MD = `# Slide deck compact contract
-
-## Token budget rules (READ THESE FIRST)
-- The "## Deck structure" section above is your map. Use it to plan instead of Reading the full file.
-- **Read \`deck.html\` at most ONCE per turn.** Re-reading the same file is forbidden — keep findings in working memory across tool calls.
-- When you do need a slide's exact markup, use \`Grep\` for \`data-bg-node-id="slide-N"\` to find the line, then \`Read\` with \`offset\`/\`limit\` covering that slide only — never the whole file.
-- Prefer multiple targeted \`Edit\` calls (small \`old_string\`/\`new_string\`) over a \`Write\` of the whole file. \`Write\` re-emits the entire 100 KB+ artifact and is the most expensive thing you can do.
-- For multi-slide redesigns, plan all edits before executing, then issue them as a batch. Do not Read between Edits.
-
-## Structure
-- Every slide is a top-level \`<section data-slide>\` directly under \`<body>\`. Preserve order unless the user asks for narrative change.
-- Preserve \`<script src="/runtime/deck-stage.js" defer></script>\`; do not set \`data-active\` statically or reimplement deck navigation.
-- Every visible text element needs a unique \`data-bg-node-id="slide-{N}-{purpose}"\`; parent slides use \`data-bg-node-id="slide-{N}"\`.
-
-## Style
-- Use asymmetric layouts, oversized type or KPI numbers where useful, and avoid centered-everything except cover/closing slides.
-- Keep CSS inline in the top \`<style>\` block. Reference design-system CSS variables (see list above) and avoid new palettes, font stacks, or typefaces.`;
-
-const COMPACT_PROTOTYPE_SKILL_MD = `# Prototype compact contract
-
-## Token budget rules (READ THESE FIRST)
-- The "## Prototype structure" section above is your map. Use it to plan instead of Reading the full file.
-- **Read \`index.html\` at most ONCE per turn.** Re-reading the same file is forbidden — keep findings in working memory across tool calls.
-- When you need a section's exact markup, use \`Grep\` for \`data-section="..."\` (or \`data-bg-node-id\`) to find the line, then \`Read\` with \`offset\`/\`limit\` covering that section only.
-- Prefer multiple targeted \`Edit\` calls over \`Write\`. \`Write\` re-emits the entire artifact and is the most expensive thing you can do.
-
-## Structure & style
-- Work in \`index.html\`; keep the artifact self-contained with inline CSS and vanilla JS unless the user explicitly asks otherwise.
-- Top-level semantic sections need \`data-section\` and unique \`data-bg-node-id\` values for visible text and editable parent sections.
-- Strong visual hierarchy, asymmetric sections outside true heroes, responsive down to 360 px, no hidden primary value.
-- Keep CSS in one top \`<style>\` block. Reference design-system CSS variables (see list above) and avoid new palettes, font stacks, or typefaces.`;
-
-async function readOptional(filePath: string): Promise<string | null> {
-  try {
-    return await readFile(filePath, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-async function readAttachmentSummary(
-  filePath: string,
-): Promise<AttachmentSummary | null> {
-  return readAttachmentSummaryFile(attachmentSummaryPath(filePath));
-}
-
-function renderAttachmentSummary(summary: AttachmentSummary): string[] {
-  const lines = [
-    `summary: ${summary.kind.toUpperCase()} | ${summary.page_count} page(s) | brand=${summary.brand_name ?? "unknown"}`,
-  ];
-  if (summary.fonts.length > 0) {
-    lines.push(`fonts: ${summary.fonts.slice(0, 4).join(", ")}`);
-  }
-  if (summary.colors.length > 0) {
-    lines.push(`colors: ${summary.colors.slice(0, 6).join(", ")}`);
-  }
-  if (summary.headings.length > 0) {
-    lines.push(`headings: ${summary.headings.slice(0, 3).join(" | ")}`);
-  }
-  if (summary.bodies.length > 0) {
-    lines.push(`body samples: ${summary.bodies.slice(0, 2).join(" | ")}`);
-  }
-  if (summary.pages.length > 0) {
-    lines.push("page summaries:");
-    for (const page of summary.pages.slice(0, MAX_ATTACHMENT_PAGES)) {
-      lines.push(
-        `- page ${page.index}: ${page.title} -> ${page.summary || page.text_excerpt}`,
-      );
-    }
-  }
-  if (summary.notes.length > 0) {
-    lines.push(`notes: ${summary.notes.slice(0, 2).join(" | ")}`);
-  }
-  lines.push("instruction: use this compact summary first for planning.");
-  lines.push(
-    "instruction: if an extracted_text_path is listed and you need slide/page wording, Read that file instead of the original binary file.",
-  );
-  lines.push(
-    "instruction: do not use Read, Glob, or Bash against the original .pptx/.pdf attachment path.",
-  );
-  return lines;
 }
 
 function parseSlideDeckOptions(optionsJson: string | null): {
