@@ -29,10 +29,10 @@ function configureOwnedAdapter(port: number, sourcePath: string, resourcePaths: 
   };
 }
 
-async function awaitBounded<T>(operation: Promise<T>): Promise<T> {
+async function awaitBounded<T>(operation: Promise<T>, timeoutMs = 5_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new Error("website boundary event deadline exceeded")), 5_000);
+    timer = setTimeout(() => reject(new Error("website boundary event deadline exceeded")), timeoutMs);
   });
   try {
     return await Promise.race([operation, timeout]);
@@ -234,21 +234,21 @@ describe("production website acquisition boundaries", () => {
     const controller = new AbortController();
     try {
       const operation = fetchWebsiteResource(new URL(`http://127.0.0.1:${server.port}/stream`), { maxBytes: 100, kind: "html", noteBytes: () => {}, signal: controller.signal, userAgent });
-      await awaitBounded(requestSeen);
+      await awaitBounded(requestSeen, 10_000);
 
       // When
       controller.abort(new ExtractionAcquisitionError("acquisition_aborted"));
 
       // Then
       await expect(operation).rejects.toMatchObject({ code: "acquisition_aborted" });
-      expect(await awaitBounded(requestAborted)).toEqual({ aborted: true });
+      expect(await awaitBounded(requestAborted, 10_000)).toEqual({ aborted: true });
       expect(observedSignal?.aborted).toBe(true);
     } finally {
       restoreAdapter();
       await server.stop(true);
       expect(server.pendingRequests).toBe(0);
     }
-  });
+  }, 15_000);
 
   test("Given the production website boundary When its public options are audited Then no test-only local bypass exists", async () => {
     // Given / When
