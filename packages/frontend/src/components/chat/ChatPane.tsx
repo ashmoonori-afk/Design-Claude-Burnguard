@@ -111,8 +111,12 @@ export default function ChatPane({
           />
         </>
       ) : (
-        <div className="flex-1 grid place-items-center text-xs text-muted-foreground p-6 text-center">
-          Comments land in Phase 2.
+        <div className="flex-1 grid place-items-center p-6 text-center text-xs leading-relaxed text-foreground/80">
+          <p>
+            코멘트는 캔버스에서 남겨요. 위쪽 도구 막대에서 Comment 모드를 켠 뒤
+            화면의 원하는 위치를 클릭하면 그 자리에 코멘트가 붙고, 캔버스 옆
+            Comments 패널에 모입니다.
+          </p>
         </div>
       )}
     </aside>
