@@ -16,6 +16,19 @@ export interface CardViewModel {
   isTemplate?: boolean;
 }
 
+export function filterHomeCards(
+  cards: readonly CardViewModel[],
+  query: string,
+): readonly CardViewModel[] {
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery.length === 0) {
+    return cards;
+  }
+  return cards.filter((card) =>
+    normalizeSearchText(card.name).includes(normalizedQuery),
+  );
+}
+
 const PROJECT_TINTS: Record<string, string> = {
   prototype: "bg-rose-100",
   slide_deck: "bg-slate-100",
@@ -58,4 +71,12 @@ function capitalize(s: string): string {
 
 function stripInternalProjectTag(name: string): string {
   return name.replace(/^\[burnguard:[^\]]+\]\s*/, "");
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFC")
+    .toLocaleLowerCase("ko-KR")
+    .trim()
+    .replace(/\s+/gu, " ");
 }

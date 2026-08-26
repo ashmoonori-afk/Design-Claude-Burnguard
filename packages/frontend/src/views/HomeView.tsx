@@ -17,10 +17,12 @@ import {
 } from "@/api/home";
 import CardGrid from "@/components/home/CardGrid";
 import {
+  filterHomeCards,
   projectToCard,
   systemToCard,
   type CardViewModel,
 } from "@/components/home/mappers";
+import ProjectCardSection from "@/components/home/ProjectCardSection";
 import ProjectCard from "@/components/home/ProjectCard";
 import DeleteDesignSystemDialog from "@/components/home/DeleteDesignSystemDialog";
 import DeleteProjectDialog from "@/components/home/DeleteProjectDialog";
@@ -43,6 +45,7 @@ export default function HomeView() {
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
   const [activeTab, setActiveTab] = useState<HomeTab>("recent");
+  const [projectQuery, setProjectQuery] = useState("");
   const cliMissingShown = useUIStore((s) => s.cliMissingShown);
   const setCliMissingShown = useUIStore((s) => s.setCliMissingShown);
   const [cliMissingOpen, setCliMissingOpen] = useState(false);
@@ -237,6 +240,9 @@ export default function HomeView() {
   const recentCards = (recentQuery.data ?? []).map(projectToCard);
   const mineCards = (mineQuery.data ?? []).map(projectToCard);
   const exampleCards = (examplesQuery.data ?? []).map(projectToCard);
+  const filteredRecentCards = filterHomeCards(recentCards, projectQuery);
+  const filteredMineCards = filterHomeCards(mineCards, projectQuery);
+  const filteredExampleCards = filterHomeCards(exampleCards, projectQuery);
   const systemCards = (systemsQuery.data ?? []).map((system, index) =>
     systemToCard(system, index),
   );
@@ -252,33 +258,60 @@ export default function HomeView() {
           onValueChange={(value) => setActiveTab(value as HomeTab)}
           className="flex flex-1 flex-col"
         >
-          <div className="flex items-center justify-between gap-4 px-8 pb-4 pt-8">
-            <TabsList>
+          <div className="flex items-center justify-between gap-4 px-8 pb-4 pt-8 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:px-4 max-[640px]:pt-4">
+            <TabsList className="max-[640px]:grid max-[640px]:h-auto max-[640px]:w-full max-[640px]:grid-cols-2">
               <TabsTrigger value="recent">Recent</TabsTrigger>
               <TabsTrigger value="mine">Your designs</TabsTrigger>
               <TabsTrigger value="examples">Examples</TabsTrigger>
               <TabsTrigger value="systems">Design systems</TabsTrigger>
             </TabsList>
 
-            <div className="relative max-w-xs w-full">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search" className="pl-8" />
-            </div>
+            {activeTab === "systems" ? null : (
+              <div className="relative w-full max-w-xs max-[640px]:max-w-none">
+                <Search
+                  aria-hidden="true"
+                  className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  type="search"
+                  aria-label="프로젝트 검색"
+                  placeholder="프로젝트 검색"
+                  value={projectQuery}
+                  onChange={(event) => setProjectQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setProjectQuery("");
+                    }
+                  }}
+                  className="pl-8"
+                />
+              </div>
+            )}
           </div>
 
-          <div className="px-8 pb-8">
+          <div className="px-8 pb-8 max-[640px]:px-4">
             <TabsContent value="recent">
-              <CardSection
-                cards={recentCards}
-                emptyText="No recent projects yet."
+              <ProjectCardSection
+                cards={filteredRecentCards}
+                sourceCount={recentCards.length}
+                query={projectQuery}
+                isLoading={recentQuery.isPending}
+                error={recentQuery.error}
+                emptyText="최근 프로젝트가 아직 없습니다."
+                onRetry={() => void recentQuery.refetch()}
                 onDelete={onProjectDelete}
               />
             </TabsContent>
 
             <TabsContent value="mine">
-              <CardSection
-                cards={mineCards}
-                emptyText="No personal projects yet."
+              <ProjectCardSection
+                cards={filteredMineCards}
+                sourceCount={mineCards.length}
+                query={projectQuery}
+                isLoading={mineQuery.isPending}
+                error={mineQuery.error}
+                emptyText="내 프로젝트가 아직 없습니다."
+                onRetry={() => void mineQuery.refetch()}
                 onDelete={onProjectDelete}
               />
             </TabsContent>
@@ -301,9 +334,14 @@ export default function HomeView() {
                     : "Restore samples"}
                 </Button>
               </div>
-              <CardSection
-                cards={exampleCards}
-                emptyText="No template-based examples yet."
+              <ProjectCardSection
+                cards={filteredExampleCards}
+                sourceCount={exampleCards.length}
+                query={projectQuery}
+                isLoading={examplesQuery.isPending}
+                error={examplesQuery.error}
+                emptyText="예제 프로젝트가 아직 없습니다."
+                onRetry={() => void examplesQuery.refetch()}
                 onDelete={onProjectDelete}
               />
             </TabsContent>
@@ -655,36 +693,6 @@ function SystemsSection({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function CardSection({
-  cards,
-  emptyText,
-  onDelete,
-}: {
-  cards: CardViewModel[];
-  emptyText: string;
-  onDelete?: (card: CardViewModel) => void;
-}) {
-  if (cards.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-card/50 p-16 text-center text-sm text-muted-foreground">
-        {emptyText}
-      </div>
-    );
-  }
-
-  return (
-    <CardGrid>
-      {cards.map((card) => (
-        <ProjectCard
-          key={card.id}
-          {...card}
-          onDelete={onDelete ? () => onDelete(card) : undefined}
-        />
-      ))}
-    </CardGrid>
   );
 }
 

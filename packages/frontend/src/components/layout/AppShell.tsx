@@ -11,9 +11,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {!isHome && !isProject && <TopBar />}
-      <div className="flex-1 flex min-h-0">
+      <div className="flex min-h-0 flex-1 max-[900px]:flex-col max-[900px]:overflow-y-auto">
         {isHome && <Sidebar />}
-        <main className="flex-1 min-w-0 flex flex-col">{children}</main>
+        <main className="min-w-0 flex-1 max-[900px]:order-1 flex flex-col">
+          {children}
+        </main>
       </div>
     </div>
   );

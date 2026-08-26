@@ -56,7 +56,7 @@ export default function Sidebar() {
   const systems = systemsQuery.data ?? [];
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-background">
+    <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-background max-[900px]:order-2 max-[900px]:w-full max-[900px]:border-b max-[900px]:border-r-0">
       <header className="p-6 pb-4">
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-md bg-accent/15 text-accent">
