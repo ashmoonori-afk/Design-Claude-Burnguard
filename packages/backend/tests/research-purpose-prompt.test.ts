@@ -42,6 +42,38 @@ describe("research purpose prompt integration", () => {
     expect(researchBlock(await buildPrompt(context(projectType), { type: "user.message", text: request })).routing.purpose).toBe(purpose);
   });
 
+  test.each([
+    ["회사소개서를 만들어 주세요", "deck.company", "company"],
+    ["Create a company profile deck", "deck.company", "company"],
+    ["고객사 제안서 슬라이드를 준비해 줘", "deck.sales", "sales"],
+    ["Create a sales proposal deck", "deck.sales", "sales"],
+    ["분기 실적 보고서를 만들어 줘", "deck.report", "report"],
+    ["Create a quarterly report deck", "deck.report", "report"],
+    ["신입사원 교육 자료를 만들어 줘", "deck.training", "training"],
+    ["Create a training deck", "deck.training", "training"],
+    ["투자 유치 IR 자료를 만들어 줘", "deck.pitch", "pitch"],
+  ])("Given a Korean or English deck request When built Then purpose and intent separate by deck kind", async (request, purpose, intent) => {
+    const block = researchBlock(await buildPrompt(context("slide_deck"), { type: "user.message", text: request }));
+    expect(block.routing.purpose).toBe(purpose);
+    expect(block.routing.request_intent).toBe(intent);
+  });
+
+  test("Given a Korean sales deck request When built Then purpose rules carry catalog ids and explicit confidence", async () => {
+    const block = researchBlock(await buildPrompt(context("slide_deck"), { type: "user.message", text: "영업 제안서 덱을 만들어 줘" }));
+    const purposeRules = block.rules.filter((rule) => rule.id.startsWith("deck.sales:"));
+    expect(purposeRules.map((rule) => rule.id)).toEqual(["deck.sales:1", "deck.sales:2", "deck.sales:3"]);
+    expect(purposeRules.every((rule) => rule.confidence === "medium" && rule.source_ids.length > 0 && rule.authority_class === "research_heuristic")).toBe(true);
+    expect(block.rules.map((rule) => rule.id)).toEqual(expect.arrayContaining(["CR-001", "CR-002", "CR-004", "CR-008"]));
+    expect(block.output_profile).toBe("web");
+  });
+
+  test("Given a Korean training deck for PowerPoint When built Then the purpose and text-first profile hold together", async () => {
+    const block = researchBlock(await buildPrompt(context("slide_deck"), { type: "user.message", text: "사내 교육 자료를 PPTX로 만들어 줘" }));
+    expect(block.routing).toEqual({ project_type: "slide_deck", request_intent: "training", creation_mode: "blank", fallback: "none", purpose: "deck.training" });
+    expect(block.output_profile).toBe("pptx_text_first");
+    expect(block.advice).toContain("pptx_text_first");
+  });
+
   test("Given generic and template requests When built Then fallback remains separate from intent and mode", async () => {
     const generic = researchBlock(await buildPrompt(context(), { type: "user.message", text: "Polish this" }));
     const template = researchBlock(await buildPrompt(context("from_template"), { type: "user.message", text: "Polish this" }));

@@ -16,13 +16,19 @@ Left sidebar (fixed 360 px) + main grid (rest of viewport).
 - Type tabs: Prototype / Slide deck / From template / Other (each opens the "New project" panel)
 - On tab click, a "New {type}" panel slides in:
   - `Input` Project name (required)
-  - `Select` Design system dropdown (lists published DSs only)
+  - `Select` Design system dropdown (lists published DSs only; optional for ordinary projects)
+  - Korean design brief fields: audience, objective, content source, visual mood, density, and output size
   - Type-specific toggles:
     - Slide deck: "Use speaker notes"
-    - From template: "Copy template as-is" checkbox
-  - `Button` Create (primary CTA, disabled until name is filled)
+    - From template: "Copy template as-is" checkbox and an explicit published design-system source
+  - `Button` Create (primary CTA, disabled until name, audience, objective, and any required template source are valid)
   - Caption: "Only you can see your project by default"
 - Bottom: user email/name + `Docs` link + user avatar
+
+Template creation accepts any published design system as its source because a
+real install does not seed separate template-marked rows. Draft and review
+systems never become an implicit project brand, and the UI never selects a
+system on the user's behalf.
 
 **Main grid**
 - Top tabs: `Recent` · `Your designs` · `Examples` · `Design systems`
@@ -61,7 +67,7 @@ Three panels: Chat (left 360 px) + Canvas+Tabs (flex) + Mode Panel (right 320 px
 - Active tab: underline emphasis
 
 #### ChatPane (left)
-- Top: `Chat` · `Comments` tabs (Comments becomes live in Phase 2)
+- Top: `Chat` · `Comments` tabs. Comments explains how to activate the canvas `Comment` mode and place a pin.
 - Stream area: events rendered top-down in chronological order
   - `agent.message` block: markdown rendering
   - `agent.thinking`: gray inline text, wrapped in `<pre-response-think>`, collapsible
@@ -71,10 +77,10 @@ Three panels: Chat (left 360 px) + Canvas+Tabs (flex) + Mode Panel (right 320 px
   - `usage.delta`: cumulative totals in a footer strip
 - Bottom composer:
   - Multiline textarea with placeholder "Describe what you want to create..."
-  - Top-right icons: Settings ⚙, Attach 📎, Voice 🎤 (Phase 2+)
-  - `Import` button (bring in an existing folder/file)
+  - Settings control opens the real Settings dialog
+  - `자료 첨부` opens the bounded file attachment input
   - `Send` button (primary, Enter to send)
-  - File drop zone: dashed border around composer. Text: "DROP FILES HERE — Images, docs, references, Figma links, or folders"
+  - No separate Import control; attachments use the same validated upload path
 
 #### Canvas (center)
 - Default state: blank white background + placeholder "Describe your idea to get started"

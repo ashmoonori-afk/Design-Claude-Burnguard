@@ -1,19 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { BackendId, SettingsSummary } from "@bg/shared";
+import type { ProjectType, SettingsSummary } from "@bg/shared";
 import { Palette } from "lucide-react";
 import { getSettings, listDesignSystems } from "@/api/home";
-import NewProjectPanel, {
-  type ProjectType,
-} from "@/components/home/NewProjectPanel";
+import NewProjectPanel from "@/components/home/NewProjectPanel";
 import { Badge } from "@/components/ui/badge";
+import { useUIStore } from "@/state/uiStore";
 
 const TYPES: Array<{ id: ProjectType; label: string }> = [
-  { id: "prototype", label: "Prototype" },
-  { id: "slide_deck", label: "Slide deck" },
-  { id: "from_template", label: "From template" },
-  { id: "other", label: "Other" },
+  { id: "prototype", label: "프로토타입" },
+  { id: "slide_deck", label: "슬라이드 덱" },
+  { id: "from_template", label: "템플릿" },
+  { id: "other", label: "기타" },
 ];
 
 const FALLBACK_SETTINGS: SettingsSummary = {
@@ -28,16 +27,17 @@ const FALLBACK_SETTINGS: SettingsSummary = {
 
 export default function Sidebar() {
   const navigate = useNavigate();
+  const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const [activeType, setActiveType] = useState<ProjectType>("slide_deck");
 
   const settingsQuery = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
   });
-  // Match HomeView's systems tab so a freshly extracted design system
-  // (P4.1 creates rows in `draft`) can be picked for a brand-new project.
-  // Shares the react-query cache key with HomeView so both views dedupe
-  // into a single fetch while the user navigates between them.
+  // Shares HomeView's cache key so both views dedupe into a single
+  // fetch. The full list is passed down as-is; NewProjectPanel decides
+  // what is actually selectable (published only) so a half-finished
+  // draft system can never become a new project's brand.
   const systemsQuery = useQuery({
     queryKey: ["design-systems", "all"],
     queryFn: async () => {
@@ -73,7 +73,7 @@ export default function Sidebar() {
               >
                 Local
               </Badge>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-[11px] text-foreground/70">
                 v{settings.app_version}
               </span>
             </div>
@@ -90,7 +90,7 @@ export default function Sidebar() {
               "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               activeType === t.id
                 ? "border-foreground text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
+                : "border-transparent text-foreground/70 hover:text-foreground",
             ].join(" ")}
           >
             {t.label}
@@ -102,31 +102,26 @@ export default function Sidebar() {
         <NewProjectPanel
           type={activeType}
           designSystems={systems}
-          defaultBackend={settings.default_backend as BackendId}
+          defaultBackend={settings.default_backend}
           onCreated={(project) => navigate(`/projects/${project.id}`)}
         />
       </div>
 
       <footer className="border-t border-border p-4">
-        <div className="text-xs text-muted-foreground">
-          Signed in as{" "}
+        <div className="text-xs text-foreground/70">
+          사용자{" "}
           <span className="text-foreground">
             {settings.user.display_name}
           </span>
         </div>
         <div className="mt-1 flex items-center gap-3">
-          <a
-            href="#"
-            className="text-xs text-muted-foreground hover:text-foreground"
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="text-xs text-foreground/70 hover:text-foreground"
           >
-            Docs
-          </a>
-          <a
-            href="/settings"
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            Settings
-          </a>
+            설정
+          </button>
         </div>
       </footer>
     </aside>

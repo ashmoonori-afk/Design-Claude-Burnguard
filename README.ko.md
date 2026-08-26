@@ -53,7 +53,7 @@ Bun 모노레포이고, 워크스페이스 패키지 셋에 스크립트가 붙�
 ## 한 턴의 전체 흐름
 
 1. 채팅 창에 메시지를 보냅니다. 백엔드가 사용자 이벤트를 기록하고 프로젝트 트리를 체크포인트로 스냅샷합니다.
-2. `packages/backend/src/harness/prompt-builder.ts`가 프롬프트를 결정적으로 조립합니다. 프로젝트 정보, 프로젝트 타입 skill, 디자인 시스템 토큰, 열려 있는 코멘트 핀, 첨부 요약, 필요 시 엔트리포인트 구조 맵, 그리고 `<burnguard-research-context-v1>` 블록입니다.
+2. `packages/backend/src/harness/prompt-builder.ts`가 프롬프트를 결정적으로 조립합니다. 프로젝트 정보, 프로젝트 타입 skill, 버전이 붙은 디자인 브리프, 디자인 시스템 토큰, 열려 있는 코멘트 핀, 첨부 요약, 필요 시 reference-layout 계약과 엔트리포인트 구조 맵, 그리고 `<burnguard-research-context-v1>` 블록입니다.
 3. 어댑터(`adapters/claude-code` 또는 `adapters/codex`)가 CLI를 실행해 stdout을 스트리밍하고, 채팅 델타 / 툴 시작·종료 / 파일 변경 / 사용량 / 상태 같은 타입 이벤트로 정규화합니다.
 4. 이벤트는 SQLite에 순번과 함께 기록되고 SSE(`GET /api/sessions/:id/stream`)로 전달됩니다. 감시 중인 파일이 바뀌면 캔버스 iframe이 다시 로드됩니다.
 5. 캔버스에서 검토하고, 코멘트 핀을 찍고, GUI로 요소를 패치하고, 턴을 되돌리거나 export합니다.
@@ -75,11 +75,13 @@ Bun 모노레포이고, 워크스페이스 패키지 셋에 스크립트가 붙�
 - **공통 규칙**(`common-rules.json`, 15개 `CR-***`)은 재사용 가능하며 원장 ID를 인용합니다. 각 규칙은 `authority_class`를 선언합니다.
   - `normative_web_constraint`는 WCAG 자료를 재서술합니다. 한계 필드가 기준 레벨, 범위, 예외를 보존합니다. 그 단서를 떼어내 규칙을 더 강하게 만들면 안 됩니다.
   - `sampled_system_guidance`는 공개 디자인 시스템의 한정된 표본에서 반복되는 내용을 종합한 것입니다. 반복은 지침을 뒷받침할 뿐 보편 법칙이 아닙니다. 구체적인 간격 값, 그리드, 폰트, 색, 브레이크포인트, radius, 벤더 토큰 이름은 시스템 고유로 남습니다.
-- **목적 참조 세트**(`purpose-references.json`)는 여섯 개의 선택자 레코드입니다. `deck.pitch`, `prototype.dashboard`, `prototype.diagram`, `prototype.editorial`, `prototype.landing`, `prototype.sandbox`. purpose는 네 개 축(`project_type`, `request_intent`, `creation_mode`, `fallback`) 위의 선택자이지 새 프로젝트 타입이 아닙니다. 각 purpose는 고유 guidance, 끌어오는 공통 규칙, 인용, 신뢰도, 한계를 갖습니다. `deck.pitch`가 medium 신뢰도인 건 의도적입니다. 출처가 뒷받침하는 건 주의 집중과 접근 가능한 전달이지, 보편적인 투자 피치 서사가 아닙니다.
+- **목적 참조 세트**(`purpose-references.json`)는 열 개의 prompt 선택자 레코드입니다. `deck.company`, `deck.pitch`, `deck.report`, `deck.sales`, `deck.training`, `prototype.dashboard`, `prototype.diagram`, `prototype.editorial`, `prototype.landing`, `prototype.sandbox`. purpose는 네 개 축(`project_type`, `request_intent`, `creation_mode`, `fallback`) 위의 선택자이지 새 프로젝트 타입이 아닙니다. 각 purpose는 고유 guidance, 끌어오는 공통 규칙, 인용, 신뢰도, 한계를 갖습니다. deck 레코드는 medium 신뢰도입니다. 출처가 뒷받침하는 건 범위가 있는 전달 원칙이지 각 deck 종류의 보편 서사가 아닙니다.
 
 두 등급이 함께 적용되면 규범적 제약이 이깁니다. 표본 기반 지침은 구현 패턴을 고를 수는 있어도 규범적 제약을 약화시킬 수 없습니다. 요청이 어떤 선택자와도 맞지 않으면 공통 베이스라인(`CR-001`~`CR-005`, `CR-008`, `CR-009`)으로 폴백하고 `request_intent: "unspecified"`로 보고합니다.
 
-카탈로그 로더(`services/research-catalog.ts`)는 엄격합니다. 알 수 없는 키, 잘못된 schema version, https가 아닌 URL, 형식에 맞지 않는 ID, 정렬되지 않거나 중복된 ID, 해소되지 않는 인용, 지원되는 여섯 purpose와 정확히 일치하지 않는 집합을 모두 거부합니다.
+카탈로그 로더(`services/research-catalog.ts`)는 엄격합니다. 알 수 없는 키, 잘못된 schema version, https가 아닌 URL, 형식에 맞지 않는 ID, 정렬되지 않거나 중복된 ID, 해소되지 않는 인용, 지원되는 열 개 prompt purpose와 정확히 일치하지 않는 집합을 모두 거부합니다.
+
+영속화되는 대량 리서치 계약은 더 좁습니다. 다섯 prototype purpose와 `deck.pitch`만 허용합니다. 새로 추가된 네 deck 선택자는 prompt catalog 전용이며 영속 리서치 결과의 purpose로는 허용되지 않습니다.
 
 ### 우선순위와 오버라이드
 
@@ -106,7 +108,7 @@ Bun 모노레포이고, 워크스페이스 패키지 셋에 스크립트가 붙�
 | `max_sources` | 1 ~ 200 |
 | `max_bytes_per_source` | 1 ~ 10000000 |
 
-`purposes`는 정렬되고 중복이 없어야 하며 지원되는 여섯 purpose에서만 골라야 합니다. `mode`는 `fixture` 또는 `live`이고, `fixture_id`는 fixture 모드일 때만 존재해야 합니다. live 모드에서는 모든 출처가 `web` 또는 `repository` 종류의 `https` URL이어야 하고 자격 증명이 URL에 포함되면 안 됩니다.
+`purposes`는 정렬되고 중복이 없어야 하며 지원되는 여섯 persisted-research purpose에서만 골라야 합니다. `mode`는 `fixture` 또는 `live`이고, `fixture_id`는 fixture 모드일 때만 존재해야 합니다. live 모드에서는 모든 출처가 `web` 또는 `repository` 종류의 `https` URL이어야 하고 자격 증명이 URL에 포함되면 안 됩니다.
 
 ### 라우트
 
@@ -261,14 +263,14 @@ bun test                                           # 전체 스위트
 bun test packages/backend/tests/research-catalog.test.ts   # 카탈로그 검증기 단독
 ```
 
-리서치 관련 아홉 개 스위트(`research-catalog`, `research-contract`, `research-repository`, `research-migration`, `research-orchestrator`, `research-recovery`, `research-routes`, `research-selection`, `research-purpose-prompt`)는 60개 테스트를 실행하고 함께 통과합니다. 전체 스위트는 70개 파일, 645개 테스트입니다. `bun run build:frontend`를 먼저 돌리지 않으면 번들이 없어 정적 서빙 테스트가 실패합니다. QA 하네스 manifest 케이스는 추가로 저장소와 증거 상태에 의존하므로 작업 트리가 지저분하면 실패할 수 있습니다.
+리서치 스위트는 catalog 검증, 계약, repository, migration, orchestration, recovery, route, selection, prompt routing을 다룹니다. `bun run build:frontend`를 먼저 돌리지 않으면 번들이 없어 정적 서빙 테스트가 실패합니다. QA 하네스 manifest 케이스는 추가로 저장소, branch, 증거 상태에 의존합니다.
 
 ## 한계
 
 - **임의 HTML 리서치 파싱은 없습니다.** 라이브 리서치 출처는 문서화된 claim 형태의 구조화 JSON이어야 합니다. 웹 페이지를 긁어서 디자인 규칙을 만들지 않습니다. HTML / CSS에서 디자인 시스템을 추출하는 건 별도 계약을 가진 다른 하위 시스템입니다.
 - **리서치 UI가 없습니다.** run을 시작하거나 관찰하거나 탐색하는 화면이 없습니다. API나 QA CLI를 쓰세요.
 - **run 결과는 아직 프롬프트로 들어가지 않습니다.** 턴마다 주입되는 리서치 블록은 저장소에 포함된 카탈로그에서 만들어집니다. 영속화된 run 결과를 purpose에 맞춰 선택하는 기능(`selectResearchPromptContext`)은 구현되고 테스트되어 있지만, 프롬프트 빌더가 아직 사용하지 않습니다.
-- **카탈로그는 한정적입니다.** 출처 45개, 공통 규칙 15개, purpose 6개이고 모두 한 날짜에 수집되었습니다. 규칙에 한계가 붙어 있는 데는 이유가 있습니다. 보편 법칙처럼 쓰기 전에 읽으세요.
+- **카탈로그는 한정적입니다.** 출처 45개, 공통 규칙 15개, prompt purpose 10개, persisted-research purpose 6개이고 모두 한 날짜에 수집되었습니다. 규칙에 한계가 붙어 있는 데는 이유가 있습니다. 보편 법칙처럼 쓰기 전에 읽으세요.
 - **표본 기반 지침은 법이 아닙니다.** 표본 시스템의 수치, 그리드, 벤더 토큰 이름은 그 시스템 고유로 남습니다.
 - **PDF / PPTX export에는 Chromium이 필요합니다.** 렌더링은 `playwright-core`를 거치며 번들 Chromium을 실행하고, 안 되면 설치된 Chrome이나 Edge 채널로 폴백합니다. 셋 다 없으면 해당 export 작업은 Chromium 안내와 함께 실패합니다.
 - **PDF / PPTX 인제스트에는 Python이 필요합니다.** 해당 형식의 디자인 시스템 업로드와 채팅 첨부는 `pypdf` 기반 Python 추출기를 거칩니다.

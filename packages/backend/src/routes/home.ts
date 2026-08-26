@@ -4,7 +4,6 @@ import type {
   ApiMeta,
   ApiSuccess,
   BackendDetectionResult,
-  CreateProjectRequest,
   DesignSystemStatus,
   SettingsSummary,
 } from "@bg/shared";
@@ -18,6 +17,10 @@ import {
 import { getPromptSampleBySlug, seedTutorialsOnce } from "../db/seed-tutorials";
 import { detectBackends } from "../services/backends";
 import { ensureProjectWatcher } from "../services/watchers";
+import {
+  parseProjectInput,
+  ProjectInputError,
+} from "./home-project-input";
 
 const VALID_PROJECT_TABS = new Set(["recent", "mine", "examples"]);
 const VALID_SYSTEM_STATUSES = new Set<DesignSystemStatus>([
@@ -48,16 +51,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isProjectType(value: unknown): value is CreateProjectRequest["type"] {
-  return (
-    value === "prototype" ||
-    value === "slide_deck" ||
-    value === "from_template" ||
-    value === "other"
-  );
-}
-
-function isBackendId(value: unknown): value is CreateProjectRequest["backend_id"] {
+function isBackendId(
+  value: unknown,
+): value is SettingsSummary["default_backend"] {
   return value === "claude-code" || value === "codex";
 }
 
@@ -121,40 +117,23 @@ homeRoutes.get("/api/design-systems", async (c) => {
 
 homeRoutes.post("/api/projects", async (c) => {
   const body = await c.req.json<unknown>().catch(() => null);
-  if (!isRecord(body)) {
-    return c.json(fail("invalid_body", "Expected a JSON object request body"), 400);
-  }
-
-  const { name, type, design_system_id, backend_id } = body;
-  if (typeof name !== "string" || name.trim().length === 0) {
-    return c.json(
-      fail("invalid_name", "Project name is required", { name }),
-      400,
-    );
-  }
-  if (!isProjectType(type)) {
-    return c.json(fail("invalid_type", "Unsupported project type", { type }), 400);
-  }
-  if (!(design_system_id === null || typeof design_system_id === "string")) {
-    return c.json(
-      fail("invalid_design_system", "design_system_id must be string or null"),
-      400,
-    );
-  }
-  if (!isBackendId(backend_id)) {
-    return c.json(
-      fail("invalid_backend", "Unsupported backend id", { backend_id }),
-      400,
-    );
+  let input: ReturnType<typeof parseProjectInput>;
+  try {
+    input = parseProjectInput(body);
+  } catch (error) {
+    if (error instanceof ProjectInputError) {
+      return c.json(fail(error.code, error.message, error.details), 400);
+    }
+    throw error;
   }
 
   const response = await createProjectRecord({
-    name: name.trim(),
-    type,
-    designSystemId: design_system_id,
-    backendId: backend_id,
-    optionsJson: body.options ? JSON.stringify(body.options) : null,
-    entrypoint: type === "slide_deck" ? "deck.html" : "index.html",
+    name: input.name,
+    type: input.type,
+    designSystemId: input.designSystemId,
+    backendId: input.backendId,
+    optionsJson: input.optionsJson,
+    entrypoint: input.entrypoint,
     thumbnailPath: null,
   });
   await ensureProjectWatcher(response.id);

@@ -20,10 +20,10 @@ export const DECK_SKILL_MD = `# Slide deck authoring conventions
 - Each slide is a top-level \`<section data-slide data-layout="<archetype>">\`
   directly inside \`<body>\`. No wrapper divs.
 - Reuse template classes (\`deck-slide\`, \`deck-cover\`, \`deck-closing\`).
-- Default pitch deck is 15 slides: cover → problem → why now → solution →
-  product → how-it-works → market (TAM/SAM/SOM) → business model →
-  traction → competition → go-to-market → team → financials/roadmap →
-  ask → closing. Deviate only if the user asks.
+- Select the narrative from the machine-readable research purpose and
+  \`<burnguard-design-brief-v1>\` objective: company, sales, report, training,
+  or pitch. If no purpose is resolved, use a neutral objective-led outline;
+  never silently default to an investor pitch.
 
 ## Per-slide content rules (strict)
 

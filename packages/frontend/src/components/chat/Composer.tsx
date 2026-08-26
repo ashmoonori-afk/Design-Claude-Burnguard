@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Import, Paperclip, Send, Settings2, StopCircle } from "lucide-react";
+import { Paperclip, Send, Settings2, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useUIStore } from "@/state/uiStore";
 import { cn } from "@/lib/utils";
 
 const IDLE_PLACEHOLDER =
@@ -10,15 +11,15 @@ const IDLE_PLACEHOLDER =
 // while the turn is running turns the wait into a tiny loop of "the
 // app is alive" signals instead of a blank disabled textarea.
 const WAITING_PLACEHOLDERS = [
-  "로컬 CLI 워밍업 중... ☕",
+  "로컬 CLI 워밍업 중...",
   "Claude가 키보드를 두드리는 중...",
-  "토큰을 한 장 한 장 세는 중... 📜",
+  "토큰을 한 장 한 장 세는 중...",
   "GPU가 기어를 올리는 소리가 들려요...",
-  "deck에 잉크를 바르는 중... 🎨",
+  "덱에 잉크를 바르는 중...",
   "프롬프트를 천천히 음미하는 중...",
   "로컬이라 좀 느립니다. 딴짓해도 돼요.",
-  "당신의 문장을 조립 중... 🧱",
-  "Claude가 스크롤을 읽는 중... 📚",
+  "당신의 문장을 조립 중...",
+  "Claude가 스크롤을 읽는 중...",
   "그림의 남은 한 조각을 찾는 중...",
 ];
 const WAITING_INTERVAL_MS = 2400;
@@ -51,6 +52,7 @@ export default function Composer({
    */
   initialText?: string;
 }) {
+  const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const [text, setText] = useState(initialText);
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -108,9 +110,11 @@ export default function Composer({
               key={i}
               className="inline-flex items-center gap-1 rounded bg-muted text-muted-foreground text-[11px] px-2 py-1"
             >
-              📎 <span className="max-w-[120px] truncate">{f.name}</span>
+              <Paperclip className="h-3 w-3" />
+              <span className="max-w-[120px] truncate">{f.name}</span>
               <button
                 className="ml-0.5 text-muted-foreground hover:text-foreground"
+                title={`${f.name} 첨부 취소`}
                 onClick={() =>
                   setFiles((prev) => prev.filter((_, j) => j !== i))
                 }
@@ -153,29 +157,20 @@ export default function Composer({
           variant="ghost"
           size="icon"
           className="h-7 w-7 text-muted-foreground"
-          title="Settings"
-          disabled={disabled}
+          title="설정 열기"
+          onClick={() => setSettingsOpen(true)}
         >
           <Settings2 className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground"
-          title="Attach files"
-          disabled={disabled}
-          onClick={() => fileInput.current?.click()}
-        >
-          <Paperclip className="h-3.5 w-3.5" />
         </Button>
         <Button
           variant="outline"
           size="sm"
           className="h-7 gap-1 text-xs"
-          title="Import a folder"
+          title="참고할 파일을 첨부합니다"
           disabled={disabled}
+          onClick={() => fileInput.current?.click()}
         >
-          <Import className="h-3.5 w-3.5" /> Import
+          <Paperclip className="h-3.5 w-3.5" /> 자료 첨부
         </Button>
         <div className="flex-1" />
         {disabled && canInterrupt ? (
@@ -185,10 +180,10 @@ export default function Composer({
             className="h-7 gap-1 text-xs"
             disabled={interruptPending || !onInterrupt}
             onClick={() => onInterrupt?.()}
-            title="Interrupt the running turn"
+            title="진행 중인 작업을 중단합니다"
           >
             <StopCircle className="h-3.5 w-3.5" />
-            {interruptPending ? "Stopping…" : "Stop"}
+            {interruptPending ? "중단하는 중..." : "중단"}
           </Button>
         ) : (
           <Button
@@ -197,15 +192,15 @@ export default function Composer({
             className="h-7 gap-1 text-xs"
             disabled={!canSend}
             onClick={send}
-            title="Send (Cmd/Ctrl+Enter)"
+            title="보내기 (Cmd/Ctrl+Enter)"
           >
-            <Send className="h-3.5 w-3.5" /> Send
+            <Send className="h-3.5 w-3.5" /> 보내기
           </Button>
         )}
       </div>
 
-      <p className="mt-1.5 text-[10px] text-muted-foreground text-center">
-        Drop files, docs, or Figma links to attach.
+      <p className="mt-1.5 text-center text-[10px] leading-relaxed text-foreground/80">
+        파일을 여기로 끌어다 놓거나 자료 첨부로 올릴 수 있어요.
       </p>
     </div>
   );

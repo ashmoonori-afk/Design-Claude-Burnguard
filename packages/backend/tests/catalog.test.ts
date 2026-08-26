@@ -109,6 +109,8 @@ describe("production API route registration", () => {
       ["/api/sessions/id", "GET", "session"],
       ["/api/runtime", "GET", "runtime"],
       ["/api/settings", "GET", "home"],
+      ["/api/settings/playwright", "GET", "settings"],
+      ["/api/settings/python", "GET", "settings"],
       ["/api/unknown", "GET", "not-found"],
     ] as const;
 

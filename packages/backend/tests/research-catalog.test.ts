@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 
 const DATA_ROOT = new URL("../src/research-data/", import.meta.url);
 const PURPOSE_IDS = [
+  "deck.company",
   "deck.pitch",
+  "deck.report",
+  "deck.sales",
+  "deck.training",
   "prototype.dashboard",
   "prototype.diagram",
   "prototype.editorial",
@@ -130,6 +134,24 @@ describe("research catalog artifacts", () => {
       expectSortedUniqueTexts(ruleIds);
       expect(citations.every((id) => sourceIds.has(id))).toBe(true);
       expect(ruleIds.every((id) => commonRuleIds.has(id))).toBe(true);
+    }
+  });
+
+  test("Given deck purposes When validated Then each deck kind is separately axed at bounded confidence", async () => {
+    // Given
+    const catalogValue = await catalog("purpose-references.json");
+
+    // When
+    const deckPurposes = records(catalogValue["purposes"]).filter((purpose) => text(purpose["id"]).startsWith("deck."));
+
+    // Then
+    expect(deckPurposes.map((purpose) => text(purpose["id"]))).toEqual(["deck.company", "deck.pitch", "deck.report", "deck.sales", "deck.training"]);
+    expect(deckPurposes.map((purpose) => text(record(purpose["axes"])["request_intent"]))).toEqual(["company", "pitch", "report", "sales", "training"]);
+    for (const purpose of deckPurposes) {
+      expect(text(record(purpose["axes"])["project_type"])).toBe("slide_deck");
+      expect(text(purpose["confidence"])).toBe("medium");
+      expect(texts(purpose["guidance"]).length).toBeGreaterThanOrEqual(3);
+      expect(text(purpose["limitations"]).length).toBeGreaterThan(0);
     }
   });
 });

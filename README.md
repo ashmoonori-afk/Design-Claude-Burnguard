@@ -53,7 +53,7 @@ Data on disk:
 ## End-to-end flow of one turn
 
 1. You send a message in the chat pane. The backend records the user event and snapshots the project tree as a checkpoint.
-2. `packages/backend/src/harness/prompt-builder.ts` assembles the prompt deterministically: project facts, the project-type skill, design-system tokens, open comment pins, attachment summaries, an optional structural map of the entrypoint, and a `<burnguard-research-context-v1>` block.
+2. `packages/backend/src/harness/prompt-builder.ts` assembles the prompt deterministically: project facts, the project-type skill, the versioned design brief, design-system tokens, open comment pins, attachment summaries, an optional reference-layout contract, an optional structural map of the entrypoint, and a `<burnguard-research-context-v1>` block.
 3. The adapter (`adapters/claude-code` or `adapters/codex`) spawns the CLI, streams stdout, and normalizes it into typed events: chat deltas, tool start and end, file changes, usage, status.
 4. Events are sequenced into SQLite and fanned out over SSE (`GET /api/sessions/:id/stream`). The canvas iframe reloads when watched files change.
 5. You review on canvas, drop comment pins, patch elements through the GUI, revert the turn, or export.
@@ -75,11 +75,13 @@ Two different things, deliberately kept apart.
 - **Common rules** (`common-rules.json`, 15 `CR-***` records) are reusable and cite ledger IDs. Each declares an `authority_class`:
   - `normative_web_constraint` paraphrases WCAG material. Limitations preserve criterion level, scope, and exceptions. A rule must not be strengthened by dropping those qualifications.
   - `sampled_system_guidance` synthesizes what recurs across a bounded sample of public design systems. Recurrence supports guidance, not universal law. Exact spacing values, grids, fonts, colors, breakpoints, radii, and vendor token names stay system-specific.
-- **Purpose references** (`purpose-references.json`) are six selector records: `deck.pitch`, `prototype.dashboard`, `prototype.diagram`, `prototype.editorial`, `prototype.landing`, `prototype.sandbox`. A purpose is a selector over four axes (`project_type`, `request_intent`, `creation_mode`, `fallback`), never a new project type. Each purpose lists its own guidance, the common rules it pulls in, its citations, a confidence level, and its limitations. `deck.pitch` is medium confidence on purpose: the sources support attention and accessible delivery, not a universal investor-pitch narrative.
+- **Purpose references** (`purpose-references.json`) are ten prompt selector records: `deck.company`, `deck.pitch`, `deck.report`, `deck.sales`, `deck.training`, `prototype.dashboard`, `prototype.diagram`, `prototype.editorial`, `prototype.landing`, and `prototype.sandbox`. A purpose is a selector over four axes (`project_type`, `request_intent`, `creation_mode`, `fallback`), never a new project type. Each purpose lists its own guidance, the common rules it pulls in, its citations, a confidence level, and its limitations. The deck records are medium confidence on purpose: the sources support bounded communication principles, not a universal narrative for any deck kind.
 
 Normative constraints win when both classes apply. Sampled guidance may pick an implementation pattern; it cannot weaken a normative constraint. When a request matches no selector, routing falls back to the common baseline (`CR-001` through `CR-005`, `CR-008`, `CR-009`) and reports `request_intent: "unspecified"`.
 
-The catalog loader (`services/research-catalog.ts`) is strict. It rejects unknown keys, wrong schema versions, non-https URLs, malformed IDs, unsorted or duplicated IDs, unresolved citations, and any purpose set that is not exactly the six supported IDs.
+The catalog loader (`services/research-catalog.ts`) is strict. It rejects unknown keys, wrong schema versions, non-https URLs, malformed IDs, unsorted or duplicated IDs, unresolved citations, and any purpose set that is not exactly the ten supported prompt IDs.
+
+The persisted mass-research contract remains narrower: it accepts the five prototype purposes plus `deck.pitch`. The four added deck selectors are prompt-catalog purposes only and are not accepted as persisted research-result purposes.
 
 ### Precedence and overrides
 
@@ -106,7 +108,7 @@ Beyond the shipped catalog, the backend can run a bounded research job against s
 | `max_sources` | 1 to 200 |
 | `max_bytes_per_source` | 1 to 10000000 |
 
-`purposes` must be sorted, unique, and drawn from the six supported purposes. `mode` is `fixture` or `live`, and `fixture_id` must be present exactly when the mode is `fixture`. In live mode every source must be an `https` URL of kind `web` or `repository`, with no embedded credentials.
+`purposes` must be sorted, unique, and drawn from the six persisted-research purposes. `mode` is `fixture` or `live`, and `fixture_id` must be present exactly when the mode is `fixture`. In live mode every source must be an `https` URL of kind `web` or `repository`, with no embedded credentials.
 
 ### Routes
 
@@ -261,14 +263,14 @@ bun test                                           # whole suite
 bun test packages/backend/tests/research-catalog.test.ts   # catalog validator alone
 ```
 
-The nine research suites (`research-catalog`, `research-contract`, `research-repository`, `research-migration`, `research-orchestrator`, `research-recovery`, `research-routes`, `research-selection`, `research-purpose-prompt`) run 60 tests and pass together. The full suite is 645 tests across 70 files. Run `bun run build:frontend` first, otherwise the static-serving tests fail on a missing bundle; the QA harness manifest cases additionally depend on repository and evidence preconditions and can fail in a dirty working tree.
+The research suites cover catalog validation, contracts, repositories, migrations, orchestration, recovery, routes, selection, and prompt routing. Run `bun run build:frontend` first, otherwise the static-serving tests fail on a missing bundle; the QA harness manifest cases additionally depend on repository, branch, and evidence preconditions.
 
 ## Limitations
 
 - **No arbitrary HTML research parsing.** A live research source must be structured JSON in the documented claim shape. BurnGuard will not scrape a web page for design rules. Design-system extraction from HTML and CSS is a separate subsystem with its own contract.
 - **No research UI.** There is no screen for starting, watching, or browsing research runs. Use the API or the QA CLI.
 - **Run results do not feed the prompt yet.** The per-turn research block is built from the shipped catalog. The machinery to select a persisted run result for a purpose exists and is tested (`selectResearchPromptContext`), but the prompt builder does not consume it today.
-- **The catalog is bounded.** 45 sources, 15 common rules, six purposes, all retrieved on a single date. Rules carry limitations for a reason; read them before treating one as universal.
+- **The catalog is bounded.** 45 sources, 15 common rules, ten prompt purposes, and six persisted-research purposes, all retrieved on a single date. Rules carry limitations for a reason; read them before treating one as universal.
 - **Sampled guidance is not law.** Values, grids, and vendor token names from the sampled systems stay system-specific.
 - **PDF and PPTX export need Chromium.** Rendering goes through `playwright-core`, which launches bundled Chromium and falls back to installed Chrome or Edge channels. Without one of those, those export jobs fail with a Chromium hint.
 - **PDF and PPTX ingest need Python.** Design-system uploads and chat attachments of those types go through a Python extractor with `pypdf`.

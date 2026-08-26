@@ -109,7 +109,7 @@ CREATE TABLE projects (
   entrypoint        TEXT NOT NULL DEFAULT 'index.html',
   thumbnail_path    TEXT,
   backend_id        TEXT NOT NULL,                   -- 'claude-code' | 'codex'
-  options_json      TEXT,                            -- Type-specific (slide_deck: {useSpeakerNotes: bool})
+  options_json      TEXT,                            -- Versioned project options; see below
   archived_at       INTEGER,
   created_at        INTEGER NOT NULL,
   updated_at        INTEGER NOT NULL
@@ -118,6 +118,20 @@ CREATE TABLE projects (
 CREATE INDEX idx_projects_updated ON projects(updated_at DESC);
 CREATE INDEX idx_projects_ds ON projects(design_system_id);
 ```
+
+`options_json` stores snake-case project options. The current object may contain
+`use_speaker_notes` for slide decks, `copy_as_is` for template-based projects,
+and a versioned `design_brief` with output type, audience, objective, content
+source, locale, brand mode, visual mood, density, and output size. The HTTP
+boundary rejects unknown keys and malformed brief fields before persistence;
+readers treat malformed legacy JSON as absent options rather than injecting a
+partial brief into an agent prompt.
+
+Reference-layout context is not stored in this column. It is derived
+deterministically per turn from the request and selected attachment metadata,
+then injected as `ReferenceLayoutContextV1`. The agent is instructed to
+materialize `layout-spec.json`; immutable-underlay behavior is a prompt/runtime
+contract, not a filesystem write lock.
 
 ### 2.4 `sessions`
 
