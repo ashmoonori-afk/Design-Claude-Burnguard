@@ -72,10 +72,33 @@ describe("selectableDesignSystems", () => {
     }
   });
 
-  test("offers only published templates to template projects", () => {
+  test("offers every published system to template projects", () => {
     expect(
       selectableDesignSystems(SYSTEMS, "from_template").map((s) => s.id),
-    ).toEqual(["published-template"]);
+    ).toEqual(["published-system", "published-template"]);
+  });
+
+  test("keeps template creation usable when real published systems have no template flag", () => {
+    const realInstallSystems = [
+      system("draft-system", "draft", false),
+      system("published-system", "published", false),
+    ];
+
+    expect(
+      selectableDesignSystems(realInstallSystems, "from_template").map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["published-system"]);
+    expect(
+      buildCreateProjectRequest(
+        draft({
+          type: "from_template",
+          designSystemId: "published-system",
+          copyAsIs: true,
+        }),
+        realInstallSystems,
+      ).ok,
+    ).toBe(true);
   });
 });
 
@@ -118,7 +141,7 @@ describe("buildCreateProjectRequest", () => {
     ).toEqual({ ok: false, problem: "design_system_not_selectable" });
   });
 
-  test("requires an explicit published template for template projects", () => {
+  test("requires an explicit published system for template projects", () => {
     expect(
       buildCreateProjectRequest(draft({ type: "from_template" }), SYSTEMS),
     ).toEqual({ ok: false, problem: "design_system_required" });
@@ -133,7 +156,10 @@ describe("buildCreateProjectRequest", () => {
         draft({ type: "from_template", designSystemId: "published-system" }),
         SYSTEMS,
       ),
-    ).toEqual({ ok: false, problem: "design_system_not_selectable" });
+    ).toMatchObject({
+      ok: true,
+      request: { design_system_id: "published-system" },
+    });
   });
 
   test("carries copy_as_is only for template projects", () => {

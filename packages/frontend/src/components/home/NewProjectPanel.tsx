@@ -144,7 +144,7 @@ export default function NewProjectPanel({
 
         <p className="text-[11px] leading-relaxed text-foreground/80">
           {isTemplate
-            ? "게시된 템플릿만 고를 수 있어요."
+            ? "게시된 디자인 시스템을 템플릿으로 사용할 수 있어요."
             : "게시된 디자인 시스템만 목록에 나와요. 없이도 시작할 수 있어요."}
         </p>
 

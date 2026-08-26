@@ -111,9 +111,9 @@ export const PROBLEM_MESSAGE: Record<DraftProblem, string> = {
 
 /**
  * Design systems the user may pick for `type`. Template projects can
- * only start from a published template; every other project type can
- * only use a published non-template system, so a half-finished draft
- * never silently becomes a project's brand.
+ * start from any published system because real installs do not seed
+ * template-marked rows. Every other project type excludes templates,
+ * and no project can select a half-finished draft.
  */
 export function selectableDesignSystems(
   systems: readonly DesignSystemSummary[],
@@ -122,7 +122,7 @@ export function selectableDesignSystems(
   const wantTemplate = type === "from_template";
   return systems.filter(
     (system) =>
-      system.status === "published" && system.is_template === wantTemplate,
+      system.status === "published" && (wantTemplate || !system.is_template),
   );
 }
 
