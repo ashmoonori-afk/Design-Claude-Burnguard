@@ -4,7 +4,7 @@ import path from "node:path";
 import { ulid } from "ulid";
 import { applyHtmlNodePatch, fingerprintHtmlNode, type PatchHtmlNodeInput } from "./file-patch";
 import { inspectCanonicalTree, validateCanonicalTree, type CanonicalTreeManifest } from "./canonical-tree-manifest";
-import { diffManagedTrees, manifestEntry, materializeManagedTree, publishManagedTree, type ArtifactFileDiff } from "./artifact-tree-storage";
+import { ArtifactPublicationPolicyError, diffManagedTrees, manifestEntry, materializeManagedTree, publishManagedTree, type ArtifactFileDiff, type PublicationPolicy } from "./artifact-tree-storage";
 import { publishArtifactOperationEvent } from "./artifact-operation-events";
 import { beginArtifactPublication, endArtifactPublication } from "./artifact-publication-registry";
 import { replaceArtifactFileIndex, replaceArtifactFileIndexInTransaction } from "../db/artifact-file-index";
@@ -14,6 +14,8 @@ import { parsePersistedArtifactOperation, type PersistedArtifactOperationRow } f
 type OperationKind = "patch" | "turn" | "restore" | "undo" | "external" | "initialize";
 type CoordinatorFaults = {
   readonly beforeSnapshot?: () => void;
+  readonly beforePublishRead?: (relativePath: string) => void | Promise<void>;
+  readonly beforePublishSourceRead?: (relativePath: string) => void | Promise<void>;
   readonly afterPublishWrite?: (relativePath: string) => void;
   readonly beforeDatabaseCommit?: () => void;
   readonly beforeFileIndex?: () => void;
@@ -31,6 +33,7 @@ type RunOperation = {
   readonly parentOperationId?: string;
   readonly expectedFileHash?: string;
   readonly nodeFingerprint?: string;
+  readonly publicationPolicy?: PublicationPolicy;
 };
 type PatchOperation = {
   readonly projectId: string;
@@ -133,19 +136,30 @@ export class ArtifactCoordinator {
       this.prepareResult(id, resultRevision, result, diff);
       beginArtifactPublication(input.projectId);
       publicationStarted = true;
-      await publishManagedTree(stagePath, input.projectDir, this.faults.afterPublishWrite);
+      await publishManagedTree(stagePath, input.projectDir, this.faults.afterPublishWrite, {
+        ...input.publicationPolicy,
+        beforeSourceOpen: this.faults.beforePublishRead,
+        beforeSourceRead: this.faults.beforePublishSourceRead,
+      });
       await validateCanonicalTree(input.projectDir, result);
       this.faults.beforeDatabaseCommit?.();
       this.commit(id, input.projectId, input.expectedRevision, base.tree_digest, resultRevision, result);
     } catch (error) {
+      const securityFailure = error instanceof ArtifactPublicationPolicyError ||
+        (error instanceof Error && "code" in error && error.code === "immutable_reference_escaped");
       try {
-        await publishManagedTree(snapshotPath, input.projectDir);
+        if (!securityFailure) await publishManagedTree(snapshotPath, input.projectDir);
         await validateCanonicalTree(input.projectDir, base);
       } finally {
         if (publicationStarted) endArtifactPublication(input.projectId);
       }
       this.terminal(id, "failed", null, null);
+      if (securityFailure) {
+        await rm(ownedRoot, { recursive: true, force: true });
+        this.pruneFailedSecurityOperation(id);
+      }
       publishArtifactOperationEvent(this.db, { projectId: input.projectId, operationId: id, revision: input.expectedRevision, digest: base.tree_digest, outcome: "failed", diff: [] });
+      if (securityFailure) throw new ArtifactOperationError("immutable_reference_escaped", "immutable_reference_escaped");
       if (error instanceof ArtifactOperationError) throw error;
       throw new ArtifactOperationError("operation_failed", error instanceof Error ? error.message : "Artifact operation failed");
     }
@@ -255,6 +269,11 @@ export class ArtifactCoordinator {
       this.faults.beforeFileIndex?.();
       replaceArtifactFileIndexInTransaction(this.db, projectId, result);
     })();
+  }
+
+  private pruneFailedSecurityOperation(id: string): void {
+    const now = Date.now();
+    this.db.prepare("UPDATE artifact_operations SET retention_json=json_set(retention_json,'$.replayable',json('false'),'$.retained_until',?,'$.pruned_at',?,'$.prune_reason','immutable_reference_escaped'),updated_at=? WHERE id=? AND status='failed'").run(now, now, now, id);
   }
 
   private terminal(id: string, status: "cancelled" | "failed" | "recovered", revision: number | null, digest: string | null): void {

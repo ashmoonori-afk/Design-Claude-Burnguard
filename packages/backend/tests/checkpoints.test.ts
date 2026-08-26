@@ -21,7 +21,7 @@ import { getManagedExportJob } from "../src/db/managed-file-repository";
  * this test fails first.
  */
 
-const EXCLUDED = new Set([".meta", ".attachments"]);
+const EXCLUDED = new Set([".meta", ".attachments", ".burnguard-inputs"]);
 let projectSequence = 0;
 const projectIds: string[] = [];
 
@@ -97,11 +97,13 @@ describe("checkpoint snapshot / restore round-trip", () => {
     projectDir = mkdtempSync(path.join(tmpdir(), "bg-ckpt-test-"));
     mkdirSync(path.join(projectDir, ".meta"), { recursive: true });
     mkdirSync(path.join(projectDir, ".attachments"), { recursive: true });
+    mkdirSync(path.join(projectDir, ".burnguard-inputs"), { recursive: true });
     writeFileSync(path.join(projectDir, "index.html"), "<h1>v1</h1>", "utf8");
     writeFileSync(path.join(projectDir, "style.css"), "body { color: red; }", "utf8");
     mkdirSync(path.join(projectDir, "assets"), { recursive: true });
     writeFileSync(path.join(projectDir, "assets", "hero.svg"), "<svg/>", "utf8");
     writeFileSync(path.join(projectDir, ".attachments", "junk.bin"), "do-not-snapshot", "utf8");
+    writeFileSync(path.join(projectDir, ".burnguard-inputs", "source.pdf"), "do-not-snapshot", "utf8");
   });
 
   afterEach(() => {
@@ -109,13 +111,14 @@ describe("checkpoint snapshot / restore round-trip", () => {
     for (const projectId of projectIds.splice(0)) getSqlite().prepare("DELETE FROM projects WHERE id=?").run(projectId);
   });
 
-  test("snapshot excludes .meta and .attachments", () => {
+  test("snapshot excludes control and stage-input directories", () => {
     takeSnapshot(projectDir, "turn-1");
     const snapPath = snapshotDir(projectDir, "turn-1");
     expect(existsSync(path.join(snapPath, "index.html"))).toBe(true);
     expect(existsSync(path.join(snapPath, "style.css"))).toBe(true);
     expect(existsSync(path.join(snapPath, "assets", "hero.svg"))).toBe(true);
     expect(existsSync(path.join(snapPath, ".attachments"))).toBe(false);
+    expect(existsSync(path.join(snapPath, ".burnguard-inputs"))).toBe(false);
     expect(existsSync(path.join(snapPath, ".meta"))).toBe(false);
   });
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { PDFDocument } from "pdf-lib";
 import { watch } from "node:fs";
 import {
   mkdir,
@@ -123,6 +124,12 @@ function insertExport(projectId: string, outputPath: string): string {
 
 async function makeDirLink(target: string, link: string): Promise<void> {
   await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
+}
+
+async function pdfFixture(name: string): Promise<File> {
+  const document = await PDFDocument.create();
+  document.addPage([200, 100]);
+  return new File([await document.save()], name, { type: "application/pdf" });
 }
 
 beforeAll(async () => {
@@ -460,11 +467,12 @@ describe("attachments service", () => {
     const projectId = insertProject(root);
     const sessionId = insertSession(projectId);
 
-    const records = await saveSessionAttachments(sessionId, [new File(["content"], "note.txt", { type: "text/plain" })]);
+    const fixture = await pdfFixture("note.pdf");
+    const records = await saveSessionAttachments(sessionId, [fixture]);
 
     expect(records).toHaveLength(1);
-    expect(await readFile(records[0] ?? "", "utf8")).toBe("content");
-    expect(getSqlite().query("SELECT original_name,size_bytes FROM attachments WHERE session_id=?").get(sessionId)).toEqual({ original_name: "note.txt", size_bytes: 7 });
+    expect((await readFile(records[0] ?? "")).byteLength).toBe(fixture.size);
+    expect(getSqlite().query("SELECT original_name,size_bytes FROM attachments WHERE session_id=?").get(sessionId)).toEqual({ original_name: "note.pdf", size_bytes: fixture.size });
   });
 
   test("rejects a symlinked .attachments directory before writing any upload", async () => {
@@ -475,7 +483,7 @@ describe("attachments service", () => {
     const sessionId = insertSession(projectId);
 
     await expect(
-      saveSessionAttachments(sessionId, [new File(["secret"], "../../secret.txt", { type: "text/plain" })]),
+      saveSessionAttachments(sessionId, [await pdfFixture("../../secret.pdf")]),
     ).rejects.toBeInstanceOf(PathBoundaryError);
     expect(await readdir(outside)).toEqual([]);
   });

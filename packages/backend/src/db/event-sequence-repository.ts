@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { parseDesignDirectionState, type ExportAttemptStatus, type ExportProgress, type ExportStopReason, type NormalizedEvent, type SequencedEventEnvelope, type UserEvent } from "@bg/shared";
+import { VisualSourceContractError, parseDesignDirectionState, parseUploadedVisualSourceSelections, parseVisualSourceManifest, type ExportAttemptStatus, type ExportProgress, type ExportStopReason, type NormalizedEvent, type SequencedEventEnvelope, type TurnErrorCode, type UserEvent } from "@bg/shared";
 import { PipelineRepositoryError, parseJsonRecord } from "./pipeline-errors";
 
 export { insertSequencedEvent } from "./sequenced-event-writer";
@@ -9,8 +9,16 @@ export function parsePersistedNormalizedEvent(value: string, id: string): Normal
   const type = text(item, "type", id);
   const base = { id: text(item, "id", id), ts: integer(item, "ts", id) };
   switch (type) {
-    case "chat.user_message":
-      return { ...base, type, turnId: text(item, "turnId", id), text: text(item, "text", id), attachmentCount: integer(item, "attachmentCount", id) };
+    case "chat.user_message": {
+      const common = { ...base, type, turnId: text(item, "turnId", id), text: text(item, "text", id), attachmentCount: integer(item, "attachmentCount", id) };
+      if (item["visualSources"] === undefined) return common;
+      try {
+        const visualSources = parseVisualSourceManifest(item["visualSources"]);
+        if (visualSources.sources.some((source) => source.provenance.turn_id !== common.turnId)) throw new PipelineRepositoryError("corrupt_json", id);
+        return { ...common, visualSources };
+      }
+      catch (error) { if (error instanceof VisualSourceContractError) throw new PipelineRepositoryError("corrupt_json", id); throw error; }
+    }
     case "chat.delta":
     case "chat.thinking":
       return { ...base, type, turnId: text(item, "turnId", id), text: text(item, "text", id) };
@@ -36,8 +44,10 @@ export function parsePersistedNormalizedEvent(value: string, id: string): Normal
       return { ...base, type };
     case "status.idle":
       return { ...base, type, stopReason: stopReason(item, id) };
-    case "status.error":
-      return { ...base, type, message: text(item, "message", id), recoverable: truth(item, "recoverable", id) };
+    case "status.error": {
+      const common = { ...base, type, message: text(item, "message", id), recoverable: truth(item, "recoverable", id) };
+      return item["code"] === undefined ? common : { ...common, code: turnErrorCode(item, id) };
+    }
     case "usage.delta": {
       const cached = item["cached"];
       const common = { ...base, type, input: integer(item, "input", id), output: integer(item, "output", id) };
@@ -55,9 +65,15 @@ export function parsePersistedUserEvent(value: string, id: string): UserEvent {
     case "user.message": {
       const attachments = item["attachments"];
       const common = { type, text: text(item, "text", id) };
-      if (attachments === undefined) return common;
-      if (!Array.isArray(attachments) || !attachments.every((entry) => typeof entry === "string")) throw new PipelineRepositoryError("corrupt_json", id);
-      return { ...common, attachments };
+      if (attachments !== undefined && (!Array.isArray(attachments) || !attachments.every((entry) => typeof entry === "string"))) throw new PipelineRepositoryError("corrupt_json", id);
+      let visualSources;
+      try { visualSources = parseUploadedVisualSourceSelections(item["visualSources"]); }
+      catch (error) { if (error instanceof VisualSourceContractError) throw new PipelineRepositoryError("corrupt_json", id); throw error; }
+      return {
+        ...common,
+        ...(attachments === undefined ? {} : { attachments }),
+        ...(visualSources === undefined ? {} : { visualSources }),
+      };
     }
     case "user.interrupt":
       return { type };
@@ -77,7 +93,9 @@ export function listSequencedSessionEvents(db: Database, sessionId: string, afte
   const rows = db.query<{ readonly sequence: number | null; readonly payload_json: string; readonly id: string }, [string, number]>("SELECT sequence,payload_json,id FROM events WHERE session_id=? AND direction='down' AND sequence>? ORDER BY sequence").all(sessionId, afterSequence);
   return rows.map((row) => {
     if (row.sequence === null) throw new PipelineRepositoryError("corrupt_json", row.id);
-    return { sequence: row.sequence, event: parsePersistedNormalizedEvent(row.payload_json, row.id) };
+    const event = parsePersistedNormalizedEvent(row.payload_json, row.id);
+    if (event.type === "chat.user_message" && event.visualSources?.sources.some((source) => source.provenance.session_id !== sessionId)) throw new PipelineRepositoryError("corrupt_json", row.id);
+    return { sequence: row.sequence, event };
   });
 }
 
@@ -137,6 +155,14 @@ function fileAction(item: Readonly<Record<string, unknown>>, id: string): "creat
   const value = text(item, "action", id);
   switch (value) {
     case "created": case "edited": case "deleted": return value;
+    default: throw new PipelineRepositoryError("corrupt_json", id);
+  }
+}
+
+function turnErrorCode(item: Readonly<Record<string, unknown>>, id: string): TurnErrorCode {
+  const value = text(item, "code", id);
+  switch (value) {
+    case "backend_unavailable": case "path_unavailable": case "immutable_reference_mutated": case "immutable_reference_path_unavailable": case "immutable_reference_escaped": case "private_input_unavailable": case "publication_failed": case "operation_conflict": case "operation_cancelled": case "turn_failed": return value;
     default: throw new PipelineRepositoryError("corrupt_json", id);
   }
 }

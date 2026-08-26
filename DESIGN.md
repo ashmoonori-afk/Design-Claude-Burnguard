@@ -73,6 +73,10 @@ for icons, borders, and large or bold labels.
   slide index. Resolved comments leave the active queue.
 - **ChatPane**: intent entry and streaming state. Chat must not obscure the
   artifact or imply a completed update before the backend event arrives.
+  Each queued PDF/PPTX owns a stable item identity and an explicit ordinary
+  content or immutable visual-reference role. Existing managed visual files
+  are disclosed as editable-only; unsupported network sources are named
+  without presenting a false selection action.
 - **GraphicCanvas**: one finite, server-owned artboard with persisted CSS-pixel
   width and height. Graphic projects never use slide structure or deck runtime;
   their truthful delivery action is a DPR-1 PNG at the exact persisted size.

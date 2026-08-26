@@ -11,7 +11,7 @@ import {
   projectWatchers as watchers,
 } from "./watcher-registry";
 
-const IGNORED_TOP_LEVEL = new Set([".meta", ".attachments", ".git", ".omc", ".claude"]);
+const IGNORED_TOP_LEVEL = new Set([".meta", ".attachments", ".burnguard-inputs", ".git", ".omc", ".claude"]);
 const pendingSignals = new Set<string>();
 
 type ErrorAwareWatcher = FSWatcher & {

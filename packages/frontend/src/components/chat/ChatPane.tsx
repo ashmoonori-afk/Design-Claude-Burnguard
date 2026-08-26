@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { MessageSquare, MessageCircleMore } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { BackendId, NormalizedEvent, SessionInfo } from "@bg/shared";
+import type { BackendId, FileInfo, NormalizedEvent, SessionInfo } from "@bg/shared";
 import MessageStream from "./MessageStream";
 import Composer from "./Composer";
+import type { ReadyAttachmentSource } from "./attachment-intake";
 import { switchSessionBackend } from "@/api/session";
 import { useUIStore } from "@/state/uiStore";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ export default function ChatPane({
   revertingTurnId,
   composerInitialText,
   statusSlot,
+  projectFiles,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
@@ -32,7 +34,7 @@ export default function ChatPane({
   onInterrupt?: () => void;
   onSend: (
     text: string,
-    files: File[],
+    files: readonly ReadyAttachmentSource[],
     signal: AbortSignal,
   ) => void | Promise<void>;
   onOpenFile?: (relPath: string) => void;
@@ -40,6 +42,7 @@ export default function ChatPane({
   revertingTurnId?: string | null;
   composerInitialText?: string;
   statusSlot?: ReactNode;
+  projectFiles: readonly FileInfo[];
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const queryClient = useQueryClient();
@@ -117,6 +120,7 @@ export default function ChatPane({
             interruptPending={interruptPending}
             onInterrupt={onInterrupt}
             initialText={composerInitialText}
+            projectFiles={projectFiles}
           />
         </>
       ) : (

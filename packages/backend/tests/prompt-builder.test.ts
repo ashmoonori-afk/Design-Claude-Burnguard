@@ -370,15 +370,15 @@ header { padding: var(--space-md); }
     expect(prompt).not.toContain("## Attachments");
   });
 
-  test("lists attachments verbatim", async () => {
+  test("does not echo unmatched raw attachment paths", async () => {
     const prompt = await buildPrompt(makeContext(), {
       type: "user.message",
       text: "see files",
       attachments: ["/tmp/a.png", "/tmp/b.png"],
     });
     expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain("- /tmp/a.png");
-    expect(prompt).toContain("- /tmp/b.png");
+    expect(prompt).not.toContain("/tmp/a.png");
+    expect(prompt).not.toContain("/tmp/b.png");
   });
 
   test("inlines compact summaries for pptx/pdf attachments and points Read to extracted text", async () => {
@@ -422,7 +422,7 @@ header { padding: var(--space-md); }
       );
 
       const prompt = await buildPrompt(
-        makeContext({}, {
+        makeContext({ project_dir: tempDir }, {
           attachments: [
             {
               id: "a1",
@@ -434,6 +434,8 @@ header { padding: var(--space-md); }
               original_name: "deck.pptx",
               size_bytes: 1024,
               sha256: null,
+              source_role: "ordinary_content",
+              source_role_explicit: false,
               created_at: Date.now(),
             },
           ],
@@ -446,10 +448,10 @@ header { padding: var(--space-md); }
       );
 
       expect(prompt).toContain(
-        `source_path: ${filePath} (binary attachment; do not Read/Glob/Bash this file directly)`,
+        "source_path: deck.pptx (binary attachment; do not Read/Glob/Bash this file directly)",
       );
       expect(prompt).toContain(
-        `extracted_text_path: ${attachmentExtractedTextPath(filePath)} (safe text version for Read)`,
+        "extracted_text_path: deck.pptx.extracted.md (safe text version for Read)",
       );
       expect(prompt).toContain(
         "summary: PPTX | 3 page(s) | brand=Quarterly Review",

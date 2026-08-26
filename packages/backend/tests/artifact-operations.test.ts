@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { ArtifactCoordinator, ArtifactOperationError } from "../src/services/artifact-coordinator";
-import { inspectCanonicalTree } from "../src/services/canonical-tree-manifest";
+import { DEFAULT_CANONICAL_TREE_LIMITS, inspectCanonicalTree } from "../src/services/canonical-tree-manifest";
 import { parseArtifactReplay, parseArtifactRetention, parseArtifactSnapshot } from "../src/services/artifact-receipts";
 import { fingerprintHtmlNode } from "../src/services/file-patch";
 import { requireArtifactIdentity } from "../src/services/artifact-identity";
@@ -180,7 +181,65 @@ describe("artifact coordinator", () => {
     expect((await inspectCanonicalTree(root)).tree_digest).toBe(base.tree_digest);
     expect(await readFile(path.join(root, "index.html"), "utf8")).toContain("Old");
     expect(await readFile(path.join(root, "style.css"), "utf8")).toBe("old");
-    expect(db.query("SELECT status FROM artifact_operations WHERE json_extract(replay_json,'$.kind')!='initialize'").get()).toEqual({ status: "failed" });
+    expect(db.query("SELECT status,json_extract(retention_json,'$.replayable') replayable FROM artifact_operations WHERE json_extract(replay_json,'$.kind')!='initialize'").get()).toEqual({ status: "failed", replayable: 1 });
+    const failedPath = db.query<{ readonly path: string }, []>("SELECT json_extract(snapshot_json,'$.stage_path') path FROM artifact_operations WHERE json_extract(replay_json,'$.kind')!='initialize'").get()?.path;
+    expect(failedPath).toBeDefined();
+    expect(await readFile(path.join(failedPath ?? "missing", "index.html"), "utf8")).toBe("new");
+  });
+
+  test("Given a post-manifest candidate replacement exceeds the canonical byte bound When publishing Then it rejects before read allocation or destination write", async () => {
+    const sourceReads: string[] = [];
+    let publicationWrites = 0;
+    const operationId = "oversized-publication-source";
+    const coordinator = new ArtifactCoordinator(db, {
+      beforePublishRead: async (relativePath) => {
+        if (relativePath === "large.bin") await truncate(path.join(root, ".meta", "artifact-operations", operationId, "stage", relativePath), DEFAULT_CANONICAL_TREE_LIMITS.bytes + 1);
+      },
+      beforePublishSourceRead: (relativePath) => { sourceReads.push(relativePath); },
+      afterPublishWrite: () => { publicationWrites += 1; },
+    });
+    const base = await coordinator.initialize("p", root);
+
+    await expect(coordinator.run({ projectId: "p", projectDir: root, kind: "turn", operationId, expectedRevision: 0, expectedArtifactDigest: base.tree_digest, mutate: async (stage) => {
+      await writeFile(path.join(stage, "index.html"), "changed");
+      await writeFile(path.join(stage, "large.bin"), "small-before-publication");
+    } })).rejects.toMatchObject({ code: "operation_failed" });
+
+    expect(sourceReads).toEqual(["index.html"]);
+    expect(publicationWrites).toBe(0);
+    expect(await readFile(path.join(root, "index.html"), "utf8")).toContain("Old");
+    await expect(readFile(path.join(root, "large.bin"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("Given nested immutable bytes or a publication-time swap When publishing Then typed rejection writes no result bytes and prunes the failed operation", async () => {
+    const forbiddenBytes = new TextEncoder().encode("immutable-source");
+    const forbiddenHash = createHash("sha256").update(forbiddenBytes).digest("hex");
+    for (const swapAtPublication of [false, true]) {
+      const operationId = `security-${swapAtPublication}`;
+      let publishedWrites = 0;
+      const coordinator = new ArtifactCoordinator(db, {
+        ...(swapAtPublication ? { beforePublishRead: async (relativePath: string) => {
+          if (relativePath === "nested/output.bin") await writeFile(path.join(root, ".meta", "artifact-operations", operationId, "stage", relativePath), forbiddenBytes);
+        } } : {}),
+        afterPublishWrite: () => { publishedWrites += 1; },
+      });
+      const base = await coordinator.initialize("p", root);
+      await expect(coordinator.run({
+        projectId: "p", projectDir: root, kind: "turn", operationId,
+        expectedRevision: 0, expectedArtifactDigest: base.tree_digest,
+        publicationPolicy: { forbiddenSha256: new Set([forbiddenHash]) },
+        mutate: async (stage) => {
+          await writeFile(path.join(stage, "index.html"), "changed");
+          await mkdir(path.join(stage, "nested"), { recursive: true });
+          await writeFile(path.join(stage, "nested", "output.bin"), swapAtPublication ? "safe-content-000" : forbiddenBytes);
+        },
+      })).rejects.toMatchObject({ code: "immutable_reference_escaped" });
+      expect(publishedWrites).toBe(0);
+      expect(await readFile(path.join(root, "index.html"), "utf8")).toContain("Old");
+      await expect(readFile(path.join(root, "nested", "output.bin"))).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readdir(path.join(root, ".meta", "artifact-operations", operationId))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(db.query("SELECT status,json_extract(retention_json,'$.replayable') replayable FROM artifact_operations WHERE id=?").get(operationId)).toEqual({ status: "failed", replayable: 0 });
+    }
   });
 
   test("Given two same-base operations When the first owns authority Then the second conflicts and only one revision commits", async () => {

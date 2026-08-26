@@ -1,4 +1,17 @@
 import type { DesignDirectionState } from "./design-direction";
+import type { UploadedVisualSourceSelection, VisualSourceManifestV1 } from "./visual-source";
+
+export type TurnErrorCode =
+  | "backend_unavailable"
+  | "path_unavailable"
+  | "immutable_reference_mutated"
+  | "immutable_reference_path_unavailable"
+  | "immutable_reference_escaped"
+  | "private_input_unavailable"
+  | "publication_failed"
+  | "operation_conflict"
+  | "operation_cancelled"
+  | "turn_failed";
 
 export type NormalizedEvent =
   | {
@@ -8,6 +21,7 @@ export type NormalizedEvent =
       turnId: string;
       text: string;
       attachmentCount: number;
+      visualSources?: VisualSourceManifestV1;
     }
   | { id: string; ts: number; type: "chat.delta"; turnId: string; text: string }
   | {
@@ -93,6 +107,7 @@ export type NormalizedEvent =
       id: string;
       ts: number;
       type: "status.error";
+      code?: TurnErrorCode;
       message: string;
       recoverable: boolean;
     }
@@ -111,7 +126,12 @@ export type SequencedEventEnvelope = {
 };
 
 export type UserEvent =
-  | { type: "user.message"; text: string; attachments?: string[] }
+  | {
+      type: "user.message";
+      text: string;
+      attachments?: string[];
+      visualSources?: readonly UploadedVisualSourceSelection[];
+    }
   | { type: "user.interrupt" }
   | {
       type: "user.tool_decision";

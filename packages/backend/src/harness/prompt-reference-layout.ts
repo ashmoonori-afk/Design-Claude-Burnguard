@@ -1,4 +1,6 @@
+import type { UploadedVisualSourceSelection } from "@bg/shared";
 import type { buildSessionContext } from "../services/context";
+import type { StageAttachmentInput } from "../services/stage-attachment-inputs";
 import { buildReferenceLayoutContext } from "../services/reference-layout";
 import { REFERENCE_LAYOUT_SKILL_MD } from "./skills/reference-layout-skill";
 
@@ -12,6 +14,9 @@ export function appendReferenceLayoutContext(
     readonly request: string;
     readonly attachments: SessionContext["attachments"];
     readonly requestedPaths: readonly string[];
+    readonly selections?: readonly UploadedVisualSourceSelection[];
+    readonly projectDir?: string;
+    readonly stageInputs?: readonly StageAttachmentInput[];
   },
 ): boolean {
   const context = buildReferenceLayoutContext(input);

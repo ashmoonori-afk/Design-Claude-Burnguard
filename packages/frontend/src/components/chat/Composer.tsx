@@ -1,18 +1,19 @@
 import { useRef, useState } from "react";
+import type { FileInfo } from "@bg/shared";
 import { Paperclip, Send, Settings2, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/state/uiStore";
 import { cn } from "@/lib/utils";
 import ComposerAttachments from "./ComposerAttachments";
+import { VisualSourceCandidates } from "./VisualSourceCandidates";
 import {
   COMPOSER_SUPPORTED_EXTENSIONS,
-  planAttachmentIntake,
-  readyAttachmentFiles,
   resolveSendOutcome,
-  type IntakeItem,
+  type ReadyAttachmentSource,
   type SendOutcome,
 } from "./attachment-intake";
 import { useComposerPlaceholder } from "./useComposerPlaceholder";
+import { useComposerVisualSources } from "./useComposerVisualSources";
 
 type ComposerSendState = { readonly kind: "idle" } | { readonly kind: "processing" } | SendOutcome;
 
@@ -25,9 +26,9 @@ function sendStateMessage(state: ComposerSendState): string | null {
     case "cancelled":
       return "전송 요청을 취소했어요. 다시 보낼 수 있어요.";
     case "failed":
-      return state.code === "unsupported_file_kind"
-        ? "지원하지 않는 형식이라 저장하지 않았어요. 해당 파일을 빼고 다시 보내 주세요."
-        : "전송에 실패했어요. 다시 보내기를 눌러 주세요.";
+      if (state.code === "unsupported_file_kind") return "지원하지 않는 형식이라 저장하지 않았어요. 해당 파일을 빼고 다시 보내 주세요.";
+      if (state.code === "unsupported_visual_source") return "URL·웹·스톡 소스는 지원하지 않아 저장하지 않았어요. 로컬 PDF 또는 PPTX를 업로드해 주세요.";
+      return "전송에 실패했어요. 다시 보내기를 눌러 주세요.";
     default: {
       const unreachable: never = state;
       return unreachable;
@@ -42,6 +43,7 @@ export default function Composer({
   interruptPending = false,
   onInterrupt,
   initialText = "",
+  projectFiles = [],
 }: {
   /**
    * `signal` aborts the in-flight send request when the caller forwards it to
@@ -49,7 +51,7 @@ export default function Composer({
    * reports "cancelled" if the returned promise actually rejects with
    * AbortError.
    */
-  onSend: (text: string, files: File[], signal: AbortSignal) => void | Promise<void>;
+  onSend: (text: string, files: readonly ReadyAttachmentSource[], signal: AbortSignal) => void | Promise<void>;
   disabled?: boolean;
   /**
    * True when the current turn has exceeded the user's configured
@@ -68,11 +70,15 @@ export default function Composer({
    * so a re-render can't clobber what the user has typed.
    */
   initialText?: string;
+  /** Indexed managed files are disclosed as editable-only source candidates. */
+  projectFiles?: readonly FileInfo[];
 }) {
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const [text, setText] = useState(initialText);
-  const [items, setItems] = useState<readonly IntakeItem[]>([]);
   const [sendState, setSendState] = useState<ComposerSendState>({ kind: "idle" });
+  const visualSources = useComposerVisualSources(() => {
+    if (sendState.kind !== "processing") setSendState({ kind: "idle" });
+  });
   const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const sendAbort = useRef<AbortController | null>(null);
@@ -88,10 +94,7 @@ export default function Composer({
     setDragOver(false);
     const dropped = Array.from(e.dataTransfer.files);
     if (dropped.length > 0) {
-      setItems((prev) => planAttachmentIntake(prev, dropped));
-      if (sendState.kind !== "processing") {
-        setSendState({ kind: "idle" });
-      }
+      visualSources.add(dropped);
     }
   }
 
@@ -101,9 +104,9 @@ export default function Composer({
     sendAbort.current = controller;
     setSendState({ kind: "processing" });
     try {
-      await onSend(text, [...readyAttachmentFiles(items)], controller.signal);
+      await onSend(text, visualSources.ready(), controller.signal);
       setText("");
-      setItems([]);
+      visualSources.clear();
       setSendState({ kind: "idle" });
     } catch (error) {
       // Keep the text and the queue intact so retry costs one click.
@@ -128,17 +131,12 @@ export default function Composer({
       onDrop={handleDrop}
     >
       <ComposerAttachments
-        items={items}
+        items={visualSources.items}
         sending={sending}
-        onRemove={(index) => {
-          setItems((current) =>
-            current.filter((_, itemIndex) => itemIndex !== index),
-          );
-          if (sendState.kind !== "processing") {
-            setSendState({ kind: "idle" });
-          }
-        }}
+        onRoleChange={visualSources.setRole}
+        onRemove={visualSources.remove}
       />
+      <VisualSourceCandidates files={projectFiles} />
 
       {statusMessage !== null && (
         <p
@@ -181,10 +179,7 @@ export default function Composer({
           onChange={(e) => {
             const picked = Array.from(e.target.files ?? []);
             if (picked.length > 0) {
-              setItems((prev) => planAttachmentIntake(prev, picked));
-              if (sendState.kind !== "processing") {
-                setSendState({ kind: "idle" });
-              }
+              visualSources.add(picked);
             }
             e.target.value = "";
           }}
@@ -247,11 +242,6 @@ export default function Composer({
           </Button>
         )}
       </div>
-
-      <p className="mt-1.5 break-words text-center text-[10px] leading-relaxed text-foreground/80 [word-break:keep-all]">
-        PDF와 PPTX를 여기로 끌어다 놓거나 자료 첨부로 올릴 수 있어요. 최대 8개,{" "}
-        <span className="whitespace-nowrap">파일당 10MB</span>, 전체 25MB까지예요.
-      </p>
     </div>
   );
 }

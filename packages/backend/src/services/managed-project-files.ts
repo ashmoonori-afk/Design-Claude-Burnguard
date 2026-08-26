@@ -6,7 +6,7 @@ import { getProjectDetail } from "../db/project-read-repository";
 import { PathBoundaryError, assertSafeName, resolveWithin } from "../security/path-boundary";
 import { inspectCanonicalTree } from "./canonical-tree-manifest";
 
-const IGNORED_DIRS = new Set([".attachments", ".meta", ".git", ".omc", ".claude"]);
+const IGNORED_DIRS = new Set([".attachments", ".burnguard-inputs", ".meta", ".git", ".omc", ".claude"]);
 
 export async function indexProjectFiles(projectId: string) {
   const project = await getProjectDetail(projectId);

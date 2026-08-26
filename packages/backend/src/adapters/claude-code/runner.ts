@@ -1,3 +1,5 @@
+import { closeOwnedProcessTree, ownedProcessSpawnOptions } from "../owned-process-tree";
+
 /**
  * Runs `claude -p --output-format stream-json --verbose` against a project dir,
  * piping the built prompt to stdin and parsing newline-delimited JSON on stdout.
@@ -51,9 +53,10 @@ export async function runClaudeCode(options: RunnerOptions): Promise<RunnerResul
     env: { ...process.env },
     signal: options.signal,
     killSignal: "SIGKILL",
+    ...ownedProcessSpawnOptions(),
   });
 
-  await Promise.all([
+  const readers = Promise.all([
     readLines(proc.stdout, options.onStdoutLine),
     options.onStderrLine
       ? readLines(proc.stderr, options.onStderrLine)
@@ -61,6 +64,8 @@ export async function runClaudeCode(options: RunnerOptions): Promise<RunnerResul
   ]);
 
   const exitCode = await proc.exited;
+  await closeOwnedProcessTree(proc.pid);
+  await readers;
   // eslint-disable-next-line no-console
   console.log(`[claude-code] exit=${exitCode}`);
   return { exitCode };

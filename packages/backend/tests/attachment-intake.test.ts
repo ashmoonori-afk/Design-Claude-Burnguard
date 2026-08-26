@@ -16,9 +16,11 @@ import { SUPPORTED_UPLOAD_KINDS, inferUploadKind } from "../src/services/upload-
 // The real extractor shells out to Python. Mocked at its narrowest seam so the
 // intake gate — which runs entirely before extraction — is deterministic here.
 let extractorCalls: string[] = [];
+let extractorFailureName: string | null = null;
 mock.module("../src/services/attachment-extraction", () => ({
   extractAttachmentUpload: async (input: { readonly originalName: string }) => {
     extractorCalls.push(input.originalName);
+    if (input.originalName === extractorFailureName) throw new Error("malformed_attachment");
   },
 }));
 
@@ -55,6 +57,7 @@ beforeAll(async () => {
 
 afterEach(() => {
   extractorCalls = [];
+  extractorFailureName = null;
 });
 
 afterAll(async () => {
@@ -101,8 +104,28 @@ describe("session attachment intake", () => {
 
     expect(saved).toHaveLength(1);
     expect(attachmentRowCount()).toBe(before + 1);
+    expect(getSqlite().query<{ readonly source_role: string; readonly source_role_explicit: number }, [string]>("SELECT source_role,source_role_explicit FROM attachments WHERE file_path=?").get(saved[0] ?? "missing")).toEqual({ source_role: "ordinary_content", source_role_explicit: 0 });
     expect((await storedFileNames()).some((name) => name.endsWith("-deck.pdf"))).toBe(true);
     expect(extractorCalls).toEqual(["deck.pdf"]);
+  });
+
+  test("Given the second upload fails extraction When saving Then the complete batch leaves no rows or files", async () => {
+    const before = attachmentRowCount();
+    const beforeFiles = await storedFileNames();
+    extractorFailureName = "broken.pdf";
+
+    await expect(saveSessionAttachments(sessionId, [file("first.pdf", "application/pdf"), file("broken.pdf", "application/pdf")])).rejects.toThrow("malformed_attachment");
+
+    expect(attachmentRowCount()).toBe(before);
+    expect(await storedFileNames()).toEqual(beforeFiles);
+  });
+
+  test("Given an immutable visual upload When saving Then its durable role and SHA-256 provenance are stored", async () => {
+    const saved = await saveSessionAttachments(sessionId, [{ file: file("reference.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"), role: "immutable_reference" }]);
+
+    const row = getSqlite().query<{ readonly source_role: string; readonly source_role_explicit: number; readonly sha256: string }, [string]>("SELECT source_role,source_role_explicit,sha256 FROM attachments WHERE file_path=?").get(saved[0] ?? "missing");
+    expect(row).toMatchObject({ source_role: "immutable_reference", source_role_explicit: 1 });
+    expect(row?.sha256).toMatch(/^[a-f0-9]{64}$/u);
   });
 
   test("Given previously stored unsupported attachments When a new upload is rejected Then the stored rows survive", async () => {
@@ -145,6 +168,23 @@ describe("session attachment intake", () => {
 });
 
 describe("session events multipart route", () => {
+  test("Given URL-shaped visual metadata When posted with a supported upload Then it is rejected before any write", async () => {
+    const before = attachmentRowCount();
+    const form = new FormData();
+    form.set("type", "user.message");
+    form.set("text", "웹 이미지를 써줘");
+    form.set("visual_sources", JSON.stringify({ schema_version: 1, sources: [{ source_type: "url", url: "https://example.test/image" }] }));
+    form.append("files", file("deck.pdf", "application/pdf"));
+
+    const response = await sessionRoutes.request(`http://local/api/sessions/${sessionId}/events`, { method: "POST", body: form });
+    const body = (await response.json()) as { readonly error: { readonly code: string } };
+
+    expect(response.status).toBe(415);
+    expect(body.error.code).toBe("unsupported_visual_source");
+    expect(attachmentRowCount()).toBe(before);
+    expect(extractorCalls).toEqual([]);
+  });
+
   test("Given an unsupported upload When posted as multipart Then the route answers a structured typed error", async () => {
     const before = attachmentRowCount();
     const form = new FormData();

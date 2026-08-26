@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { VisualSourceManifestV1 } from "@bg/shared";
+import type { StageAttachmentInput } from "../services/stage-attachment-inputs";
 import type { UserEvent } from "@bg/shared/events";
 import type { buildSessionContext } from "../services/context";
 import { parseStoredProjectOptions } from "../services/project-options";
@@ -16,6 +18,7 @@ import {
 import { appendDesignBriefContext } from "./prompt-design-brief";
 import { appendDesignSystemContext } from "./prompt-design-system";
 import { appendReferenceLayoutContext } from "./prompt-reference-layout";
+import { appendVisualSourceContext } from "./prompt-visual-sources";
 import {
   summarizeDeckHtml,
   summarizePrototypeHtml,
@@ -31,6 +34,8 @@ export type PromptContextMode = "compact" | "full";
 
 export interface PromptBuildOptions {
   contextMode?: PromptContextMode;
+  visualSourceManifest?: VisualSourceManifestV1 | null;
+  stageAttachmentInputs?: readonly StageAttachmentInput[];
 }
 
 /**
@@ -133,10 +138,21 @@ export async function buildPrompt(
   lines.push("</burnguard-research-context-v1>");
   lines.push("");
   appendDesignBriefContext(lines, projectOptions.design_brief);
+  await appendVisualSourceContext(lines, {
+    projectDir: project.project_dir,
+    attachments: context.attachments,
+    requestedPaths: userEvent.attachments ?? [],
+    selections: userEvent.visualSources,
+    prebuiltManifest: options.visualSourceManifest,
+    stageInputs: options.stageAttachmentInputs,
+  });
   appendReferenceLayoutContext(lines, {
     request: userEvent.text,
     attachments: context.attachments,
     requestedPaths: userEvent.attachments ?? [],
+    selections: userEvent.visualSources,
+    projectDir: project.project_dir,
+    stageInputs: options.stageAttachmentInputs,
   });
 
   // Structural summary of the entrypoint, when it's an HTML artifact we know
@@ -190,6 +206,8 @@ export async function buildPrompt(
       lines,
       context.attachments,
       userEvent.attachments,
+      project.project_dir,
+      options.stageAttachmentInputs,
     );
   }
 

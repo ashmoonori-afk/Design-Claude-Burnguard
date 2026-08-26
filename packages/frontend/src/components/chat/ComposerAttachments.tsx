@@ -1,4 +1,5 @@
 import { Paperclip } from "lucide-react";
+import type { VisualSourceRole } from "@bg/shared";
 import { cn } from "@/lib/utils";
 import type {
   IntakeItem,
@@ -8,13 +9,15 @@ import type {
 interface ComposerAttachmentsProps {
   readonly items: readonly IntakeItem[];
   readonly sending: boolean;
-  readonly onRemove: (index: number) => void;
+  readonly onRemove: (id: string) => void;
+  readonly onRoleChange: (id: string, role: VisualSourceRole) => void;
 }
 
 export default function ComposerAttachments({
   items,
   sending,
   onRemove,
+  onRoleChange,
 }: ComposerAttachmentsProps) {
   if (items.length === 0) {
     return null;
@@ -27,11 +30,11 @@ export default function ComposerAttachments({
       aria-busy={sending}
       aria-live="polite"
     >
-      {items.map((item, index) => (
+      {items.map((item) => (
         <li
-          key={`${item.file.name}-${index}`}
+          key={item.id}
           className={cn(
-            "inline-flex items-center gap-1 rounded px-2 py-1 text-[11px]",
+            "inline-flex min-w-0 items-center gap-1 rounded px-2 py-1 text-xs max-[900px]:flex-wrap",
             item.status === "ready"
               ? "bg-muted text-muted-foreground"
               : "bg-destructive/10 text-destructive",
@@ -39,19 +42,26 @@ export default function ComposerAttachments({
         >
           <Paperclip className="h-3 w-3" aria-hidden="true" />
           <span className="max-w-[120px] truncate">{item.file.name}</span>
-          <span className="opacity-90">
-            {item.status === "ready"
-              ? sending
-                ? "보내는 중"
-                : "준비됨"
-              : rejectionLabel(item.reason)}
-          </span>
+          {item.status === "ready" ? (
+            <select
+              value={item.role}
+              disabled={sending}
+              onChange={(event) => onRoleChange(item.id, event.target.value === "immutable_reference" ? "immutable_reference" : "ordinary_content")}
+              aria-label={`${item.file.name} 역할`}
+              className="max-w-[152px] rounded border border-border bg-background px-1.5 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent max-[900px]:min-h-11 max-[900px]:max-w-full max-[900px]:flex-1"
+            >
+              <option value="ordinary_content">일반 자료</option>
+              <option value="immutable_reference">수정하지 않는 시각 참조</option>
+            </select>
+          ) : (
+            <span className="opacity-90">{rejectionLabel(item.reason)}</span>
+          )}
           <button
             type="button"
-            className="ml-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
+            className="ml-0.5 min-h-7 min-w-7 rounded text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 max-[900px]:min-h-11 max-[900px]:min-w-11"
             aria-label={`${item.file.name} 첨부 취소`}
             disabled={sending}
-            onClick={() => onRemove(index)}
+            onClick={() => onRemove(item.id)}
           >
             ×
           </button>

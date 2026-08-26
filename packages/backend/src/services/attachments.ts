@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import type { VisualSourceRole } from "@bg/shared";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { ulid } from "ulid";
 import { getAttachmentContext, insertAttachmentRecord } from "../db/attachment-context";
+import { getSqlite } from "../db/sqlite-client";
 import { assertSafeName, resolveWithin } from "../security/path-boundary";
 import { inferUploadKind } from "./upload-kind";
-export { attachmentExtractedTextPath, attachmentSummaryPath } from "./attachment-paths";
+import { attachmentExtractedTextPath, attachmentSummaryPath } from "./attachment-paths";
+export { attachmentExtractedTextPath, attachmentSummaryPath };
 
 /** Authoritative intake limits. The composer mirrors these for early feedback only. */
 export const ATTACHMENT_LIMITS = {
@@ -25,7 +28,14 @@ export class UnsupportedAttachmentKindError extends Error {
   }
 }
 
-export async function saveSessionAttachments(sessionId: string, files: File[]) {
+export type AttachmentUpload = File | {
+  readonly file: File;
+  readonly role: VisualSourceRole;
+  readonly roleExplicit?: boolean;
+};
+
+export async function saveSessionAttachments(sessionId: string, uploads: readonly AttachmentUpload[]) {
+  const files = uploads.map((upload) => upload instanceof File ? upload : upload.file);
   const context = getAttachmentContext(sessionId);
   if (!context) {
     throw new Error("session_not_found");
@@ -50,44 +60,68 @@ export async function saveSessionAttachments(sessionId: string, files: File[]) {
   const attachmentsDir = resolveWithin(context.project_dir, ".attachments");
   await mkdir(attachmentsDir, { recursive: true });
   const records: string[] = [];
+  const writtenPaths: string[] = [];
 
-  for (const file of files) {
-    const base = sanitize(file.name || "attachment");
-    const storedName = assertSafeName(`${ulid()}-${base}`);
-    const absolutePath = resolveWithin(
-      context.project_dir,
-      ".attachments",
-      storedName,
-    );
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const sha256 = createHash("sha256").update(buffer).digest("hex");
+  try {
+    for (const [index, file] of files.entries()) {
+      const upload = uploads[index];
+      const sourceRole = upload instanceof File ? "ordinary_content" : upload.role;
+      const sourceRoleExplicit = upload instanceof File ? false : upload.roleExplicit ?? true;
+      const base = sanitize(file.name || "attachment");
+      const storedName = assertSafeName(`${ulid()}-${base}`);
+      const absolutePath = resolveWithin(
+        context.project_dir,
+        ".attachments",
+        storedName,
+      );
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const sha256 = createHash("sha256").update(buffer).digest("hex");
 
-    await writeFile(absolutePath, buffer);
-    const manifestPath = resolveWithin(
-      context.project_dir,
-      ".attachments",
-      assertSafeName(`${storedName}.summary.json`),
-    );
-    const extractedTextPath = resolveWithin(
-      context.project_dir,
-      ".attachments",
-      assertSafeName(`${storedName}.extracted.md`),
-    );
-    const { extractAttachmentUpload } = await import("./attachment-extraction");
-    await extractAttachmentUpload({ sourcePath: absolutePath, manifestPath, extractedTextPath, originalName: file.name || storedName });
+      await writeFile(absolutePath, buffer);
+      writtenPaths.push(absolutePath);
+      const manifestPath = resolveWithin(
+        context.project_dir,
+        ".attachments",
+        assertSafeName(`${storedName}.summary.json`),
+      );
+      const extractedTextPath = resolveWithin(
+        context.project_dir,
+        ".attachments",
+        assertSafeName(`${storedName}.extracted.md`),
+      );
+      const { extractAttachmentUpload } = await import("./attachment-extraction");
+      await extractAttachmentUpload({ sourcePath: absolutePath, manifestPath, extractedTextPath, originalName: file.name || storedName });
 
-    insertAttachmentRecord({
-      sessionId,
-      filePath: absolutePath,
-      mimeType: file.type || "application/octet-stream",
-      originalName: file.name || storedName,
-      sizeBytes: buffer.byteLength,
-      sha256,
-    });
-    records.push(absolutePath);
+      insertAttachmentRecord({
+        sessionId,
+        filePath: absolutePath,
+        mimeType: file.type || "application/octet-stream",
+        originalName: file.name || storedName,
+        sizeBytes: buffer.byteLength,
+        sha256,
+        sourceRole,
+        sourceRoleExplicit,
+      });
+      records.push(absolutePath);
+    }
+  } catch (error) {
+    await rollbackSessionAttachments(sessionId, writtenPaths);
+    throw error;
   }
 
   return records;
+}
+
+export async function rollbackSessionAttachments(sessionId: string, filePaths: readonly string[]): Promise<void> {
+  const db = getSqlite();
+  db.transaction(() => {
+    for (const filePath of filePaths) db.prepare("DELETE FROM attachments WHERE session_id=? AND file_path=? AND turn_id IS NULL").run(sessionId, filePath);
+  })();
+  await Promise.all(filePaths.flatMap((filePath) => [
+    rm(filePath, { force: true }),
+    rm(attachmentSummaryPath(filePath), { force: true }),
+    rm(attachmentExtractedTextPath(filePath), { force: true }),
+  ]));
 }
 
 function sanitize(value: string) {

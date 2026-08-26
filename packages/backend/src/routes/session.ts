@@ -1,7 +1,16 @@
 import { ulid } from "ulid";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { ApiErrorBody, ApiSuccess, NormalizedEvent, UserEvent } from "@bg/shared";
+import {
+  VisualSourceContractError,
+  parseUploadedVisualSourceSelections,
+  parseVisualSourceUploadRequest,
+  type ApiErrorBody,
+  type ApiSuccess,
+  type NormalizedEvent,
+  type UserEvent,
+  type VisualSourceUploadRequestV1,
+} from "@bg/shared";
 import {
   insertNormalizedEvent,
   insertUserEvent,
@@ -14,7 +23,8 @@ import {
   getProjectDetail,
   getSessionInfo,
 } from "../db/seed";
-import { UnsupportedAttachmentKindError, saveSessionAttachments } from "../services/attachments";
+import { UnsupportedAttachmentKindError, rollbackSessionAttachments, saveSessionAttachments } from "../services/attachments";
+import { AttachmentRequestError, canonicalizeAttachmentRequest } from "../services/attachment-request";
 import { SUPPORTED_UPLOAD_KINDS } from "../services/upload-kind";
 import { broker, sequencedBroker } from "../services/broker";
 import { subscribeBeforeBackfill } from "../services/sequenced-event-replay";
@@ -29,7 +39,10 @@ import { appendSessionTrace } from "../services/trace";
 import {
   interruptUserTurn,
   isUserTurnRunning,
-  startUserTurn,
+  releaseUserTurnReservation,
+  reserveUserTurn,
+  startReservedUserTurn,
+  type UserTurnReservation,
   submitToolDecisionToTurn,
 } from "../services/turns";
 
@@ -76,16 +89,10 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
   if (!session) {
     return c.json(fail("session_not_found", "Session not found", { id }), 404);
   }
-  if (isUserTurnRunning(id)) {
-    return c.json(
-      fail("session_busy", "A turn is already running for this session", { id }),
-      409,
-    );
-  }
-
   const contentType = c.req.header("content-type") ?? "";
   let payload: UserEvent | null = null;
   let requestedOperationId: string | undefined;
+  let reservation: UserTurnReservation | null = null;
 
   if (contentType.includes("application/json")) {
     const body = await c.req.json<unknown>().catch(() => null);
@@ -94,13 +101,20 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
       body.type === "user.message" &&
       typeof body.text === "string"
     ) {
-      payload = {
-        type: "user.message",
-        text: body.text,
-        attachments: Array.isArray(body.attachments)
-          ? body.attachments.filter((value): value is string => typeof value === "string")
-          : undefined,
-      };
+      let visualSources;
+      try { visualSources = parseUploadedVisualSourceSelections(body.visualSources); }
+      catch (error) {
+        if (error instanceof VisualSourceContractError) return c.json(fail(error.code, error.code === "unsupported_visual_source" ? "URL, web, and stock sources are unsupported" : "Visual source metadata is invalid"), error.code === "unsupported_visual_source" ? 415 : 400);
+        throw error;
+      }
+      if (body.attachments !== undefined && (!Array.isArray(body.attachments) || !body.attachments.every((value) => typeof value === "string"))) return c.json(fail("invalid_attachments", "Attachment selection is invalid"), 400);
+      try {
+        const canonical = await canonicalizeAttachmentRequest({ sessionId: id, requestedPaths: body.attachments ?? [], selections: visualSources });
+        payload = { type: "user.message", text: body.text, attachments: [...canonical.paths], visualSources: canonical.selections };
+      } catch (error) {
+        if (error instanceof AttachmentRequestError) return c.json(fail(error.code, "Attachment selection is invalid"), 400);
+        throw error;
+      }
       if (body.operation_id !== undefined) {
         if (typeof body.operation_id !== "string" || process.env.BG_ARTIFACT_QA !== "1" || body.operation_id !== process.env.BG_ARTIFACT_TURN_OPERATION_ID) return c.json(fail("invalid_operation_id", "Scoped operation identity is invalid"), 400);
         try { requestedOperationId = assertSafeName(body.operation_id); }
@@ -116,9 +130,21 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
         .getAll("files")
         .filter((value): value is File => value instanceof File);
       let attachmentPaths: string[];
+      let uploadSources: VisualSourceUploadRequestV1;
       try {
-        attachmentPaths = await saveSessionAttachments(id, fileEntries);
+        uploadSources = parseVisualSourceUploadRequest(form.get("visual_sources"), fileEntries.length);
+        reservation = reserveUserTurn(id);
+        if (reservation === null) return c.json(fail("session_busy", "A turn is already running for this session", { id }), 409);
+        attachmentPaths = await saveSessionAttachments(id, fileEntries.map((file, index) => ({
+          file,
+          role: uploadSources.sources[index]?.role ?? "ordinary_content",
+          roleExplicit: uploadSources.explicit,
+        })));
       } catch (error) {
+        if (reservation !== null) releaseUserTurnReservation(reservation);
+        if (error instanceof VisualSourceContractError) {
+          return c.json(fail(error.code, error.code === "unsupported_visual_source" ? "URL, web, and stock sources are unsupported" : "Visual source metadata is invalid"), error.code === "unsupported_visual_source" ? 415 : 400);
+        }
         if (error instanceof UnsupportedAttachmentKindError) {
           return c.json(
             fail(error.code, "Unsupported source kind", {
@@ -134,11 +160,16 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
           400,
         );
       }
-      payload = {
-        type: "user.message",
-        text,
-        attachments: attachmentPaths,
-      };
+      const selections = attachmentPaths.map((attachmentPath, index) => ({ source_type: "uploaded_attachment" as const, attachment_path: attachmentPath, role: uploadSources.sources[index]?.role ?? "ordinary_content" }));
+      try {
+        const canonical = await canonicalizeAttachmentRequest({ sessionId: id, requestedPaths: attachmentPaths, selections });
+        payload = { type: "user.message", text, attachments: [...canonical.paths], visualSources: canonical.selections };
+      } catch (error) {
+        await rollbackSessionAttachments(id, attachmentPaths);
+        if (reservation !== null) releaseUserTurnReservation(reservation);
+        if (error instanceof AttachmentRequestError) return c.json(fail(error.code, "Attachment selection is invalid"), 400);
+        throw error;
+      }
     }
   }
 
@@ -149,7 +180,8 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
     );
   }
 
-  const turn = startUserTurn(id, payload, requestedOperationId);
+  reservation ??= reserveUserTurn(id, requestedOperationId);
+  const turn = reservation === null ? null : startReservedUserTurn(reservation, payload);
   if (!turn) {
     return c.json(
       fail("session_busy", "A turn is already running for this session", { id }),

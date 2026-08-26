@@ -56,6 +56,7 @@ import {
   subscribeSessionStream,
 } from "@/api/session";
 import ChatPane from "@/components/chat/ChatPane";
+import { visualSourceSendErrorCopy } from "@/components/chat/attachment-intake";
 import { DirectionsView } from "@/components/directions/DirectionsView";
 import { DirectionStatusBar } from "@/components/directions/DirectionStatusBar";
 import PermissionDialog, {
@@ -1008,6 +1009,7 @@ export default function ProjectView() {
         <ChatPane
           events={events}
           session={session}
+          projectFiles={files}
           composerDisabled={composerDisabled}
           canInterrupt={canInterrupt}
           interruptPending={interruptMutation.isPending}
@@ -1046,7 +1048,7 @@ export default function ProjectView() {
                     error instanceof ApiError && error.status === 409
                       ? "Turn already running"
                       : "Could not send message",
-                  body: error instanceof Error ? error.message : String(error),
+                  body: visualSourceSendErrorCopy(error),
                   tone: "error",
                 });
               }

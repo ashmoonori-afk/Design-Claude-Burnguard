@@ -1,6 +1,7 @@
 import { ulid } from "ulid";
 import type { AdapterRunInput, AdapterRunResult } from "../types";
 import { parseCodexLine, type CodexParserContext } from "./parser";
+import { closeOwnedProcessTree, ownedProcessSpawnOptions } from "../owned-process-tree";
 
 export function buildCodexCommand(binaryPath: string): string[] {
   return [
@@ -54,11 +55,12 @@ export async function runCodexTurn(
     stderr: "pipe",
     signal: input.signal,
     killSignal: "SIGKILL",
+    ...ownedProcessSpawnOptions(),
   });
 
   let exitCode: number;
   try {
-    await Promise.all([
+    const readers = Promise.all([
       readLines(proc.stdout, async (line) => {
         // Parser exceptions used to bubble up through readLines and
         // abort the read loop entirely, leaving the CLI subprocess
@@ -86,6 +88,8 @@ export async function runCodexTurn(
       }),
     ]);
     exitCode = await proc.exited;
+    await closeOwnedProcessTree(proc.pid);
+    await readers;
   } finally {
     // Always release the decision sink — see the matching comment in
     // the Claude Code adapter. A throw between subscribe and here

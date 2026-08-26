@@ -30,6 +30,8 @@ export const attachmentsTable = sqliteTable(
     originalName: text("original_name").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
     sha256: text("sha256"),
+    sourceRole: text("source_role", { enum: ["ordinary_content", "immutable_reference"] }).notNull().default("ordinary_content"),
+    sourceRoleExplicit: integer("source_role_explicit", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at").notNull(),
   },
   (table) => ({

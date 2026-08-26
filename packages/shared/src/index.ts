@@ -23,3 +23,4 @@ export * from "./project";
 export * from "./reference-layout";
 export * from "./research-contract";
 export * from "./settings";
+export * from "./visual-source";

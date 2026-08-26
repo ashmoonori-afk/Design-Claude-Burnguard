@@ -97,18 +97,26 @@ describe("multipart user event upload", () => {
     expect(failure).toMatchObject({ name: "AbortError" });
   });
 
-  test("Given a successful multipart upload When it is sent Then the message text and every file ride the same form request", async () => {
+  test("Given a successful multipart upload When it is sent Then text files and strict visual roles ride the same form request", async () => {
     let sentBody: FormData | null = null;
     await installAuthorizedFetch(async (_input, init) => {
       sentBody = init?.body instanceof FormData ? init.body : null;
       return Response.json({ data: { accepted: true } });
     });
 
-    await sendUserEvent("session-1", { type: "user.message", text: "봐줘", files: [upload()] });
+    await sendUserEvent("session-1", {
+      type: "user.message",
+      text: "봐줘",
+      files: [{ id: "upload-deck", file: upload(), role: "immutable_reference" }],
+    });
 
     const form = sentBody as FormData | null;
     expect(form?.get("type")).toBe("user.message");
     expect(form?.get("text")).toBe("봐줘");
     expect(form?.getAll("files")).toHaveLength(1);
+    expect(JSON.parse(String(form?.get("visual_sources")))).toEqual({
+      schema_version: 1,
+      sources: [{ source_type: "upload", upload_id: "upload-deck", file_index: 0, role: "immutable_reference" }],
+    });
   });
 });

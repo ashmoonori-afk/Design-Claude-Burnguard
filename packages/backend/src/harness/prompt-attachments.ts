@@ -1,4 +1,6 @@
+import path from "node:path";
 import type { buildSessionContext } from "../services/context";
+import type { StageAttachmentInput } from "../services/stage-attachment-inputs";
 import {
   attachmentExtractedTextPath,
   attachmentSummaryPath,
@@ -20,46 +22,39 @@ export async function appendAttachmentContext(
   lines: string[],
   attachments: readonly Attachment[],
   requestedPaths: readonly string[],
+  projectDir: string,
+  stageInputs?: readonly StageAttachmentInput[],
 ): Promise<void> {
   lines.push("## Attachments");
   const selected = attachments.filter((attachment) =>
     requestedPaths.includes(attachment.file_path),
   );
   for (const attachment of selected) {
-    lines.push(
-      `- ${attachment.original_name} (${attachment.mime_type}, ${attachment.size_bytes}B)`,
-    );
+    lines.push(`- ${attachment.original_name} (${attachment.mime_type}, ${attachment.size_bytes}B)`);
+    const stageInput = stageInputs?.find((input) => input.attachmentId === attachment.id);
+    const relativeSource = stageInput?.sourcePath ?? path.relative(projectDir, attachment.file_path).replaceAll("\\", "/");
     const summary = await readAttachmentSummaryFile(
       attachmentSummaryPath(attachment.file_path),
     );
     if (summary) {
-      const extractedTextPath = attachmentExtractedTextPath(
-        attachment.file_path,
-      );
-      const hasExtractedText =
-        (await readOptional(extractedTextPath)) !== null;
+      const extractedTextPath = attachmentExtractedTextPath(attachment.file_path);
+      const relativeExtracted = stageInput?.extractedTextPath ?? path.relative(projectDir, extractedTextPath).replaceAll("\\", "/");
+      const hasExtractedText = stageInput !== undefined
+        ? stageInput.extractedTextPath !== null
+        : (await readOptional(extractedTextPath)) !== null;
       lines.push(
-        `  source_path: ${attachment.file_path} (binary attachment; do not Read/Glob/Bash this file directly)`,
+        `  source_path: ${relativeSource} (binary attachment; do not Read/Glob/Bash this file directly)`,
       );
       if (hasExtractedText) {
         lines.push(
-          `  extracted_text_path: ${extractedTextPath} (safe text version for Read)`,
+          `  extracted_text_path: ${relativeExtracted} (safe text version for Read)`,
         );
       }
       for (const summaryLine of renderAttachmentSummary(summary)) {
         lines.push(`  ${summaryLine}`);
       }
     } else {
-      lines.push(`  path: ${attachment.file_path}`);
-    }
-  }
-  for (const requestedPath of requestedPaths) {
-    if (
-      !selected.some(
-        (attachment) => attachment.file_path === requestedPath,
-      )
-    ) {
-      lines.push(`- ${requestedPath}`);
+      lines.push(`  path: ${relativeSource}`);
     }
   }
   lines.push("");

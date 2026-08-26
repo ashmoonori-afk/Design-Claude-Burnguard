@@ -4,7 +4,7 @@ import {
   COMPOSER_ATTACHMENT_LIMITS,
   COMPOSER_SUPPORTED_EXTENSIONS,
   planAttachmentIntake,
-  readyAttachmentFiles,
+  readyAttachmentSources,
   resolveSendOutcome,
   type IntakeItem,
 } from "../src/components/chat/attachment-intake";
@@ -20,7 +20,7 @@ function file(name: string, type = "", sizeBytes = 8): File {
 }
 
 function ready(name: string, sizeBytes = 8): IntakeItem {
-  return { status: "ready", file: file(name, "application/pdf", sizeBytes) };
+  return { id: crypto.randomUUID(), status: "ready", file: file(name, "application/pdf", sizeBytes), role: "ordinary_content" };
 }
 
 describe("composer attachment intake", () => {
@@ -28,14 +28,14 @@ describe("composer attachment intake", () => {
     const items = planAttachmentIntake([], [file("deck.pdf", "application/pdf")]);
 
     expect(items).toMatchObject([{ status: "ready" }]);
-    expect(readyAttachmentFiles(items).map((entry) => entry.name)).toEqual(["deck.pdf"]);
+    expect(readyAttachmentSources(items).map((entry) => entry.file.name)).toEqual(["deck.pdf"]);
   });
 
   test("Given an empty queue When a source kind the extractor cannot process is added Then it is rejected as unsupported and never queued for send", () => {
     const items = planAttachmentIntake([], [file("notes.txt", "text/plain")]);
 
     expect(items).toMatchObject([{ status: "rejected", reason: "unsupported_kind" }]);
-    expect(readyAttachmentFiles(items)).toEqual([]);
+    expect(readyAttachmentSources(items)).toEqual([]);
   });
 
   test("Given the queue is already at the backend count limit When one more supported source is added Then it is rejected without disturbing the queued files", () => {
@@ -45,14 +45,14 @@ describe("composer attachment intake", () => {
 
     expect(items).toHaveLength(COMPOSER_ATTACHMENT_LIMITS.maxCount + 1);
     expect(items.at(-1)).toMatchObject({ status: "rejected", reason: "count_exceeded" });
-    expect(readyAttachmentFiles(items)).toHaveLength(COMPOSER_ATTACHMENT_LIMITS.maxCount);
+    expect(readyAttachmentSources(items)).toHaveLength(COMPOSER_ATTACHMENT_LIMITS.maxCount);
   });
 
   test("Given a file past the backend per-file limit When it is added Then it is rejected as too large", () => {
     const items = planAttachmentIntake([], [file("huge.pdf", "application/pdf", COMPOSER_ATTACHMENT_LIMITS.maxBytesPerFile + 1)]);
 
     expect(items).toMatchObject([{ status: "rejected", reason: "too_large" }]);
-    expect(readyAttachmentFiles(items)).toEqual([]);
+    expect(readyAttachmentSources(items)).toEqual([]);
   });
 
   test("Given queued files near the backend total limit When another supported file would cross it Then it is rejected on total size", () => {
@@ -62,13 +62,13 @@ describe("composer attachment intake", () => {
     const items = planAttachmentIntake(current, [file("c.pdf", "application/pdf", 9 * megabyte)]);
 
     expect(items.at(-1)).toMatchObject({ status: "rejected", reason: "total_exceeded" });
-    expect(readyAttachmentFiles(items).map((entry) => entry.name)).toEqual(["a.pdf", "b.pdf"]);
+    expect(readyAttachmentSources(items).map((entry) => entry.file.name)).toEqual(["a.pdf", "b.pdf"]);
   });
 
   test("Given the backend extractor's supported kinds When the composer screens the same names Then the composer mirror matches the backend verdict", () => {
     const probes = ["deck.pdf", "deck.PDF", "slides.pptx", "notes.txt", "photo.png", "archive.zip", "noextension"];
 
-    const composerVerdicts = probes.map((name) => readyAttachmentFiles(planAttachmentIntake([], [file(name)])).length === 1);
+    const composerVerdicts = probes.map((name) => readyAttachmentSources(planAttachmentIntake([], [file(name)])).length === 1);
     const backendVerdicts = probes.map((name) => inferUploadKind(name, null) !== null);
 
     expect(composerVerdicts).toEqual(backendVerdicts);
