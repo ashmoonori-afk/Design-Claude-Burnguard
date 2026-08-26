@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { homeRoutes } from "../src/routes/home";
+import { parseProjectInput, ProjectInputError } from "../src/routes/home-project-input";
 
 type ErrorEnvelope = {
   readonly error: {
@@ -32,17 +33,52 @@ async function createProject(body: unknown): Promise<Response> {
 }
 
 describe("home project input boundary", () => {
+  test("Given a graphic canvas When parsed Then graphic creation uses index.html", () => {
+    expect(parseProjectInput({
+      name: "SNS 카드",
+      type: "graphic",
+      design_system_id: null,
+      backend_id: "claude-code",
+      options: { graphic_canvas: { schema_version: 1, width: 1200, height: 628 } },
+    })).toMatchObject({
+      type: "graphic",
+      entrypoint: "index.html",
+      optionsJson: JSON.stringify({
+        use_speaker_notes: false,
+        copy_as_is: false,
+        design_brief: null,
+        graphic_canvas: { schema_version: 1, width: 1200, height: 628 },
+      }),
+    });
+  });
+
+  test.each([
+    {
+      name: "Graphic without canvas",
+      type: "graphic",
+      design_system_id: null,
+      backend_id: "claude-code",
+    },
+    {
+      name: "Prototype with stale canvas",
+      type: "prototype",
+      design_system_id: null,
+      backend_id: "claude-code",
+      options: { graphic_canvas: { schema_version: 1, width: 1080, height: 1080 } },
+    },
+  ])("Given canvas/type mismatch When parsed Then project options reject it", (input) => {
+    try {
+      parseProjectInput(input);
+      throw new TypeError("expected project options rejection");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ProjectInputError);
+      if (!(error instanceof ProjectInputError)) throw error;
+      expect(error.code).toBe("invalid_project_options");
+    }
+  });
+
   test.each([
     [{}, "invalid_name"],
-    [
-      {
-        name: "Project",
-        type: "graphic",
-        design_system_id: null,
-        backend_id: "claude-code",
-      },
-      "invalid_type",
-    ],
     [
       {
         name: "Project",

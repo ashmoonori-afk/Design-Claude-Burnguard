@@ -43,7 +43,7 @@ export const projectsTable = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    type: text("type", { enum: ["prototype", "slide_deck", "from_template", "other"] }).notNull(),
+    type: text("type", { enum: ["prototype", "slide_deck", "graphic", "from_template", "other"] }).notNull(),
     designSystemId: text("design_system_id").references(() => designSystemsTable.id),
     dirPath: text("dir_path").notNull(),
     entrypoint: text("entrypoint").notNull().default("index.html"),

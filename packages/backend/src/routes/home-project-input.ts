@@ -68,9 +68,12 @@ export function parseProjectInput(input: unknown): ParsedProjectInput {
     );
   }
   let optionsJson: string | null = null;
+  let graphicCanvasPresent = false;
   if (input["options"] !== undefined) {
     try {
-      optionsJson = JSON.stringify(parseProjectOptions(input["options"]));
+      const options = parseProjectOptions(input["options"]);
+      graphicCanvasPresent = options.graphic_canvas !== null;
+      optionsJson = JSON.stringify(options);
     } catch (error) {
       if (error instanceof UpgradeContractError) {
         throw new ProjectInputError(
@@ -81,6 +84,15 @@ export function parseProjectInput(input: unknown): ParsedProjectInput {
       }
       throw error;
     }
+  }
+  if ((type === "graphic") !== graphicCanvasPresent) {
+    throw new ProjectInputError(
+      "invalid_project_options",
+      type === "graphic"
+        ? "graphic projects require options.graphic_canvas"
+        : "graphic_canvas is only valid for graphic projects",
+      { path: "options.graphic_canvas" },
+    );
   }
   return {
     name: name.trim(),
@@ -102,6 +114,7 @@ function isProjectType(
   return (
     value === "prototype" ||
     value === "slide_deck" ||
+    value === "graphic" ||
     value === "from_template" ||
     value === "other"
   );

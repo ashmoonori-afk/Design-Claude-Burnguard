@@ -16,6 +16,7 @@
     "./design-direction": "./src/design-direction.ts",
     "./design-audit": "./src/design-audit.ts",
     "./home": "./src/home.ts",
+    "./graphic": "./src/graphic.ts",
     "./project": "./src/project.ts",
     "./reference-layout": "./src/reference-layout.ts",
     "./contract-parser": "./src/contract-parser.ts",

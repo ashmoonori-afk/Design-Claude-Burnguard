@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Comment } from "@bg/shared";
+import type { Comment, GraphicCanvasV1 } from "@bg/shared";
 import CanvasTopBar from "./CanvasTopBar";
 import CommentLayer from "./CommentLayer";
 import type { Ref } from "react";
@@ -99,6 +99,7 @@ export default function Canvas({
   onUndo,
   qualityFocusedNodeId,
   onQualityRevealResult,
+  graphicCanvas,
 }: {
   mode: CanvasMode | null;
   src?: string | null;
@@ -135,6 +136,7 @@ export default function Canvas({
   onUndo?: () => void;
   qualityFocusedNodeId: string | null;
   onQualityRevealResult: (nodeBgId: string, found: boolean) => void;
+  graphicCanvas?: GraphicCanvasV1 | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -200,6 +202,9 @@ export default function Canvas({
           buildSandboxedArtifactSrcDoc(
             html,
             new URL(src, window.location.href).toString(),
+            graphicCanvas === null || graphicCanvas === undefined
+              ? undefined
+              : { graphicCanvas },
           ),
         );
       })
@@ -215,7 +220,7 @@ export default function Canvas({
     return () => {
       cancelled = true;
     };
-  }, [frameKey, src]);
+  }, [frameKey, graphicCanvas, src]);
 
   useEffect(() => {
     // Push-based: deck-stage's BRIDGE_SCRIPT broadcasts active-slide-

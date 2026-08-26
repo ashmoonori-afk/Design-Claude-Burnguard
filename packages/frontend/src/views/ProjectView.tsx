@@ -94,6 +94,7 @@ import {
   latestDirectionState,
   preferDirectionState,
 } from "@/lib/design-direction-state";
+import { parseProjectGraphicCanvas } from "@/lib/graphic-project";
 import {
   designAuditErrorCode,
   designAuditViewState,
@@ -757,6 +758,12 @@ export default function ProjectView() {
   }, [projectQuery.data]);
 
   const project = projectQuery.data ?? null;
+  const graphicCanvas = useMemo(
+    () => project === null
+      ? null
+      : parseProjectGraphicCanvas(project.type, project.options_json),
+    [project],
+  );
   const files: FileInfo[] = filesQuery.data ?? [];
   const artifacts = artifactsQuery.data ?? null;
   const session = sessionState;
@@ -1120,6 +1127,7 @@ export default function ProjectView() {
               onUndo={() => undoMutation.mutate()}
               qualityFocusedNodeId={auditFocus?.relPath === activeRelPath ? auditFocus.nodeBgId : null}
               onQualityRevealResult={handleQualityRevealResult}
+              graphicCanvas={graphicCanvas}
               comments={comments}
               activeRelPath={activeRelPath}
               activeSlideIdx={activeSlideIdx}

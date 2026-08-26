@@ -8,6 +8,7 @@ import {
 export const DESIGN_BRIEF_OUTPUT_TYPES = [
   "prototype",
   "slide_deck",
+  "graphic",
   "from_template",
   "other",
 ] as const;
@@ -103,6 +104,7 @@ function outputType(value: string): DesignBriefOutputType {
   switch (value) {
     case "prototype":
     case "slide_deck":
+    case "graphic":
     case "from_template":
     case "other":
       return value;

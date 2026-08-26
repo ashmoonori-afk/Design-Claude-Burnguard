@@ -27,10 +27,12 @@ export default function ProjectBriefFields({
   form,
   disabled,
   onChange,
+  showOutputSize = true,
 }: {
   form: BriefForm;
   disabled: boolean;
   onChange: BriefFieldChange;
+  showOutputSize?: boolean;
 }) {
   return (
     <div className="space-y-3 border-t border-border pt-4">
@@ -96,14 +98,16 @@ export default function ProjectBriefFields({
         />
       </div>
 
-      <ChoiceField
-        id="brief-output-size"
-        label="출력 크기"
-        choices={OUTPUT_SIZE_CHOICES}
-        value={form.outputSize}
-        disabled={disabled}
-        onSelect={(v) => onChange("outputSize", v)}
-      />
+      {showOutputSize && (
+        <ChoiceField
+          id="brief-output-size"
+          label="출력 크기"
+          choices={OUTPUT_SIZE_CHOICES}
+          value={form.outputSize}
+          disabled={disabled}
+          onSelect={(v) => onChange("outputSize", v)}
+        />
+      )}
     </div>
   );
 }

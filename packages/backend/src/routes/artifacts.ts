@@ -122,11 +122,18 @@ artifactRoutes.post("/api/projects/:id/exports", async (c) => {
     if (error instanceof UpgradeContractError) return c.json(fail("invalid_export_options", "Export options are invalid", { path: error.path }), 400);
     throw error;
   }
-  const { enqueueProjectExport } = await import("../services/exports");
+  const { enqueueProjectExport, ExportServiceError } = await import("../services/exports");
   const { exportQaHooks } = await import("../services/export-qa-barrier");
-  const job = await enqueueProjectExport(projectId, format, options, exportQaHooks(c.req.header("x-bg-export-qa-barrier") ?? null));
-  if (job === null) return c.json(fail("export_create_failed", "Export job could not be created"), 500);
-  return c.json(ok(job satisfies ExportJob), 202);
+  try {
+    const job = await enqueueProjectExport(projectId, format, options, exportQaHooks(c.req.header("x-bg-export-qa-barrier") ?? null));
+    if (job === null) return c.json(fail("export_create_failed", "Export job could not be created"), 500);
+    return c.json(ok(job satisfies ExportJob), 202);
+  } catch (error) {
+    if (error instanceof ExportServiceError && error.code === "invalid_graphic_export_options") {
+      return c.json(fail(error.code, error.message), 400);
+    }
+    throw error;
+  }
 });
 
 artifactRoutes.post("/api/exports/qa/barriers", async (c) => {

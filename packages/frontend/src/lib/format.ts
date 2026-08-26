@@ -25,6 +25,7 @@ export function formatRelativeDay(ts: number, now: number = Date.now()): string 
 const PROJECT_TYPE_LABEL: Record<string, string> = {
   prototype: "프로토타입",
   slide_deck: "슬라이드 덱",
+  graphic: "그래픽",
   from_template: "템플릿",
   other: "기타",
 };

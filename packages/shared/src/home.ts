@@ -5,6 +5,7 @@ import type {
   ThemeMode,
 } from "./app";
 import type { DesignBriefV1 } from "./design-brief";
+import type { GraphicCanvasV1 } from "./graphic";
 
 export interface ProjectSummary {
   id: string;
@@ -35,6 +36,7 @@ export interface CreateProjectRequest {
     use_speaker_notes?: boolean;
     copy_as_is?: boolean;
     design_brief?: DesignBriefV1;
+    graphic_canvas?: GraphicCanvasV1;
   };
 }
 

@@ -73,6 +73,13 @@ for icons, borders, and large or bold labels.
   slide index. Resolved comments leave the active queue.
 - **ChatPane**: intent entry and streaming state. Chat must not obscure the
   artifact or imply a completed update before the backend event arrives.
+- **GraphicCanvas**: one finite, server-owned artboard with persisted CSS-pixel
+  width and height. Graphic projects never use slide structure or deck runtime;
+  their truthful delivery action is a DPR-1 PNG at the exact persisted size.
+  Creation offers editable bounded dimensions and named presets without hiding
+  the 16-million-pixel ceiling. In the canvas sandbox only, the exact artboard
+  scales down without upscaling and centres on a neutral letterbox; this preview
+  transform never changes the served artifact or export geometry.
 - **QualityPanel**: one fixed status/action header above a bounded, vertically
   scrolling findings body. Findings remain ordered as must-fix, recommended,
   unknown, then a collapsed explicit-pass count. Technical evidence is bounded

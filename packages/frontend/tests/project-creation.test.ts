@@ -49,6 +49,8 @@ function draft(overrides: Partial<ProjectDraft> = {}): ProjectDraft {
     visualMood: "formal",
     density: "balanced",
     outputSize: "widescreen-16x9",
+    graphicWidth: 1080,
+    graphicHeight: 1080,
     useSpeakerNotes: false,
     copyAsIs: false,
     ...overrides,

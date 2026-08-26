@@ -1,21 +1,30 @@
-import type { ProjectType } from "@bg/shared";
+import type { GraphicCanvasV1, ProjectType } from "@bg/shared";
+import { renderGraphic } from "./graphic";
 import { renderPrototype } from "./prototype";
 import { renderSlideDeck, type SlideDeckOptions } from "./slide-deck";
 
 export interface TemplateContext {
-  name: string;
-  type: ProjectType;
-  options?: SlideDeckOptions;
+  readonly name: string;
+  readonly type: ProjectType;
+  readonly options?: SlideDeckOptions & {
+    readonly graphic_canvas?: GraphicCanvasV1 | null;
+  };
 }
 
 export function renderInitialArtifact(ctx: TemplateContext): string {
   switch (ctx.type) {
     case "slide_deck":
       return renderSlideDeck(ctx.name, ctx.options ?? {});
+    case "graphic": {
+      const canvas = ctx.options?.graphic_canvas;
+      if (canvas === undefined || canvas === null) {
+        throw new TypeError("Graphic template requires graphic_canvas");
+      }
+      return renderGraphic(ctx.name, canvas);
+    }
     case "prototype":
     case "from_template":
     case "other":
-    default:
       return renderPrototype(ctx.name);
   }
 }

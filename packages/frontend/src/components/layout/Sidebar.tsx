@@ -11,6 +11,7 @@ import { useUIStore } from "@/state/uiStore";
 const TYPES: Array<{ id: ProjectType; label: string }> = [
   { id: "prototype", label: "프로토타입" },
   { id: "slide_deck", label: "슬라이드 덱" },
+  { id: "graphic", label: "그래픽" },
   { id: "from_template", label: "템플릿" },
   { id: "other", label: "기타" },
 ];
@@ -92,13 +93,15 @@ export default function Sidebar() {
         </div>
       </header>
 
-      <nav className="flex gap-0.5 border-b border-border px-4">
+      <nav aria-label="새 프로젝트 유형" className="flex min-h-11 gap-0.5 overflow-x-auto border-b border-border px-4 [scrollbar-width:thin]">
         {TYPES.map((t) => (
           <button
             key={t.id}
+            type="button"
+            aria-pressed={activeType === t.id}
             onClick={() => setActiveType(t.id)}
             className={[
-              "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "min-h-11 shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               activeType === t.id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-foreground/70 hover:text-foreground",

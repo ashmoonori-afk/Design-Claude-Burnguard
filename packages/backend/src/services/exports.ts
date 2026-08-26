@@ -25,6 +25,7 @@ import type { ExportValidation } from "./export-receipt-validation";
 import { openRenderSession } from "./export-render-session";
 import { auditRenderedTree } from "./design-audit";
 import { prepareSlideDeckExport } from "./export-stage";
+import { parseStoredProjectOptions } from "./project-options";
 import { zipDirectory } from "./zip";
 
 const RENDERER_CONTRACT = "burnguard-export/1|playwright-core@1.62.1|pdfjs-dist@5.4.149";
@@ -34,7 +35,7 @@ export type ExportHooks = { readonly phase?: (attemptId: string, phase: ExportPh
 
 export class ExportServiceError extends Error {
   readonly name = "ExportServiceError";
-  constructor(readonly code: "project_not_found" | "source_changed" | "format_requires_deck" | "attempt_not_found" | "design_audit_failed", message: string) { super(message); }
+  constructor(readonly code: "project_not_found" | "source_changed" | "format_requires_deck" | "attempt_not_found" | "design_audit_failed" | "invalid_graphic_export_options", message: string) { super(message); }
 }
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat, options: ExportOptions, hooks: ExportHooks = {}) {
@@ -76,7 +77,10 @@ async function runExport(input: RunInput): Promise<void> {
     await materializeManagedTree(source, renderRoot); await validateCanonicalTree(renderRoot, live);
     if (context.project.type === "slide_deck") await prepareSlideDeckExport(renderRoot, context.project.entrypoint);
     const renderManifest = await inspectCanonicalTree(renderRoot);
-    const audit = await auditRenderedTree({ projectId: context.identity.projectId, projectDir: renderRoot, entrypoint: context.project.entrypoint, revision: context.identity.revision, digest: context.identity.digest, treeDigest: renderManifest.tree_digest, safeFix: false, deck: context.project.type === "slide_deck", signal: input.controller.signal });
+    const graphicCanvas = context.project.type === "graphic"
+      ? parseStoredProjectOptions(context.project.options_json).graphic_canvas ?? undefined
+      : undefined;
+    const audit = await auditRenderedTree({ projectId: context.identity.projectId, projectDir: renderRoot, entrypoint: context.project.entrypoint, revision: context.identity.revision, digest: context.identity.digest, treeDigest: renderManifest.tree_digest, safeFix: false, deck: context.project.type === "slide_deck", ...(graphicCanvas === undefined ? {} : { canvas: graphicCanvas }), signal: input.controller.signal });
     const auditUnknowns = audit.checks.filter((check) => check.reason !== null).map((check) => ({ code: `design_audit:${check.code}:${check.status}`, path: null }));
     const auditFindings = audit.checks.flatMap((check) => check.findings.map((finding) => ({ code: finding.check_code, path: finding.source.rel_path }))).slice(0, 200 - auditUnknowns.length);
     recordExportAuditFindings(db, input.attemptId, [...auditFindings, ...auditUnknowns]);
@@ -124,6 +128,20 @@ async function renderOutput(input: RunInput, renderRoot: string, outputPath: str
 async function exportContext(projectId: string, format: ExportFormat, options: ExportOptions): Promise<Context> {
   let project = await getProjectDetail(projectId); if (project === null) throw new ExportServiceError("project_not_found", "Project not found");
   if ((format === "pdf" || format === "pptx") && project.type !== "slide_deck") throw new ExportServiceError("format_requires_deck", "Format requires a slide deck");
+  if (project.type === "graphic" && format === "png") {
+    const canvas = parseStoredProjectOptions(project.options_json).graphic_canvas;
+    if (
+      canvas === null ||
+      options.png_width !== canvas.width ||
+      options.png_height !== canvas.height ||
+      options.png_dpr !== 1
+    ) {
+      throw new ExportServiceError(
+        "invalid_graphic_export_options",
+        "Graphic PNG options must exactly match the persisted canvas at DPR 1",
+      );
+    }
+  }
   const source = resolveManagedPath(projectsDir, project.dir_path); if (project.current_digest === null) { await new ArtifactCoordinator(getSqlite()).initialize(project.id, source); project = await getProjectDetail(projectId); }
   if (project === null || project.current_digest === null) throw new ExportServiceError("source_changed", "Stable project identity unavailable");
   const designSystemDigest = await designDigest(project.design_system_id);

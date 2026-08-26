@@ -7,14 +7,17 @@ type BuildContext = Parameters<typeof buildPrompt>[0];
 
 beforeAll(() => ensureLearningSchema(getSqlite()));
 
-function context(optionsJson: string | null): BuildContext {
+function context(
+  optionsJson: string | null,
+  projectType: BuildContext["project"]["project_type"] = "slide_deck",
+): BuildContext {
   return {
     project: {
       project_id: "brief-project",
       project_name: "분기 영업 보고서",
-      project_type: "slide_deck",
+      project_type: projectType,
       project_dir: "/tmp/brief-project",
-      entrypoint: "deck.html",
+      entrypoint: projectType === "slide_deck" ? "deck.html" : "index.html",
       options_json: optionsJson,
       current_revision: 0,
       current_digest: null,
@@ -58,6 +61,36 @@ describe("design brief prompt context", () => {
     expect(taggedJson(prompt, "burnguard-design-brief-v1")).toEqual(
       designBrief,
     );
+  });
+
+  test("Given a graphic project When the prompt is built Then exact one-artboard PNG delivery is explicit", async () => {
+    const prompt = await buildPrompt(
+      context(JSON.stringify({
+        graphic_canvas: { schema_version: 1, width: 1200, height: 628 },
+        design_brief: {
+          schema_version: 1,
+          output_type: "graphic",
+          audience: "SNS 방문자",
+          objective: "행사 참여를 안내한다",
+          content_source: "none",
+          locale: "ko-KR",
+          brand_mode: "none",
+          visual_mood: "friendly",
+          density: "balanced",
+          output_size: "custom",
+        },
+      }), "graphic"),
+      { type: "user.message", text: "행사 그래픽을 만들어줘" },
+    );
+
+    expect(taggedJson(prompt, "burnguard-graphic-output-v1")).toEqual({
+      schema_version: 1,
+      width_css_px: 1200,
+      height_css_px: 628,
+      artboard_count: 1,
+      delivery_format: "png",
+    });
+    expect(prompt).not.toContain("## Slide deck skill");
   });
 
   test("Given malformed project options When the prompt is built Then no partial brief leaks", async () => {

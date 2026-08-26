@@ -31,7 +31,7 @@ import {
 } from "./schema";
 import { SEEDED_PROJECT_HTML } from "./seeded-project-html";
 import { renderInitialArtifact } from "./templates";
-import type { SlideDeckOptions } from "./templates/slide-deck";
+import { parseStoredProjectOptions } from "../services/project-options";
 
 export { isExampleProject, listHomeProjects } from "./home-project-list";
 
@@ -305,7 +305,7 @@ export async function createProjectRecord(input: {
   const initialArtifact = renderInitialArtifact({
     name: input.name,
     type: input.type,
-    options: parseSlideDeckOptions(input.optionsJson),
+    options: parseStoredProjectOptions(input.optionsJson),
   });
 
   // Insert project + session atomically — without the transaction a
@@ -463,23 +463,4 @@ export async function getSessionInfo(sessionId: string) {
     updated_at: row.updated_at,
     last_active_at: row.last_active_at,
   } satisfies SessionInfo;
-}
-
-function parseSlideDeckOptions(optionsJson: string | null): SlideDeckOptions {
-  if (!optionsJson) return {};
-  try {
-    const parsed = JSON.parse(optionsJson);
-    if (parsed && typeof parsed === "object") {
-      const record = parsed as Record<string, unknown>;
-      return {
-        use_speaker_notes:
-          typeof record.use_speaker_notes === "boolean"
-            ? record.use_speaker_notes
-            : undefined,
-      };
-    }
-  } catch {
-    // malformed options JSON — fall through to defaults
-  }
-  return {};
 }

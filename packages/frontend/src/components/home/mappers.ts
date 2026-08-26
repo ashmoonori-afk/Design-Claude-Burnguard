@@ -36,6 +36,7 @@ export function filterHomeCards(
 const PROJECT_TINTS: Record<string, string> = {
   prototype: "bg-rose-100",
   slide_deck: "bg-slate-100",
+  graphic: "bg-sky-100",
   from_template: "bg-blue-100",
   other: "bg-stone-100",
 };

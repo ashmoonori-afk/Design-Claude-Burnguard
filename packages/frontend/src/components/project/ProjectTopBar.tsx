@@ -56,7 +56,7 @@ export default function ProjectTopBar({
         >
           <Play className="h-3.5 w-3.5" /> Present
         </Button>
-        <ExportMenu projectId={project.id} projectType={project.type} qualityGate={qualityGate} onOpenQuality={onOpenQuality} />
+        <ExportMenu projectId={project.id} projectType={project.type} projectOptionsJson={project.options_json} qualityGate={qualityGate} onOpenQuality={onOpenQuality} />
       </div>
     </header>
   );

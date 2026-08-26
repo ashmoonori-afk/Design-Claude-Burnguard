@@ -9,8 +9,9 @@ import { CanonicalTreeManifestError, inspectCanonicalTree, type CanonicalTreeMan
 import { inspectRenderedPage, type DomAuditFinding, type DomAuditObservation } from "./design-audit-dom";
 import { fingerprintHtmlNode, FilePatchError } from "./file-patch";
 import { openRenderSession, RenderSessionError } from "./export-render-session";
+import { parseStoredProjectOptions } from "./project-options";
 
-export type AuditRenderedTreeInput = { readonly projectId: string; readonly projectDir: string; readonly entrypoint: string; readonly revision: number; readonly digest: string; readonly treeDigest?: string; readonly safeFix?: boolean; readonly deck?: boolean; readonly signal: AbortSignal };
+export type AuditRenderedTreeInput = { readonly projectId: string; readonly projectDir: string; readonly entrypoint: string; readonly revision: number; readonly digest: string; readonly treeDigest?: string; readonly safeFix?: boolean; readonly deck?: boolean; readonly canvas?: { readonly width: number; readonly height: number }; readonly signal: AbortSignal };
 export class DesignAuditServiceError extends Error {
   readonly name = "DesignAuditServiceError";
   constructor(readonly code: "project_not_found" | "project_path_unavailable" | "stale_artifact_identity" | "audit_unavailable", message: string) { super(message); }
@@ -21,13 +22,16 @@ export async function auditRenderedTree(input: AuditRenderedTreeInput): Promise<
   const expectedTreeDigest = input.treeDigest ?? input.digest;
   if (manifest.tree_digest !== expectedTreeDigest) throw new DesignAuditServiceError("stale_artifact_identity", "Artifact identity changed before audit");
   const observations: DomAuditObservation[] = [];
-  for (const viewport of [{ width: 1280, height: 900, dpr: 1 }, { width: 375, height: 812, dpr: 1 }] as const) {
+  const viewports = input.canvas === undefined
+    ? [{ width: 1280, height: 900, dpr: 1 }, { width: 375, height: 812, dpr: 1 }] as const
+    : [{ width: input.canvas.width, height: input.canvas.height, dpr: 1 }] as const;
+  for (const viewport of viewports) {
     const session = await openRenderSession({ stagedDir: input.projectDir, entrypoint: input.entrypoint, viewport, deck: input.deck ?? false, strict: false, signal: input.signal });
     try { observations.push(await inspectRenderedPage(session.page)); } finally { await session.close(); }
   }
   const current = await inspectCanonicalTree(input.projectDir);
   if (current.tree_digest !== expectedTreeDigest) throw new DesignAuditServiceError("stale_artifact_identity", "Artifact identity changed during audit");
-  const desktop = observations[0]; const narrow = observations[1];
+  const desktop = observations[0]; const narrow = observations[1] ?? desktop;
   if (desktop === undefined || narrow === undefined) throw new DesignAuditServiceError("audit_unavailable", "Rendered audit observations are unavailable");
   const desktopFindings = desktop.findings.filter((finding) => finding.code !== "narrow_width"); const desktopKeys = new Set(desktopFindings.map((finding) => `${finding.code}:${finding.nodeId ?? ""}`));
   const directNarrow = narrow.findings.filter((finding) => finding.code === "narrow_width"); const directNarrowNodes = new Set(directNarrow.flatMap((finding) => finding.nodeId === null ? [] : [finding.nodeId]));
@@ -57,7 +61,10 @@ export async function getProjectDesignAudit(projectId: string, force = false, si
     if (cached !== null && cached.project_id === projectId && cached.artifact_revision === project.current_revision && cached.artifact_digest === project.current_digest) return cached;
   }
   let result: DesignAuditResult;
-  try { result = await auditRenderedTree({ projectId, projectDir, entrypoint: project.entrypoint, revision: project.current_revision, digest: project.current_digest, deck: project.type === "slide_deck", signal }); }
+  const graphicCanvas = project.type === "graphic"
+    ? parseStoredProjectOptions(project.options_json).graphic_canvas ?? undefined
+    : undefined;
+  try { result = await auditRenderedTree({ projectId, projectDir, entrypoint: project.entrypoint, revision: project.current_revision, digest: project.current_digest, deck: project.type === "slide_deck", ...(graphicCanvas === undefined ? {} : { canvas: graphicCanvas }), signal }); }
   catch (error) { if (error instanceof RenderSessionError || error instanceof CanonicalTreeManifestError) throw new DesignAuditServiceError("audit_unavailable", "Rendered audit is unavailable"); throw error; }
   const after = await getProjectDetail(projectId);
   if (after === null || after.current_revision !== result.artifact_revision || after.current_digest !== result.artifact_digest) throw new DesignAuditServiceError("stale_artifact_identity", "Artifact identity changed during audit");

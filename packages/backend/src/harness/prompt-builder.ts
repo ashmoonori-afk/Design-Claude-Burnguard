@@ -92,6 +92,21 @@ export async function buildPrompt(
       `- use_speaker_notes: ${projectOptions.use_speaker_notes ? "true" : "false"}`,
     );
   }
+  if (project.project_type === "graphic" && projectOptions.graphic_canvas !== null) {
+    const canvas = projectOptions.graphic_canvas;
+    lines.push("<burnguard-graphic-output-v1>");
+    lines.push(JSON.stringify({
+      schema_version: 1,
+      width_css_px: canvas.width,
+      height_css_px: canvas.height,
+      artboard_count: 1,
+      delivery_format: "png",
+    }));
+    lines.push("</burnguard-graphic-output-v1>");
+    lines.push(`- Exact canvas: ${canvas.width} × ${canvas.height} CSS px.`);
+    lines.push("- Author exactly one finite artboard; do not add slides, deck runtime, or a second artboard.");
+    lines.push("- Deliver this graphic as PNG only at the persisted canvas dimensions.");
+  }
   lines.push("");
 
   const directionState = context.designDirectionState;
