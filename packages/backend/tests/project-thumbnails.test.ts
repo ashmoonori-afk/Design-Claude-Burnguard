@@ -21,6 +21,7 @@ import {
 
 const digestA = "a".repeat(64);
 const digestB = "b".repeat(64);
+const PROJECT_TIMESTAMP = Number.MAX_SAFE_INTEGER;
 const projectIds: string[] = [];
 const tempDirs: string[] = [];
 let sequence = 0;
@@ -62,9 +63,18 @@ async function createProject(options: {
   getSqlite()
     .prepare(
       `INSERT INTO projects(id,name,type,dir_path,entrypoint,backend_id,created_at,updated_at,current_revision,current_digest)
-       VALUES (?,?,?,?,'index.html','codex',1,1,?,?)`,
+       VALUES (?,?,?,?,'index.html','codex',?,?,?,?)`,
     )
-    .run(id, id, options.type ?? "prototype", dirPath, options.revision ?? 3, options.digest);
+    .run(
+      id,
+      id,
+      options.type ?? "prototype",
+      dirPath,
+      PROJECT_TIMESTAMP,
+      PROJECT_TIMESTAMP,
+      options.revision ?? 3,
+      options.digest,
+    );
   projectIds.push(id);
   if (options.dirPath === undefined) tempDirs.push(dirPath);
   return { id, dirPath };
