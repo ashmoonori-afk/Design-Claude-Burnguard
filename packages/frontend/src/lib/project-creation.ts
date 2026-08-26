@@ -16,10 +16,16 @@ import type {
   DesignSystemSummary,
   ProjectType,
 } from "@bg/shared";
+import { GRAPHIC_CANVAS_LIMITS } from "@bg/shared";
 
 export const BRIEF_LOCALE = "ko";
 export const AUDIENCE_MAX_LENGTH = 200;
 export const OBJECTIVE_MAX_LENGTH = 1000;
+export const GRAPHIC_PRESETS = [
+  { label: "정사각형", width: 1080, height: 1080 },
+  { label: "SNS", width: 1200, height: 628 },
+  { label: "세로형", width: 1080, height: 1920 },
+] as const;
 
 export type BriefChoice<T> = { readonly value: T; readonly label: string };
 
@@ -64,6 +70,8 @@ export type ProjectDraft = {
   readonly visualMood: DesignBriefVisualMood;
   readonly density: DesignBriefDensity;
   readonly outputSize: DesignBriefOutputSize;
+  readonly graphicWidth: number;
+  readonly graphicHeight: number;
   readonly useSpeakerNotes: boolean;
   readonly copyAsIs: boolean;
 };
@@ -81,6 +89,8 @@ export const INITIAL_BRIEF_FORM: BriefForm = {
   visualMood: "formal",
   density: "balanced",
   outputSize: "responsive",
+  graphicWidth: 1080,
+  graphicHeight: 1080,
   useSpeakerNotes: false,
   copyAsIs: false,
 };
@@ -94,7 +104,10 @@ export type DraftProblem =
   | "audience_invalid"
   | "objective_invalid"
   | "design_system_required"
-  | "design_system_not_selectable";
+  | "design_system_not_selectable"
+  | "graphic_width_invalid"
+  | "graphic_height_invalid"
+  | "graphic_pixel_limit";
 
 export type BuildResult =
   | { readonly ok: true; readonly request: CreateProjectRequest }
@@ -107,6 +120,9 @@ export const PROBLEM_MESSAGE: Record<DraftProblem, string> = {
   design_system_required: "사용할 템플릿을 선택해 주세요.",
   design_system_not_selectable:
     "선택한 디자인 시스템은 지금 사용할 수 없어요. 목록에서 다시 골라 주세요.",
+  graphic_width_invalid: "너비는 320~4096 사이의 정수로 입력해 주세요.",
+  graphic_height_invalid: "높이는 240~4096 사이의 정수로 입력해 주세요.",
+  graphic_pixel_limit: "전체 픽셀은 1,600만 이하가 되도록 크기를 줄여 주세요.",
 };
 
 /**
@@ -158,6 +174,26 @@ export function buildCreateProjectRequest(
     return { ok: false, problem: "objective_invalid" };
   }
 
+  if (draft.type === "graphic") {
+    if (
+      !Number.isSafeInteger(draft.graphicWidth) ||
+      draft.graphicWidth < GRAPHIC_CANVAS_LIMITS.minWidth ||
+      draft.graphicWidth > GRAPHIC_CANVAS_LIMITS.maxWidth
+    ) {
+      return { ok: false, problem: "graphic_width_invalid" };
+    }
+    if (
+      !Number.isSafeInteger(draft.graphicHeight) ||
+      draft.graphicHeight < GRAPHIC_CANVAS_LIMITS.minHeight ||
+      draft.graphicHeight > GRAPHIC_CANVAS_LIMITS.maxHeight
+    ) {
+      return { ok: false, problem: "graphic_height_invalid" };
+    }
+    if (draft.graphicWidth * draft.graphicHeight > GRAPHIC_CANVAS_LIMITS.maxPixels) {
+      return { ok: false, problem: "graphic_pixel_limit" };
+    }
+  }
+
   const selectable = selectableDesignSystems(systems, draft.type);
   const designSystemId = keepSelectedDesignSystemId(
     draft.designSystemId,
@@ -185,7 +221,7 @@ export function buildCreateProjectRequest(
           : "selected_design_system",
     visual_mood: draft.visualMood,
     density: draft.density,
-    output_size: draft.outputSize,
+    output_size: draft.type === "graphic" ? "custom" : draft.outputSize,
   };
 
   return {
@@ -201,6 +237,15 @@ export function buildCreateProjectRequest(
           : {}),
         ...(draft.type === "from_template"
           ? { copy_as_is: draft.copyAsIs }
+          : {}),
+        ...(draft.type === "graphic"
+          ? {
+              graphic_canvas: {
+                schema_version: 1 as const,
+                width: draft.graphicWidth,
+                height: draft.graphicHeight,
+              },
+            }
           : {}),
         design_brief: brief,
       },

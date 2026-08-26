@@ -19,18 +19,27 @@ the chrome around it.
 - `background`: `#ffffff`
 - `foreground`: `#17191a`
 - `muted`: `#f1f3f5`
-- `muted-foreground`: `#757b80`
+- `muted-foreground`: `#5e646c`
 - `border`: `#dce4ea`
 - `accent`: `#004fff`
 - `accent-soft`: `#ecf4ff`
 - `success`: `#00ce78`
 - `warning`: `#fca63d`
-- `danger`: `#ff524c`
+- `danger`: `#d92d20`
 - `canvas-ink`: `#111111`
+
+The semantic CSS bindings `--success`, `--success-foreground`, `--warning`,
+and `--warning-foreground` expose the existing success and warning palette
+through Tailwind's `rgb(var(--token) / <alpha-value>)` convention.
 
 Use semantic Tailwind tokens instead of new one-off colors. Accent is reserved
 for the next meaningful action, selection focus, and keyboard focus rings.
 Danger is reserved for destructive or unrecoverable states.
+
+Alert copy on a `destructive/10` tint uses `text-foreground` with a
+`destructive/30` border: the tint and border carry the semantic while the copy
+itself stays above the 4.5:1 contrast floor. Danger-colored text is reserved
+for icons, borders, and large or bold labels.
 
 ### Type
 
@@ -64,6 +73,25 @@ Danger is reserved for destructive or unrecoverable states.
   slide index. Resolved comments leave the active queue.
 - **ChatPane**: intent entry and streaming state. Chat must not obscure the
   artifact or imply a completed update before the backend event arrives.
+  Each queued PDF/PPTX owns a stable item identity and an explicit ordinary
+  content or immutable visual-reference role. Existing managed visual files
+  are disclosed as editable-only; unsupported network sources are named
+  without presenting a false selection action.
+- **GraphicCanvas**: one finite, server-owned artboard with persisted CSS-pixel
+  width and height. Graphic projects never use slide structure or deck runtime;
+  their truthful delivery action is a DPR-1 PNG at the exact persisted size.
+  Creation offers editable bounded dimensions and named presets without hiding
+  the 16-million-pixel ceiling. In the canvas sandbox only, the exact artboard
+  scales down without upscaling and centres on a neutral letterbox; this preview
+  transform never changes the served artifact or export geometry.
+- **QualityPanel**: one fixed status/action header above a bounded, vertically
+  scrolling findings body. Findings remain ordered as must-fix, recommended,
+  unknown, then a collapsed explicit-pass count. Technical evidence is bounded
+  and monospaced; skipped and unmeasurable checks are never presented as pass.
+  Audit reruns and safe fixes are mutually exclusive; reduced motion keeps the
+  textual progress signal while suppressing spinner motion.
+- **QualityLayer**: a reveal-only accent outline requested once through the
+  frame bridge for the active file and node. It never owns hit testing or polls.
 
 ## State and interaction rules
 
@@ -87,10 +115,26 @@ remove non-essential transitions and preserve the same visible state changes.
 
 ## Responsive behavior
 
+- The project route is capped to the viewport (`h-dvh`, `overflow-hidden`).
+  The document never scrolls: the project top bar and every panel header stay
+  in place, and each pane owns exactly one scrollport. Document-shaped routes
+  (home, settings, systems) keep normal page scrolling.
 - Desktop: chat, canvas, and the contextual inspector share the viewport
   without nested horizontal scrolling.
 - Narrow viewport: the inspector becomes a full-width contextual section below
-  the canvas; controls remain at least 44px high where touch is plausible.
+  the canvas; controls remain at least 44px high where touch is plausible. At
+  widths up to 900px, every canvas mode action is at least 44px high.
+- At widths up to 900px chat, canvas, and the inspector share the capped
+  height instead of scrolling the page: chat and the inspector shrink, the
+  canvas keeps a 192px floor, and each pane scrolls inside itself.
+- The artifact tab strip centres the active tab group — label and close button
+  together — inside its scrollport whenever the strip overflows, with an edge
+  fade and proximity snapping as the overflow affordance.
+- Korean Quality copy uses keep-all wrapping. The panel and toolbar must not
+  introduce horizontal overflow; the findings body owns bounded panel scroll.
+  Auxiliary units (`-고 있다`, `-지 않다`, `-ㄹ 수 없다`) are bound with U+00A0
+  so an ending never orphans onto its own line, and status/banner paragraphs
+  add `text-pretty`.
 - Long selectors and file paths truncate visually but remain available in a
   `title` or accessible description.
 

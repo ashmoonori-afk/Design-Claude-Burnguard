@@ -1,4 +1,5 @@
 import { ulid } from "ulid";
+import type { VisualSourceRole } from "@bg/shared";
 import { getSqlite } from "./sqlite-client";
 
 export type AttachmentContext = {
@@ -10,11 +11,13 @@ export type AttachmentContext = {
 export type AttachmentRecordInput = {
   readonly sessionId: string; readonly filePath: string; readonly mimeType: string;
   readonly originalName: string; readonly sizeBytes: number; readonly sha256: string;
+  readonly sourceRole?: VisualSourceRole;
+  readonly sourceRoleExplicit?: boolean;
 };
 
 export function insertAttachmentRecord(input: AttachmentRecordInput): void {
-  getSqlite().prepare(`INSERT INTO attachments(id,session_id,file_path,mime_type,original_name,size_bytes,sha256,created_at)
-    VALUES (?,?,?,?,?,?,?,?)`).run(ulid(), input.sessionId, input.filePath, input.mimeType, input.originalName, input.sizeBytes, input.sha256, Date.now());
+  getSqlite().prepare(`INSERT INTO attachments(id,session_id,file_path,mime_type,original_name,size_bytes,sha256,source_role,source_role_explicit,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(ulid(), input.sessionId, input.filePath, input.mimeType, input.originalName, input.sizeBytes, input.sha256, input.sourceRole ?? "ordinary_content", input.sourceRoleExplicit ? 1 : 0, Date.now());
 }
 
 export function getAttachmentContext(sessionId: string): AttachmentContext | null {

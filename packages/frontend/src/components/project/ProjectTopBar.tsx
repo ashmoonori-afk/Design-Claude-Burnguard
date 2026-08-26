@@ -3,18 +3,22 @@ import { Home, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReactNode } from "react";
 import type { ProjectDetail } from "@bg/shared";
-import ExportMenu from "@/components/export/ExportMenu";
+import ExportMenu, { type ExportQualityGate } from "@/components/export/ExportMenu";
 
 export default function ProjectTopBar({
   project,
   tabsSlot,
   onPresent,
   canPresent,
+  qualityGate,
+  onOpenQuality,
 }: {
   project: ProjectDetail;
   tabsSlot?: ReactNode;
   onPresent?: () => void;
   canPresent: boolean;
+  qualityGate: ExportQualityGate;
+  onOpenQuality: () => void;
 }) {
   const displayName = stripInternalProjectTag(project.name);
   return (
@@ -29,19 +33,19 @@ export default function ProjectTopBar({
         </Link>
         <div className="flex items-center min-w-0">
           <div
-            className="text-sm font-medium w-[180px] truncate max-[900px]:w-[96px]"
+            className="text-sm font-medium w-[180px] truncate max-[900px]:w-[96px] max-[480px]:w-[72px]"
             title={displayName}
           >
             {displayName}
           </div>
         </div>
       </div>
-      <div className="flex-1 min-w-0 overflow-x-auto">{tabsSlot}</div>
+      <div className="min-w-0 flex-1 overflow-hidden">{tabsSlot}</div>
       <div className="px-3 flex items-center gap-2 shrink-0 max-[900px]:px-2 max-[900px]:gap-1">
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5 max-[900px]:w-8 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
+          className="gap-1.5 max-[900px]:min-h-11 max-[900px]:min-w-11 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
           onClick={onPresent}
           disabled={!canPresent || !onPresent}
           title={
@@ -52,7 +56,7 @@ export default function ProjectTopBar({
         >
           <Play className="h-3.5 w-3.5" /> Present
         </Button>
-        <ExportMenu projectId={project.id} projectType={project.type} />
+        <ExportMenu projectId={project.id} projectType={project.type} projectOptionsJson={project.options_json} qualityGate={qualityGate} onOpenQuality={onOpenQuality} />
       </div>
     </header>
   );

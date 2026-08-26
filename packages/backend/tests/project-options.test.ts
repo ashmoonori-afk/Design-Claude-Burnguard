@@ -30,6 +30,17 @@ describe("project options", () => {
       use_speaker_notes: true,
       copy_as_is: false,
       design_brief: validBrief,
+      graphic_canvas: null,
+    });
+  });
+
+  test("Given graphic dimensions When parsed Then the canonical canvas is preserved", () => {
+    expect(
+      parseProjectOptions({
+        graphic_canvas: { schema_version: 1, width: 1200, height: 628 },
+      }),
+    ).toMatchObject({
+      graphic_canvas: { schema_version: 1, width: 1200, height: 628 },
     });
   });
 
@@ -49,6 +60,7 @@ describe("project options", () => {
       use_speaker_notes: false,
       copy_as_is: false,
       design_brief: null,
+      graphic_canvas: null,
     });
   });
 });

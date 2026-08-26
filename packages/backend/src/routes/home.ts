@@ -21,6 +21,7 @@ import {
   parseProjectInput,
   ProjectInputError,
 } from "./home-project-input";
+import { serveProjectThumbnail } from "./project-thumbnail-handler";
 
 const VALID_PROJECT_TABS = new Set(["recent", "mine", "examples"]);
 const VALID_SYSTEM_STATUSES = new Set<DesignSystemStatus>([
@@ -101,6 +102,8 @@ homeRoutes.get("/api/projects", async (c) => {
   const result = await listHomeProjects(tab, limit, offset);
   return c.json(ok(result.items, { total: result.total, limit, offset }));
 });
+
+homeRoutes.get("/api/projects/:id/thumbnail", serveProjectThumbnail);
 
 homeRoutes.get("/api/design-systems", async (c) => {
   const status = (c.req.query("status") ?? "published") as DesignSystemStatus;

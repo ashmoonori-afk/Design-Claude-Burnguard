@@ -5,7 +5,7 @@ import { PathBoundaryError, resolveWithin } from "../security/path-boundary";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const OWNED_EPHEMERAL_FILES = new Set([".burnguard-publication", ".burnguard-catalog"]);
-const EXCLUDED_PROJECT_DIRECTORIES = new Set([".meta", ".attachments", ".git", ".omc", ".claude"]);
+const EXCLUDED_PROJECT_DIRECTORIES = new Set([".meta", ".attachments", ".burnguard-inputs", ".git", ".omc", ".claude"]);
 
 export type CanonicalTreeEntry = {
   readonly path: string;

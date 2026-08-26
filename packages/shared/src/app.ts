@@ -10,6 +10,7 @@ export type BackendId = "claude-code" | "codex";
 export type ProjectType =
   | "prototype"
   | "slide_deck"
+  | "graphic"
   | "from_template"
   | "other";
 export type DesignSystemStatus = "draft" | "review" | "published";

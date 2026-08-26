@@ -38,6 +38,7 @@
     /* Accents */
     --color-green-500: #00ce78;
     --color-red-500: #ff524c;
+    --color-red-700: #d92d20;
     --color-orange-500: #ff7659;
     --color-yellow-100: #fff5e4;
     --color-yellow-500: #fca63d;
@@ -58,10 +59,14 @@
     --secondary: 241 243 245;        /* grey-50 */
     --secondary-foreground: 23 25 26;
     --muted: 241 243 245;            /* grey-50 */
-    --muted-foreground: 117 123 128; /* grey-500 */
+    --muted-foreground: 94 100 108;  /* grey-600 */
     --accent: 0 79 255;              /* blue-500 (brand) */
     --accent-foreground: 255 255 255;
-    --destructive: 255 82 76;        /* red-500 */
+    --success: 0 206 120;           /* green-500 */
+    --success-foreground: 23 25 26;
+    --warning: 252 166 61;          /* yellow-500 */
+    --warning-foreground: 23 25 26;
+    --destructive: 217 45 32;        /* red-700 */
     --destructive-foreground: 255 255 255;
     --border: 220 228 234;           /* grey-100 */
     --input: 220 228 234;            /* grey-100 */
@@ -85,6 +90,12 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer components {
+  [data-radix-popper-content-wrapper]:has([data-export-menu-content]) {
+    z-index: 100 !important;
   }
 }
 

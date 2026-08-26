@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -27,73 +27,35 @@ import {
 } from "@/api/export";
 import { useUIStore } from "@/state/uiStore";
 import ExportStatusList from "./ExportStatusList";
+import {
+  buildExportMenuModel,
+  buildExportRetryRequest,
+} from "./export-options";
 
-interface Option {
-  /** Stable React key — also doubles as a click identifier. */
-  key: string;
-  format: ExportFormat;
-  options?: ExportOptions;
-  label: string;
-  icon: LucideIcon;
-  phase?: number;
-  /** Restrict the option to specific project types. Empty/undefined = all. */
-  onlyForTypes?: ProjectType[];
-}
+const OPTION_ICON: Record<ExportFormat, LucideIcon> = {
+  html_zip: FileDown,
+  pdf: FileType2,
+  png: Download,
+  pptx: Presentation,
+  handoff: PackagePlus,
+};
 
-const OPTIONS: Option[] = [
-  { key: "html_zip", format: "html_zip", label: "HTML zip", icon: FileDown },
-  {
-    key: "pdf-a4",
-    format: "pdf",
-    options: { pdf_paper: "a4" },
-    label: "PDF · A4 landscape (deck only)",
-    icon: FileType2,
-    onlyForTypes: ["slide_deck"],
-  },
-  {
-    key: "pdf-letter",
-    format: "pdf",
-    options: { pdf_paper: "letter" },
-    label: "PDF · Letter landscape (deck only)",
-    icon: FileType2,
-    onlyForTypes: ["slide_deck"],
-  },
-  {
-    key: "pdf-widescreen",
-    format: "pdf",
-    options: { pdf_paper: "widescreen-16x9" },
-    label: "PDF · 16:9 widescreen (deck only)",
-    icon: FileType2,
-    onlyForTypes: ["slide_deck"],
-  },
-  {
-    key: "pptx-16x9",
-    format: "pptx",
-    options: { pptx_size: "16x9" },
-    label: "PowerPoint · 16:9 (deck only)",
-    icon: Presentation,
-    onlyForTypes: ["slide_deck"],
-  },
-  {
-    key: "pptx-4x3",
-    format: "pptx",
-    options: { pptx_size: "4x3" },
-    label: "PowerPoint · 4:3 (deck only)",
-    icon: Presentation,
-    onlyForTypes: ["slide_deck"],
-  },
-  { key: "handoff", format: "handoff", label: "Developer handoff (.zip)", icon: PackagePlus },
-];
+export type ExportQualityGate = { readonly mustFixCount: number } | null;
 
-export default function ExportMenu({
-  projectId,
-  projectType,
-}: {
-  projectId: string;
-  projectType: ProjectType;
+export default function ExportMenu({ projectId, projectType, projectOptionsJson, qualityGate, onOpenQuality }: {
+  readonly projectId: string;
+  readonly projectType: ProjectType;
+  readonly projectOptionsJson: string | null;
+  readonly qualityGate: ExportQualityGate;
+  readonly onOpenQuality: () => void;
 }) {
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
+  const [open, setOpen] = useState(false);
+  const openQuality = () => {
+    setOpen(false);
+    onOpenQuality();
+  };
 
   // Poll while any job is still pending/running. Once everything settles to
   // succeeded/failed, polling stops and the list stays static until a new
@@ -129,6 +91,7 @@ export default function ExportMenu({
   });
 
   const jobs = jobsQuery.data ?? [];
+  const menuModel = buildExportMenuModel(projectType, projectOptionsJson);
 
   // Surface async failures via a toast — the createMutation onError only
   // catches synchronous create-call errors. Background pipeline failures
@@ -150,14 +113,15 @@ export default function ExportMenu({
       const previous = lastStatusRef.current.get(job.id);
       lastStatusRef.current.set(job.id, job.status);
       if (job.status === "failed" && previous !== "failed") {
-        const looksLikeChromium = job.error_message
-          ?.toLowerCase()
-          .includes("chromium");
+        const looksLikeChromium = job.error_message?.toLowerCase().includes("chromium");
+        const auditFailed = isDesignAuditExportFailure(job);
         pushToast({
           title: `Export failed (${formatLabel(job.format)})`,
-          body: looksLikeChromium
-            ? 'Chromium is not installed. Open Settings → "Chromium for exports" → Install, then re-run the export.'
-            : (job.error_message ?? "Unknown error."),
+          body: auditFailed
+            ? "내보내기 전 품질 점검에서 고쳐야 할 문제가 발견됐어요."
+            : looksLikeChromium
+              ? 'Chromium is not installed. Open Settings → "Chromium for exports" → Install, then re-run the export.'
+              : (job.error_message ?? "Unknown error."),
           tone: "error",
         });
       }
@@ -165,59 +129,82 @@ export default function ExportMenu({
   }, [jobs, pushToast, jobsQuery.status]);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
           size="sm"
-          className="gap-1.5 max-[900px]:w-8 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
+          className="gap-1.5 focus:ring-2 focus:ring-ring focus:ring-offset-1 max-[900px]:min-h-11 max-[900px]:min-w-11 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
           aria-label="Export"
         >
           <Download className="h-3.5 w-3.5" /> Export
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent data-export-menu-content align="end" className="z-[100] w-72">
         <DropdownMenuLabel>Export as</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {OPTIONS.map((o) => {
-          const wrongType =
-            o.onlyForTypes && !o.onlyForTypes.includes(projectType);
+        {qualityGate !== null && <div className="mx-2 mb-2 rounded-md border border-destructive/30 bg-destructive/10 p-2">
+          <p className="text-pretty break-keep text-xs text-foreground">고쳐야 할 문제 {qualityGate.mustFixCount}개가 있어 내보내기를 {"시작할\u00A0수\u00A0없어요."}</p>
+          <Button type="button" variant="outline" size="sm" className="mt-2 h-8 w-full max-[900px]:min-h-11" onClick={openQuality}>품질 점검 열기</Button>
+        </div>}
+        {!menuModel.ok && (
+          <p className="mx-2 rounded-md border border-warning/30 bg-warning/15 p-2 text-pretty break-keep text-xs">
+            {menuModel.message}
+          </p>
+        )}
+        {menuModel.options.map((option) => {
+          const Icon = OPTION_ICON[option.format];
           const disabled =
-            Boolean(o.phase) || wrongType || createMutation.isPending;
+            option.disabledReason !== undefined || createMutation.isPending;
           return (
             <DropdownMenuItem
-              key={o.key}
+              key={option.key}
               disabled={disabled}
               onClick={(event) => {
                 if (disabled) return;
+                if (qualityGate !== null) {
+                  event.preventDefault();
+                  openQuality();
+                  return;
+                }
                 // Keep the dropdown open so the user can watch the status list.
                 event.preventDefault();
-                createMutation.mutate({ format: o.format, options: o.options });
+                createMutation.mutate({
+                  format: option.format,
+                  options: option.options,
+                });
               }}
             >
-              <o.icon className="h-3.5 w-3.5" />
-              <span className="flex-1">{o.label}</span>
-              {o.phase ? (
-                <span className="text-[10px] text-muted-foreground">
-                  Phase {o.phase}
-                </span>
-              ) : wrongType ? (
+              <Icon className="h-3.5 w-3.5" />
+              <span className="flex-1">{option.label}</span>
+              {option.disabledReason === "deck_only" && (
                 <span className="text-[10px] text-muted-foreground">
                   deck only
                 </span>
-              ) : null}
+              )}
             </DropdownMenuItem>
           );
         })}
+        {jobs.some(isDesignAuditExportFailure) && <div className="mx-2 mt-2 rounded-md bg-warning/15 p-2">
+          <p className="break-keep text-xs">최근 내보내기가 품질 점검에서 중단됐어요.</p>
+          <Button type="button" variant="outline" size="sm" className="mt-2 h-8 w-full max-[900px]:min-h-11" onClick={openQuality}>품질 점검 열기</Button>
+        </div>}
         {jobs.length > 0 && (
           <>
             <DropdownMenuSeparator />
             <ExportStatusList
               jobs={jobs}
-              // Retry uses default options — see services/exports.ts
-              // comment on enqueueProjectExport. The user can re-pick a
-              // specific preset from the menu above if they need it.
-              onRetry={(format) => createMutation.mutate({ format })}
+              // Standard retries keep using default options — see
+              // services/exports.ts. Graphic PNG is the exact-size exception.
+              onRetry={(format) => {
+                if (qualityGate !== null) { openQuality(); return; }
+                const request = buildExportRetryRequest(
+                  projectType,
+                  format,
+                  menuModel,
+                );
+                if (request !== null) createMutation.mutate(request);
+              }}
               retryDisabled={createMutation.isPending}
             />
           </>
@@ -225,4 +212,8 @@ export default function ExportMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function isDesignAuditExportFailure(job: { readonly error_message: string | null; readonly latest_attempt: { readonly stop_reason: string | null } | null }): boolean {
+  return job.latest_attempt?.stop_reason === "validation_failed" && job.error_message?.startsWith("Design audit found ") === true;
 }

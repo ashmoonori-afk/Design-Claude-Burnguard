@@ -11,9 +11,17 @@ import { useUIStore } from "@/state/uiStore";
 const TYPES: Array<{ id: ProjectType; label: string }> = [
   { id: "prototype", label: "프로토타입" },
   { id: "slide_deck", label: "슬라이드 덱" },
+  { id: "graphic", label: "그래픽" },
   { id: "from_template", label: "템플릿" },
   { id: "other", label: "기타" },
 ];
+
+/**
+ * The seeded default display name is app chrome rather than user data,
+ * so it is shown in Korean. Any name the user actually set is rendered
+ * verbatim.
+ */
+const DEFAULT_DISPLAY_NAME = "You";
 
 const FALLBACK_SETTINGS: SettingsSummary = {
   user: { id: "local", display_name: "You" },
@@ -54,9 +62,13 @@ export default function Sidebar() {
 
   const settings = settingsQuery.data ?? FALLBACK_SETTINGS;
   const systems = systemsQuery.data ?? [];
+  const displayName =
+    settings.user.display_name === DEFAULT_DISPLAY_NAME
+      ? "나"
+      : settings.user.display_name;
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-background">
+    <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-background max-[900px]:order-2 max-[900px]:w-full max-[900px]:border-b max-[900px]:border-r-0">
       <header className="p-6 pb-4">
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-md bg-accent/15 text-accent">
@@ -81,13 +93,15 @@ export default function Sidebar() {
         </div>
       </header>
 
-      <nav className="flex gap-0.5 border-b border-border px-4">
+      <nav aria-label="새 프로젝트 유형" className="flex min-h-11 gap-0.5 overflow-x-auto border-b border-border px-4 [scrollbar-width:thin]">
         {TYPES.map((t) => (
           <button
             key={t.id}
+            type="button"
+            aria-pressed={activeType === t.id}
             onClick={() => setActiveType(t.id)}
             className={[
-              "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "min-h-11 shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               activeType === t.id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-foreground/70 hover:text-foreground",
@@ -110,9 +124,7 @@ export default function Sidebar() {
       <footer className="border-t border-border p-4">
         <div className="text-xs text-foreground/70">
           사용자{" "}
-          <span className="text-foreground">
-            {settings.user.display_name}
-          </span>
+          <span className="text-foreground">{displayName}</span>
         </div>
         <div className="mt-1 flex items-center gap-3">
           <button

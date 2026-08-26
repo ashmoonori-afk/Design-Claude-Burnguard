@@ -9,7 +9,7 @@ import { getSqlite } from "../db/sqlite-client";
 import { ArtifactCoordinator } from "./artifact-coordinator";
 import { materializeManagedTree } from "./artifact-tree-storage";
 
-const EXCLUDED_DIR_NAMES = new Set([".meta", ".attachments"]);
+const EXCLUDED_DIR_NAMES = new Set([".meta", ".attachments", ".burnguard-inputs"]);
 
 function snapshotDir(projectDir: string, turnId: string): string {
   return resolveWithin(

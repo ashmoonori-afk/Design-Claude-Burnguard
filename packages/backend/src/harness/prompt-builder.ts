@@ -1,4 +1,6 @@
 import path from "node:path";
+import type { VisualSourceManifestV1 } from "@bg/shared";
+import type { StageAttachmentInput } from "../services/stage-attachment-inputs";
 import type { UserEvent } from "@bg/shared/events";
 import type { buildSessionContext } from "../services/context";
 import { parseStoredProjectOptions } from "../services/project-options";
@@ -16,6 +18,7 @@ import {
 import { appendDesignBriefContext } from "./prompt-design-brief";
 import { appendDesignSystemContext } from "./prompt-design-system";
 import { appendReferenceLayoutContext } from "./prompt-reference-layout";
+import { appendVisualSourceContext } from "./prompt-visual-sources";
 import {
   summarizeDeckHtml,
   summarizePrototypeHtml,
@@ -31,6 +34,8 @@ export type PromptContextMode = "compact" | "full";
 
 export interface PromptBuildOptions {
   contextMode?: PromptContextMode;
+  visualSourceManifest?: VisualSourceManifestV1 | null;
+  stageAttachmentInputs?: readonly StageAttachmentInput[];
 }
 
 /**
@@ -92,7 +97,37 @@ export async function buildPrompt(
       `- use_speaker_notes: ${projectOptions.use_speaker_notes ? "true" : "false"}`,
     );
   }
+  if (project.project_type === "graphic" && projectOptions.graphic_canvas !== null) {
+    const canvas = projectOptions.graphic_canvas;
+    lines.push("<burnguard-graphic-output-v1>");
+    lines.push(JSON.stringify({
+      schema_version: 1,
+      width_css_px: canvas.width,
+      height_css_px: canvas.height,
+      artboard_count: 1,
+      delivery_format: "png",
+    }));
+    lines.push("</burnguard-graphic-output-v1>");
+    lines.push(`- Exact canvas: ${canvas.width} × ${canvas.height} CSS px.`);
+    lines.push("- Author exactly one finite artboard; do not add slides, deck runtime, or a second artboard.");
+    lines.push("- Deliver this graphic as PNG only at the persisted canvas dimensions.");
+  }
   lines.push("");
+
+  const directionState = context.designDirectionState;
+  const selectedDirection = directionState?.selected_id === null
+    ? undefined
+    : directionState?.directions.find((direction) => direction.id === directionState.selected_id && direction.status === "ready");
+  if (directionState !== null && selectedDirection !== undefined) {
+    lines.push("## Selected design direction");
+    lines.push("### Content outline");
+    for (const item of directionState.content_outline.slice(0, 12)) lines.push(`- ${item.slice(0, 300)}`);
+    lines.push(`- title: ${selectedDirection.title.slice(0, 200)}`);
+    lines.push(`- layout: ${selectedDirection.layout_key}`);
+    lines.push(`- style facts: ${selectedDirection.style_facts.slice(0, 8).map((fact) => fact.slice(0, 200)).join("; ")}`);
+    lines.push("- Follow this selected direction only; do not merge details from unselected directions.");
+    lines.push("");
+  }
 
   lines.push("<burnguard-research-context-v1>");
   lines.push(JSON.stringify(buildResearchPromptContext({
@@ -103,10 +138,21 @@ export async function buildPrompt(
   lines.push("</burnguard-research-context-v1>");
   lines.push("");
   appendDesignBriefContext(lines, projectOptions.design_brief);
+  await appendVisualSourceContext(lines, {
+    projectDir: project.project_dir,
+    attachments: context.attachments,
+    requestedPaths: userEvent.attachments ?? [],
+    selections: userEvent.visualSources,
+    prebuiltManifest: options.visualSourceManifest,
+    stageInputs: options.stageAttachmentInputs,
+  });
   appendReferenceLayoutContext(lines, {
     request: userEvent.text,
     attachments: context.attachments,
     requestedPaths: userEvent.attachments ?? [],
+    selections: userEvent.visualSources,
+    projectDir: project.project_dir,
+    stageInputs: options.stageAttachmentInputs,
   });
 
   // Structural summary of the entrypoint, when it's an HTML artifact we know
@@ -160,6 +206,8 @@ export async function buildPrompt(
       lines,
       context.attachments,
       userEvent.attachments,
+      project.project_dir,
+      options.stageAttachmentInputs,
     );
   }
 

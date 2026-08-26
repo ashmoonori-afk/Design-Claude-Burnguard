@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { MessageSquare, MessageCircleMore } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { BackendId, NormalizedEvent, SessionInfo } from "@bg/shared";
+import type { BackendId, FileInfo, NormalizedEvent, SessionInfo } from "@bg/shared";
 import MessageStream from "./MessageStream";
 import Composer from "./Composer";
+import type { ReadyAttachmentSource } from "./attachment-intake";
 import { switchSessionBackend } from "@/api/session";
 import { useUIStore } from "@/state/uiStore";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,8 @@ export default function ChatPane({
   onRevertTurn,
   revertingTurnId,
   composerInitialText,
+  statusSlot,
+  projectFiles,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
@@ -29,11 +32,17 @@ export default function ChatPane({
   canInterrupt?: boolean;
   interruptPending?: boolean;
   onInterrupt?: () => void;
-  onSend: (text: string, files: File[]) => void;
+  onSend: (
+    text: string,
+    files: readonly ReadyAttachmentSource[],
+    signal: AbortSignal,
+  ) => void | Promise<void>;
   onOpenFile?: (relPath: string) => void;
   onRevertTurn?: (turnId: string) => void;
   revertingTurnId?: string | null;
   composerInitialText?: string;
+  statusSlot?: ReactNode;
+  projectFiles: readonly FileInfo[];
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const queryClient = useQueryClient();
@@ -65,7 +74,7 @@ export default function ChatPane({
   const sessionRunning = session.status === "running";
 
   return (
-    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:h-[300px] max-[900px]:border-r-0 max-[900px]:border-b">
+    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:h-[360px] max-[900px]:w-full max-[900px]:border-r-0 max-[900px]:border-b">
       <div className="flex items-stretch gap-1 px-3 pt-2 border-b border-border">
         <ChatTab
           id="chat"
@@ -101,6 +110,9 @@ export default function ChatPane({
             onRevertTurn={onRevertTurn}
             revertingTurnId={revertingTurnId}
           />
+          {statusSlot !== undefined && statusSlot !== null && (
+            <div className="shrink-0">{statusSlot}</div>
+          )}
           <Composer
             onSend={onSend}
             disabled={composerDisabled}
@@ -108,6 +120,7 @@ export default function ChatPane({
             interruptPending={interruptPending}
             onInterrupt={onInterrupt}
             initialText={composerInitialText}
+            projectFiles={projectFiles}
           />
         </>
       ) : (
@@ -152,7 +165,7 @@ function BackendToggle({
                 : `Switch to ${opt} on next turn`
           }
           className={cn(
-            "px-1.5 py-0.5 font-mono uppercase transition-colors",
+            "max-[900px]:min-h-11 max-[900px]:min-w-11 px-1.5 py-0.5 font-mono uppercase transition-colors",
             opt === current
               ? "bg-foreground/90 text-background"
               : "bg-background text-muted-foreground hover:text-foreground",
@@ -187,7 +200,7 @@ function ChatTab({
     <button
       onClick={() => setActive(id)}
       className={cn(
-        "flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
+        "flex max-[900px]:min-h-11 items-center gap-1.5 px-2.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
         active === id
           ? "border-foreground text-foreground"
           : "border-transparent text-muted-foreground hover:text-foreground",

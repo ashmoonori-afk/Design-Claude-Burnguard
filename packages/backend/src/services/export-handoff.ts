@@ -1,7 +1,7 @@
 import { copyFile, cp, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 
-const HANDOFF_EXCLUDED_TOP_LEVEL = new Set([".meta", ".attachments"]);
+const HANDOFF_EXCLUDED_TOP_LEVEL = new Set([".meta", ".attachments", ".burnguard-inputs"]);
 
 /**
  * Recursively copies a staged project directory into the handoff
@@ -91,7 +91,7 @@ export interface HandoffSpec {
   project: {
     id: string;
     name: string;
-    type: "prototype" | "slide_deck" | "from_template" | "other";
+    type: "prototype" | "slide_deck" | "graphic" | "from_template" | "other";
     entrypoint: string;
   };
   viewport: { width: number; height: number };

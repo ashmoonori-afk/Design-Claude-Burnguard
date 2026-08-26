@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { closeActiveExportBrowsers, registerExportBrowser } from "../src/services/export-browser-registry";
+import { activeExportBrowserCount, closeActiveExportBrowsers, registerExportBrowser } from "../src/services/export-browser-registry";
 import { armExportQaBarrier, exportQaHooks, releaseExportQaBarrier, waitForExportQaBarrier } from "../src/services/export-qa-barrier";
 
 describe("export browser lifecycle", () => {
@@ -11,6 +11,16 @@ describe("export browser lifecycle", () => {
 
   test("Given a normally closed renderer When shutdown begins Then it is not closed again", async () => {
     let closes = 0; const owner = registerExportBrowser(async () => { closes += 1; }); owner.release(); await closeActiveExportBrowsers(); expect(closes).toBe(0);
+  });
+
+  test("Given Chromium graceful close stalls When its deadline expires Then forced close empties ownership", async () => {
+    let closes = 0; const owner = registerExportBrowser(async () => { closes += 1; if (closes === 1) await new Promise<void>(() => undefined); }, { gracefulDeadlineMs: 0 });
+    await owner.close(); expect(closes).toBe(2); expect(activeExportBrowserCount()).toBe(0);
+  });
+
+  test("Given Chromium graceful close fails When forced close succeeds Then cleanup completes and the failure remains loud", async () => {
+    const failure = new TypeError("graceful close failed"); let closes = 0; const owner = registerExportBrowser(async () => { closes += 1; if (closes === 1) throw failure; });
+    await expect(owner.close()).rejects.toBe(failure); expect(closes).toBe(2); expect(activeExportBrowserCount()).toBe(0);
   });
 
   test("Given an armed attempt barrier When its exact phase is reached Then observation precedes release", async () => {

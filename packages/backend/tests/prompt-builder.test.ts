@@ -37,6 +37,30 @@ function makeContext(
 }
 
 describe("buildPrompt", () => {
+  test("includes only the selected ready design direction", async () => {
+    const base = {
+      schema_version: 1, project_id: "p1", session_id: "s1", generation_id: "g1", status: "ready",
+      content_outline: ["outline-input-a", "outline-input-b"], selection_revision: 1, selection_history: [null], error: null, updated_at: 1,
+      directions: [
+        { id: "editorial", order: 0, layout_key: "editorial", title: "selected-input-title", summary: "selected-summary", style_facts: ["selected-input-fact"], status: "ready", preview_url: "/a", error: null },
+        { id: "modular", order: 1, layout_key: "modular", title: "unselected-input-title-b", summary: "other", style_facts: ["unselected-input-fact-b"], status: "ready", preview_url: "/b", error: null },
+        { id: "narrative", order: 2, layout_key: "narrative", title: "unselected-input-title-c", summary: "other", style_facts: ["unselected-input-fact-c"], status: "ready", preview_url: "/c", error: null },
+      ],
+      selected_id: "editorial",
+    } as const;
+    const selected = await buildPrompt(makeContext({}, { designDirectionState: base }), { type: "user.message", text: "continue" });
+    const beforeSelection = await buildPrompt(makeContext({}, { designDirectionState: { ...base, selected_id: null, selection_revision: 0, selection_history: [] } }), { type: "user.message", text: "continue" });
+
+    expect(selected).toContain("## Selected design direction");
+    expect(selected).toContain("outline-input-a");
+    expect(selected).toContain("selected-input-title");
+    expect(selected).toContain("editorial");
+    expect(selected).toContain("selected-input-fact");
+    expect(selected).not.toContain("unselected-input-title-b");
+    expect(selected).not.toContain("unselected-input-fact-c");
+    expect(beforeSelection).not.toContain("## Selected design direction");
+  });
+
   test("emits project + delivery + request sections for prototype", async () => {
     const prompt = await buildPrompt(makeContext(), {
       type: "user.message",
@@ -346,15 +370,15 @@ header { padding: var(--space-md); }
     expect(prompt).not.toContain("## Attachments");
   });
 
-  test("lists attachments verbatim", async () => {
+  test("does not echo unmatched raw attachment paths", async () => {
     const prompt = await buildPrompt(makeContext(), {
       type: "user.message",
       text: "see files",
       attachments: ["/tmp/a.png", "/tmp/b.png"],
     });
     expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain("- /tmp/a.png");
-    expect(prompt).toContain("- /tmp/b.png");
+    expect(prompt).not.toContain("/tmp/a.png");
+    expect(prompt).not.toContain("/tmp/b.png");
   });
 
   test("inlines compact summaries for pptx/pdf attachments and points Read to extracted text", async () => {
@@ -398,7 +422,7 @@ header { padding: var(--space-md); }
       );
 
       const prompt = await buildPrompt(
-        makeContext({}, {
+        makeContext({ project_dir: tempDir }, {
           attachments: [
             {
               id: "a1",
@@ -410,6 +434,8 @@ header { padding: var(--space-md); }
               original_name: "deck.pptx",
               size_bytes: 1024,
               sha256: null,
+              source_role: "ordinary_content",
+              source_role_explicit: false,
               created_at: Date.now(),
             },
           ],
@@ -422,10 +448,10 @@ header { padding: var(--space-md); }
       );
 
       expect(prompt).toContain(
-        `source_path: ${filePath} (binary attachment; do not Read/Glob/Bash this file directly)`,
+        "source_path: deck.pptx (binary attachment; do not Read/Glob/Bash this file directly)",
       );
       expect(prompt).toContain(
-        `extracted_text_path: ${attachmentExtractedTextPath(filePath)} (safe text version for Read)`,
+        "extracted_text_path: deck.pptx.extracted.md (safe text version for Read)",
       );
       expect(prompt).toContain(
         "summary: PPTX | 3 page(s) | brand=Quarterly Review",

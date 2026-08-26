@@ -1,4 +1,4 @@
-import type { BackendId, NormalizedEvent, SequencedEventEnvelope, SessionInfo, UserEvent } from "@bg/shared";
+import type { BackendId, NormalizedEvent, SequencedEventEnvelope, SessionInfo, UserEvent, VisualSourceRole } from "@bg/shared";
 import { apiFetch } from "./client";
 
 export async function getSession(id: string): Promise<SessionInfo> {
@@ -14,28 +14,44 @@ export async function listSessionEvents(
   return envelopes.map((item) => item.event);
 }
 
+/**
+ * `signal` cancels the HTTP request only. The backend keeps its own
+ * extraction lifecycle, and the client cannot observe extractor progress.
+ */
+export type VisualSourceUploadFile = {
+  readonly id: string;
+  readonly file: File;
+  readonly role: VisualSourceRole;
+};
+
 export async function sendUserEvent(
   id: string,
-  event: UserEvent & { files?: File[] },
+  event: UserEvent & { files?: readonly (File | VisualSourceUploadFile)[] },
+  options?: { readonly signal?: AbortSignal },
 ): Promise<void> {
   if (event.type === "user.message" && (event.files?.length ?? 0) > 0) {
     const form = new FormData();
     form.set("type", "user.message");
     form.set("text", event.text);
-    for (const file of event.files ?? []) {
-      form.append("files", file);
-    }
+    const uploads = (event.files ?? []).map((source, index) => source instanceof File
+      ? { id: `upload-${index}`, file: source, role: "ordinary_content" as const }
+      : source);
+    for (const upload of uploads) form.append("files", upload.file);
+    form.set("visual_sources", JSON.stringify({
+      schema_version: 1,
+      sources: uploads.map((upload, fileIndex) => ({
+        source_type: "upload",
+        upload_id: upload.id,
+        file_index: fileIndex,
+        role: upload.role,
+      })),
+    }));
 
-    const res = await fetch(`/api/sessions/${id}/events`, {
+    await apiFetch<{ accepted: true }>(`/api/sessions/${id}/events`, {
       method: "POST",
-      credentials: "same-origin",
       body: form,
+      signal: options?.signal,
     });
-    if (!res.ok) {
-      throw new Error(
-        await res.text().catch(() => `Failed to send message to session ${id}`),
-      );
-    }
     return;
   }
 
@@ -46,7 +62,9 @@ export async function sendUserEvent(
         type: "user.message",
         text: event.text,
         attachments: event.attachments,
+        visualSources: event.visualSources,
       }),
+      signal: options?.signal,
     });
     return;
   }
@@ -54,6 +72,7 @@ export async function sendUserEvent(
   await apiFetch<{ accepted: true }>(`/api/sessions/${id}/events`, {
     method: "POST",
     body: JSON.stringify(event),
+    signal: options?.signal,
   });
 }
 

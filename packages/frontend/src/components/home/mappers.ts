@@ -1,4 +1,8 @@
-import type { DesignSystemSummary, ProjectSummary } from "@bg/shared";
+import type {
+  DesignSystemStatus,
+  DesignSystemSummary,
+  ProjectSummary,
+} from "@bg/shared";
 import { formatRelativeDay, projectTypeLabel } from "@/lib/format";
 
 /**
@@ -16,14 +20,34 @@ export interface CardViewModel {
   isTemplate?: boolean;
 }
 
+export function filterHomeCards(
+  cards: readonly CardViewModel[],
+  query: string,
+): readonly CardViewModel[] {
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery.length === 0) {
+    return cards;
+  }
+  return cards.filter((card) =>
+    normalizeSearchText(card.name).includes(normalizedQuery),
+  );
+}
+
 const PROJECT_TINTS: Record<string, string> = {
   prototype: "bg-rose-100",
   slide_deck: "bg-slate-100",
+  graphic: "bg-sky-100",
   from_template: "bg-blue-100",
   other: "bg-stone-100",
 };
 
 const SYSTEM_TINTS = ["bg-amber-100", "bg-sky-100", "bg-emerald-100", "bg-violet-100"];
+
+const SYSTEM_STATUS_SUFFIX: Record<DesignSystemStatus, string> = {
+  draft: "디자인 시스템 · 초안",
+  review: "디자인 시스템 · 검토 중",
+  published: "디자인 시스템",
+};
 
 export function projectToCard(p: ProjectSummary): CardViewModel {
   const name = stripInternalProjectTag(p.name);
@@ -39,8 +63,7 @@ export function projectToCard(p: ProjectSummary): CardViewModel {
 }
 
 export function systemToCard(s: DesignSystemSummary, index = 0): CardViewModel {
-  const statusSuffix =
-    s.status === "published" ? "Design system" : `Design system · ${capitalize(s.status)}`;
+  const statusSuffix = SYSTEM_STATUS_SUFFIX[s.status];
   return {
     id: s.id,
     name: s.name,
@@ -52,10 +75,14 @@ export function systemToCard(s: DesignSystemSummary, index = 0): CardViewModel {
   };
 }
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 function stripInternalProjectTag(name: string): string {
   return name.replace(/^\[burnguard:[^\]]+\]\s*/, "");
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFC")
+    .toLocaleLowerCase("ko-KR")
+    .trim()
+    .replace(/\s+/gu, " ");
 }

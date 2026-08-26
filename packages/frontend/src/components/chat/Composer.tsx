@@ -1,28 +1,40 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import type { FileInfo } from "@bg/shared";
 import { Paperclip, Send, Settings2, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/state/uiStore";
 import { cn } from "@/lib/utils";
+import ComposerAttachments from "./ComposerAttachments";
+import { VisualSourceCandidates } from "./VisualSourceCandidates";
+import {
+  COMPOSER_SUPPORTED_EXTENSIONS,
+  resolveSendOutcome,
+  type ReadyAttachmentSource,
+  type SendOutcome,
+} from "./attachment-intake";
+import { useComposerPlaceholder } from "./useComposerPlaceholder";
+import { useComposerVisualSources } from "./useComposerVisualSources";
 
-const IDLE_PLACEHOLDER =
-  "뭘 만들고 싶나요? 로컬 CLI라 응답은 조금 느려요...";
+type ComposerSendState = { readonly kind: "idle" } | { readonly kind: "processing" } | SendOutcome;
 
-// Local CLIs take a few seconds to get going. Rotating the placeholder
-// while the turn is running turns the wait into a tiny loop of "the
-// app is alive" signals instead of a blank disabled textarea.
-const WAITING_PLACEHOLDERS = [
-  "로컬 CLI 워밍업 중...",
-  "Claude가 키보드를 두드리는 중...",
-  "토큰을 한 장 한 장 세는 중...",
-  "GPU가 기어를 올리는 소리가 들려요...",
-  "덱에 잉크를 바르는 중...",
-  "프롬프트를 천천히 음미하는 중...",
-  "로컬이라 좀 느립니다. 딴짓해도 돼요.",
-  "당신의 문장을 조립 중...",
-  "Claude가 스크롤을 읽는 중...",
-  "그림의 남은 한 조각을 찾는 중...",
-];
-const WAITING_INTERVAL_MS = 2400;
+function sendStateMessage(state: ComposerSendState): string | null {
+  switch (state.kind) {
+    case "idle":
+      return null;
+    case "processing":
+      return "보내는 중이에요. 서버 처리 진행률은 알 수 없어요.";
+    case "cancelled":
+      return "전송 요청을 취소했어요. 다시 보낼 수 있어요.";
+    case "failed":
+      if (state.code === "unsupported_file_kind") return "지원하지 않는 형식이라 저장하지 않았어요. 해당 파일을 빼고 다시 보내 주세요.";
+      if (state.code === "unsupported_visual_source") return "URL·웹·스톡 소스는 지원하지 않아 저장하지 않았어요. 로컬 PDF 또는 PPTX를 업로드해 주세요.";
+      return "전송에 실패했어요. 다시 보내기를 눌러 주세요.";
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
+}
 
 export default function Composer({
   onSend,
@@ -31,8 +43,15 @@ export default function Composer({
   interruptPending = false,
   onInterrupt,
   initialText = "",
+  projectFiles = [],
 }: {
-  onSend: (text: string, files: File[]) => void;
+  /**
+   * `signal` aborts the in-flight send request when the caller forwards it to
+   * `sendUserEvent`. The composer never assumes it was honoured: it only
+   * reports "cancelled" if the returned promise actually rejects with
+   * AbortError.
+   */
+  onSend: (text: string, files: readonly ReadyAttachmentSource[], signal: AbortSignal) => void | Promise<void>;
   disabled?: boolean;
   /**
    * True when the current turn has exceeded the user's configured
@@ -51,49 +70,57 @@ export default function Composer({
    * so a re-render can't clobber what the user has typed.
    */
   initialText?: string;
+  /** Indexed managed files are disclosed as editable-only source candidates. */
+  projectFiles?: readonly FileInfo[];
 }) {
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const [text, setText] = useState(initialText);
-  const [files, setFiles] = useState<File[]>([]);
+  const [sendState, setSendState] = useState<ComposerSendState>({ kind: "idle" });
+  const visualSources = useComposerVisualSources(() => {
+    if (sendState.kind !== "processing") setSendState({ kind: "idle" });
+  });
   const [dragOver, setDragOver] = useState(false);
-  const [waitingIndex, setWaitingIndex] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const sendAbort = useRef<AbortController | null>(null);
+  const placeholder = useComposerPlaceholder(disabled);
 
-  // Rotate the placeholder every few seconds while the CLI is busy.
-  // Random start so the same message doesn't greet every turn.
-  useEffect(() => {
-    if (!disabled) return;
-    setWaitingIndex(Math.floor(Math.random() * WAITING_PLACEHOLDERS.length));
-    const id = window.setInterval(() => {
-      setWaitingIndex((prev) => (prev + 1) % WAITING_PLACEHOLDERS.length);
-    }, WAITING_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [disabled]);
-
-  const placeholder = disabled
-    ? (WAITING_PLACEHOLDERS[waitingIndex] ?? IDLE_PLACEHOLDER)
-    : IDLE_PLACEHOLDER;
-
-  const canSend = text.trim().length > 0 && !disabled;
+  const sending = sendState.kind === "processing";
+  const canSend = text.trim().length > 0 && !disabled && !sending;
+  const statusMessage = sendStateMessage(sendState);
+  const retrying = sendState.kind === "failed" || sendState.kind === "cancelled";
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
     const dropped = Array.from(e.dataTransfer.files);
-    if (dropped.length > 0) setFiles((prev) => [...prev, ...dropped]);
+    if (dropped.length > 0) {
+      visualSources.add(dropped);
+    }
   }
 
-  function send() {
+  async function send() {
     if (!canSend) return;
-    onSend(text, files);
-    setText("");
-    setFiles([]);
+    const controller = new AbortController();
+    sendAbort.current = controller;
+    setSendState({ kind: "processing" });
+    try {
+      await onSend(text, visualSources.ready(), controller.signal);
+      setText("");
+      visualSources.clear();
+      setSendState({ kind: "idle" });
+    } catch (error) {
+      // Keep the text and the queue intact so retry costs one click.
+      setSendState(resolveSendOutcome(error));
+    } finally {
+      sendAbort.current = null;
+    }
   }
 
   return (
     <div
+      data-qa="composer"
       className={cn(
-        "border-t border-border p-3 bg-background",
+        "shrink-0 border-t border-border p-3 bg-background",
         dragOver && "ring-2 ring-accent ring-inset",
       )}
       onDragOver={(e) => {
@@ -103,39 +130,39 @@ export default function Composer({
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
     >
-      {files.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {files.map((f, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 rounded bg-muted text-muted-foreground text-[11px] px-2 py-1"
-            >
-              <Paperclip className="h-3 w-3" />
-              <span className="max-w-[120px] truncate">{f.name}</span>
-              <button
-                className="ml-0.5 text-muted-foreground hover:text-foreground"
-                title={`${f.name} 첨부 취소`}
-                onClick={() =>
-                  setFiles((prev) => prev.filter((_, j) => j !== i))
-                }
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+      <ComposerAttachments
+        items={visualSources.items}
+        sending={sending}
+        onRoleChange={visualSources.setRole}
+        onRemove={visualSources.remove}
+      />
+      <VisualSourceCandidates files={projectFiles} />
+
+      {statusMessage !== null && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mb-2 text-[11px] leading-relaxed text-muted-foreground"
+        >
+          {statusMessage}
+        </p>
       )}
 
       <textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (sendState.kind !== "processing") {
+            setSendState({ kind: "idle" });
+          }
+        }}
         placeholder={placeholder}
         rows={3}
         disabled={disabled}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            send();
+            void send();
           }
         }}
         className="w-full resize-none bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
@@ -146,17 +173,21 @@ export default function Composer({
           ref={fileInput}
           type="file"
           multiple
+          accept={COMPOSER_SUPPORTED_EXTENSIONS.join(",")}
+          aria-label="자료 파일 선택 (PDF, PPTX)"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files) {
-              setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+            const picked = Array.from(e.target.files ?? []);
+            if (picked.length > 0) {
+              visualSources.add(picked);
             }
+            e.target.value = "";
           }}
         />
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-foreground"
+          className="h-7 w-7 text-muted-foreground max-[900px]:h-11 max-[900px]:w-11"
           title="설정 열기"
           onClick={() => setSettingsOpen(true)}
         >
@@ -165,7 +196,7 @@ export default function Composer({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs"
+          className="h-7 gap-1 text-xs max-[900px]:h-11"
           title="참고할 파일을 첨부합니다"
           disabled={disabled}
           onClick={() => fileInput.current?.click()}
@@ -173,11 +204,22 @@ export default function Composer({
           <Paperclip className="h-3.5 w-3.5" /> 자료 첨부
         </Button>
         <div className="flex-1" />
-        {disabled && canInterrupt ? (
+        {sending ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-xs max-[900px]:h-11"
+            onClick={() => sendAbort.current?.abort()}
+            aria-label="전송 취소"
+            title="전송 요청을 취소합니다"
+          >
+            <StopCircle className="h-3.5 w-3.5" aria-hidden="true" /> 전송 취소
+          </Button>
+        ) : disabled && canInterrupt ? (
           <Button
             variant="destructive"
             size="sm"
-            className="h-7 gap-1 text-xs"
+            className="h-7 gap-1 text-xs max-[900px]:h-11"
             disabled={interruptPending || !onInterrupt}
             onClick={() => onInterrupt?.()}
             title="진행 중인 작업을 중단합니다"
@@ -189,19 +231,17 @@ export default function Composer({
           <Button
             variant="cta"
             size="sm"
-            className="h-7 gap-1 text-xs"
+            className="h-7 gap-1 text-xs max-[900px]:h-11"
             disabled={!canSend}
-            onClick={send}
+            onClick={() => void send()}
+            aria-label={retrying ? "다시 보내기 (Cmd/Ctrl+Enter)" : "보내기 (Cmd/Ctrl+Enter)"}
             title="보내기 (Cmd/Ctrl+Enter)"
           >
-            <Send className="h-3.5 w-3.5" /> 보내기
+            <Send className="h-3.5 w-3.5" aria-hidden="true" />{" "}
+            {retrying ? "다시 보내기" : "보내기"}
           </Button>
         )}
       </div>
-
-      <p className="mt-1.5 text-center text-[10px] leading-relaxed text-foreground/80">
-        파일을 여기로 끌어다 놓거나 자료 첨부로 올릴 수 있어요.
-      </p>
     </div>
   );
 }

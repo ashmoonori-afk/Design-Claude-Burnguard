@@ -29,10 +29,11 @@ import {
   sessionsTable,
   usersTable,
 } from "./schema";
-import { PROMPT_SAMPLE_TAG, TUTORIAL_TAG } from "./seed-tutorials";
 import { SEEDED_PROJECT_HTML } from "./seeded-project-html";
 import { renderInitialArtifact } from "./templates";
-import type { SlideDeckOptions } from "./templates/slide-deck";
+import { parseStoredProjectOptions } from "../services/project-options";
+
+export { isExampleProject, listHomeProjects } from "./home-project-list";
 
 export async function seedCoreData() {
   const db = getDb();
@@ -159,54 +160,6 @@ export async function seedCoreData() {
       }
     });
   }
-}
-
-export async function listHomeProjects(tab: string, limit: number, offset: number) {
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: projectsTable.id,
-      name: projectsTable.name,
-      type: projectsTable.type,
-      design_system_id: projectsTable.designSystemId,
-      design_system_name: designSystemsTable.name,
-      thumbnail_path: projectsTable.thumbnailPath,
-      updated_at: projectsTable.updatedAt,
-      archived_at: projectsTable.archivedAt,
-    })
-    .from(projectsTable)
-    .leftJoin(
-      designSystemsTable,
-      eq(projectsTable.designSystemId, designSystemsTable.id),
-    )
-    .where(isNull(projectsTable.archivedAt))
-    .orderBy(desc(projectsTable.updatedAt));
-
-  const filtered =
-    tab === "examples" ? rows.filter(isExampleProject) : rows;
-
-  return {
-    items: filtered.slice(offset, offset + limit) as ProjectSummary[],
-    total: filtered.length,
-  };
-}
-
-/**
- * Decides whether a project row should appear under the Examples tab.
- *
- * Before this rule existed the filter was `type === "from_template"`
- * only, which left the seeded tutorials and prompt-samples — typed
- * `prototype` / `slide_deck` — invisible there. Examples then showed
- * a single placeholder template fixture instead of the six real
- * working examples the user actually expects to see (P4.7c).
- *
- * Pure / row-level so it can be unit-tested without a DB.
- */
-export function isExampleProject(row: { type: string; name: string }): boolean {
-  if (row.type === "from_template") return true;
-  return (
-    row.name.startsWith(TUTORIAL_TAG) || row.name.startsWith(PROMPT_SAMPLE_TAG)
-  );
 }
 
 export async function listHomeDesignSystems(status: DesignSystemSummary["status"]) {
@@ -352,7 +305,7 @@ export async function createProjectRecord(input: {
   const initialArtifact = renderInitialArtifact({
     name: input.name,
     type: input.type,
-    options: parseSlideDeckOptions(input.optionsJson),
+    options: parseStoredProjectOptions(input.optionsJson),
   });
 
   // Insert project + session atomically — without the transaction a
@@ -510,23 +463,4 @@ export async function getSessionInfo(sessionId: string) {
     updated_at: row.updated_at,
     last_active_at: row.last_active_at,
   } satisfies SessionInfo;
-}
-
-function parseSlideDeckOptions(optionsJson: string | null): SlideDeckOptions {
-  if (!optionsJson) return {};
-  try {
-    const parsed = JSON.parse(optionsJson);
-    if (parsed && typeof parsed === "object") {
-      const record = parsed as Record<string, unknown>;
-      return {
-        use_speaker_notes:
-          typeof record.use_speaker_notes === "boolean"
-            ? record.use_speaker_notes
-            : undefined,
-      };
-    }
-  } catch {
-    // malformed options JSON — fall through to defaults
-  }
-  return {};
 }

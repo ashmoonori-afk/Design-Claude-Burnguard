@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import ProjectBriefFields, {
   ToggleRow,
 } from "@/components/home/ProjectBriefFields";
+import { GraphicCanvasFields } from "@/components/home/GraphicCanvasFields";
 import {
   INITIAL_BRIEF_FORM,
   PROBLEM_MESSAGE,
@@ -32,6 +33,7 @@ export type { ProjectType };
 const TYPE_LABEL: Record<ProjectType, string> = {
   prototype: "새 프로토타입",
   slide_deck: "새 슬라이드 덱",
+  graphic: "새 그래픽",
   from_template: "템플릿으로 시작",
   other: "새 프로젝트",
 };
@@ -63,6 +65,7 @@ export default function NewProjectPanel({
     selectable,
   );
   const isTemplate = type === "from_template";
+  const isGraphic = type === "graphic";
 
   const createMutation = useMutation({
     mutationFn: (request: CreateProjectRequest) => createProject(request),
@@ -148,10 +151,24 @@ export default function NewProjectPanel({
             : "게시된 디자인 시스템만 목록에 나와요. 없이도 시작할 수 있어요."}
         </p>
 
+        {isGraphic && (
+          <GraphicCanvasFields
+            width={form.graphicWidth}
+            height={form.graphicHeight}
+            disabled={disabled}
+            onChange={(size) => setForm((current) => ({
+              ...current,
+              graphicWidth: size.width,
+              graphicHeight: size.height,
+            }))}
+          />
+        )}
+
         <ProjectBriefFields
           form={form}
           disabled={disabled}
           onChange={update}
+          showOutputSize={!isGraphic}
         />
 
         {type === "slide_deck" && (

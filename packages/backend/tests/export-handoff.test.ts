@@ -100,7 +100,7 @@ describe("buildHandoffSpec", () => {
 });
 
 describe("copyProjectIntoBundle", () => {
-  test("mirrors the entire project tree into source/, minus .meta and .attachments", async () => {
+  test("mirrors managed project files without control or stage-input directories", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "bg-handoff-copy-"));
     const staged = path.join(root, "staged");
     const bundleSource = path.join(root, "bundle", "source");
@@ -123,18 +123,16 @@ describe("copyProjectIntoBundle", () => {
         "utf8",
       );
       mkdirSync(path.join(staged, ".attachments"), { recursive: true });
-      writeFileSync(
-        path.join(staged, ".attachments", "upload.bin"),
-        "SECRET",
-        "utf8",
-      );
+      writeFileSync(path.join(staged, ".attachments", "upload.bin"), "SECRET", "utf8");
+      mkdirSync(path.join(staged, ".burnguard-inputs"), { recursive: true });
+      writeFileSync(path.join(staged, ".burnguard-inputs", "source.pdf"), "INPUT", "utf8");
 
       const result = await copyProjectIntoBundle(staged, bundleSource);
 
       expect(result.copied.sort()).toEqual(
         ["assets", "deck.html", "fonts", "style.css"].sort(),
       );
-      expect(result.skipped.sort()).toEqual([".attachments", ".meta"].sort());
+      expect(result.skipped.sort()).toEqual([".attachments", ".burnguard-inputs", ".meta"].sort());
 
       expect(readFileSync(path.join(bundleSource, "deck.html"), "utf8")).toBe("<h1/>");
       expect(
@@ -148,6 +146,7 @@ describe("copyProjectIntoBundle", () => {
       const present = readdirSync(bundleSource);
       expect(present).not.toContain(".meta");
       expect(present).not.toContain(".attachments");
+      expect(present).not.toContain(".burnguard-inputs");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

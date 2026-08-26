@@ -1,7 +1,9 @@
 import {
   parseDesignBriefV1,
+  parseGraphicCanvasV1,
   UpgradeContractError,
   type DesignBriefV1,
+  type GraphicCanvasV1,
 } from "@bg/shared";
 import { isRecord } from "@bg/shared/contract-parser";
 
@@ -9,12 +11,14 @@ export type ProjectOptions = {
   readonly use_speaker_notes: boolean;
   readonly copy_as_is: boolean;
   readonly design_brief: DesignBriefV1 | null;
+  readonly graphic_canvas: GraphicCanvasV1 | null;
 };
 
 const DEFAULT_OPTIONS: ProjectOptions = {
   use_speaker_notes: false,
   copy_as_is: false,
   design_brief: null,
+  graphic_canvas: null,
 };
 
 export function parseProjectOptions(input: unknown): ProjectOptions {
@@ -26,9 +30,13 @@ export function parseProjectOptions(input: unknown): ProjectOptions {
     use_speaker_notes: optionalBoolean(input, "use_speaker_notes"),
     copy_as_is: optionalBoolean(input, "copy_as_is"),
     design_brief:
-      input["design_brief"] === undefined
+      input["design_brief"] === undefined || input["design_brief"] === null
         ? null
         : parseDesignBriefV1(input["design_brief"]),
+    graphic_canvas:
+      input["graphic_canvas"] === undefined || input["graphic_canvas"] === null
+        ? null
+        : parseGraphicCanvasOption(input["graphic_canvas"]),
   };
 }
 
@@ -45,6 +53,20 @@ export function parseStoredProjectOptions(
       error instanceof UpgradeContractError
     ) {
       return DEFAULT_OPTIONS;
+    }
+    throw error;
+  }
+}
+
+function parseGraphicCanvasOption(input: unknown): GraphicCanvasV1 {
+  try {
+    return parseGraphicCanvasV1(input);
+  } catch (error) {
+    if (error instanceof UpgradeContractError) {
+      throw new UpgradeContractError(
+        error.code,
+        `options.graphic_canvas.${error.path}`,
+      );
     }
     throw error;
   }

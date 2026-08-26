@@ -27,6 +27,8 @@ function attachment(
     original_name: originalName,
     size_bytes: 1024,
     sha256: "a".repeat(64),
+    source_role: "ordinary_content",
+    source_role_explicit: false,
     created_at: 1,
   };
 }
@@ -251,7 +253,21 @@ describe("reference layout prompt context", () => {
     ).toBe(false);
   });
 
-  test("Given a selected drawing filename When request text is generic Then the layout contract still activates", async () => {
+  test("Given an explicitly ordinary floor-plan attachment When request is generic Then filename heuristic is suppressed", async () => {
+    const filePath = "/tmp/floor-plan.pdf";
+    const ordinary = { ...attachment(filePath, "application/pdf", "floor-plan.pdf"), source_role_explicit: true };
+    const prompt = await buildPrompt(context([ordinary]), { type: "user.message", text: "Use the attached file", attachments: [filePath] });
+    expect(prompt).not.toContain("<burnguard-reference-layout-v1>");
+  });
+
+  test("Given a persisted immutable deck When request is generic Then reference layout activates without filename inference", async () => {
+    const filePath = "/tmp/deck.pptx";
+    const immutable = { ...attachment(filePath, "application/vnd.openxmlformats-officedocument.presentationml.presentation", "deck.pptx"), source_role: "immutable_reference" as const, source_role_explicit: true };
+    const prompt = await buildPrompt(context([immutable]), { type: "user.message", text: "Use the attached file", attachments: [filePath] });
+    expect(nested(taggedJson(prompt), "reference")["role"]).toBe("immutable_underlay");
+  });
+
+  test("Given a selected legacy drawing filename When request text is generic Then the layout contract still activates", async () => {
     const filePath = "/tmp/floor-plan.svg";
     const prompt = await buildPrompt(
       context([attachment(filePath, "image/svg+xml", "floor-plan.svg")]),

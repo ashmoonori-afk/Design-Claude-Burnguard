@@ -6,6 +6,7 @@ import { getSqlite } from "../db/sqlite-client";
 import { projectsDir, resolveManagedPath } from "../lib/paths";
 import { getLatestProjectSession, getProjectDetail } from "../db/project-read-repository";
 import { processProjectFilesystemSignal } from "../services/watchers";
+import { designDirectionRoutes } from "./design-directions";
 
 function ok<T>(data: T): ApiSuccess<T> {
   return { data };
@@ -20,6 +21,7 @@ function fail(
 }
 
 export const projectRoutes = new Hono();
+projectRoutes.route("/", designDirectionRoutes);
 
 projectRoutes.get("/api/projects/:id", async (c) => {
   const id = c.req.param("id");

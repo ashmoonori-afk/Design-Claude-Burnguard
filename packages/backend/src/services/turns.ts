@@ -1,4 +1,5 @@
 import { readdir } from "node:fs/promises";
+import path from "node:path";
 import { ulid } from "ulid";
 import type { NormalizedEvent, UserEvent } from "@bg/shared";
 import { assignAttachmentsToTurn } from "../db/attachments";
@@ -19,10 +20,16 @@ import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
 import { runAdapterTurn } from "../adapters/registry";
 import { loadConfig } from "../config";
+import { isDirectionOperationActive } from "./direction-operation-registry";
+import { buildVisualSourceManifest } from "./visual-source-manifest";
+import { captureImmutableAttachments, verifyImmutableAttachments } from "./immutable-attachment-guard";
+import { redactPrivateAttachmentPaths, withPrivateAttachmentInputs } from "./stage-attachment-inputs";
+import { sanitizeTurnEvent } from "./turn-error-sanitizer";
 
 type ToolDecision = Extract<UserEvent, { type: "user.tool_decision" }>;
 
 interface ActiveTurn {
+  readonly reservationId: string;
   abortController: AbortController;
   interrupted: boolean;
   /**
@@ -45,14 +52,24 @@ async function listDirSafe(dir: string): Promise<string[] | string> {
   }
 }
 
-async function persistAndPublish(sessionId: string, event: NormalizedEvent) {
-  const persisted = await insertNormalizedEvent(sessionId, event);
+export async function persistAndPublish(sessionId: string, event: NormalizedEvent, cause?: unknown) {
+  if (cause !== undefined) {
+    console.error("[turn] error diagnostic", cause);
+    await appendSessionTrace(sessionId, { level: "turn_error_diagnostic", error: diagnosticError(cause) });
+  }
+  const safeEvent = sanitizeTurnEvent(event, cause);
+  const persisted = await insertNormalizedEvent(sessionId, safeEvent);
   await appendSessionTrace(sessionId, {
     level: "event",
-    event,
+    event: safeEvent,
   });
-  broker.publish(sessionId, event);
+  broker.publish(sessionId, safeEvent);
   sequencedBroker.publish(sessionId, persisted);
+}
+
+function diagnosticError(error: unknown): Readonly<Record<string, unknown>> {
+  if (!(error instanceof Error)) return { value: String(error) };
+  return { name: error.name, message: error.message, stack: error.stack, ...("code" in error ? { code: error.code } : {}) };
 }
 
 /**
@@ -117,19 +134,40 @@ export function submitToolDecisionToTurn(
   return "queued";
 }
 
-export function startUserTurn(sessionId: string, payload: Extract<UserEvent, { type: "user.message" }>, requestedOperationId?: string) {
-  if (activeTurns.has(sessionId)) return null;
-  const activeTurn: ActiveTurn = { abortController: new AbortController(), interrupted: false, decisionQueue: [], decisionHandler: null };
-  const turnId = ulid();
-  const operationId = requestedOperationId ?? ulid();
+export type UserTurnReservation = {
+  readonly reservationId: string;
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly operationId: string;
+};
+
+export function reserveUserTurn(sessionId: string, requestedOperationId?: string): UserTurnReservation | null {
+  if (activeTurns.has(sessionId) || isDirectionOperationActive(sessionId)) return null;
+  const reservation = { reservationId: ulid(), sessionId, turnId: ulid(), operationId: requestedOperationId ?? ulid() };
+  activeTurns.set(sessionId, { reservationId: reservation.reservationId, abortController: new AbortController(), interrupted: false, decisionQueue: [], decisionHandler: null });
+  return reservation;
+}
+
+export function releaseUserTurnReservation(reservation: UserTurnReservation): void {
+  if (activeTurns.get(reservation.sessionId)?.reservationId === reservation.reservationId) activeTurns.delete(reservation.sessionId);
+}
+
+export function startReservedUserTurn(reservation: UserTurnReservation, payload: Extract<UserEvent, { type: "user.message" }>) {
+  const activeTurn = activeTurns.get(reservation.sessionId);
+  if (activeTurn?.reservationId !== reservation.reservationId) return null;
+  const { sessionId, turnId, operationId } = reservation;
   let resolvePrepared: () => void = () => {};
   let rejectPrepared: (error: unknown) => void = () => {};
   const prepared = new Promise<void>((resolve, reject) => { resolvePrepared = resolve; rejectPrepared = reject; });
-  activeTurns.set(sessionId, activeTurn);
   const promise = runUserTurnInternal(sessionId, payload, activeTurn, turnId, operationId, resolvePrepared)
     .catch((error: unknown) => { rejectPrepared(error); throw error; })
     .finally(() => activeTurns.delete(sessionId));
   return { promise, prepared, turnId, operationId };
+}
+
+export function startUserTurn(sessionId: string, payload: Extract<UserEvent, { type: "user.message" }>, requestedOperationId?: string) {
+  const reservation = reserveUserTurn(sessionId, requestedOperationId);
+  return reservation === null ? null : startReservedUserTurn(reservation, payload);
 }
 
 async function runUserTurnInternal(
@@ -140,11 +178,6 @@ async function runUserTurnInternal(
   operationId: string,
   onPrepared: () => void,
 ) {
-  const sessionContext = await buildSessionContext(sessionId);
-  if (!sessionContext) {
-    throw new Error("session_not_found");
-  }
-
   const session = await getSessionInfo(sessionId);
   if (!session) {
     throw new Error("session_not_found");
@@ -156,7 +189,14 @@ async function runUserTurnInternal(
     payload.attachments ?? [],
     turnId,
   );
-
+  const sessionContext = await buildSessionContext(sessionId);
+  if (!sessionContext) throw new Error("session_not_found");
+  const visualSources = await buildVisualSourceManifest({
+    projectDir: sessionContext.project.project_dir,
+    attachments: sessionContext.attachments,
+    requestedPaths: payload.attachments ?? [],
+    selections: payload.visualSources,
+  });
   await insertUserEvent(sessionId, payload);
   await appendSessionTrace(sessionId, {
     level: "input",
@@ -171,14 +211,16 @@ async function runUserTurnInternal(
   // (page reload, history fetch) renders the full conversation — not just
   // the agent side. `direction=up` user events are filtered out by
   // listSessionEvents, so without this the user bubble would disappear.
-  await persistAndPublish(sessionId, {
+  const userMessage: NormalizedEvent = {
     id: ulid(),
     ts: startTs,
     type: "chat.user_message",
     turnId,
     text: payload.text,
     attachmentCount,
-  });
+    ...(visualSources === null ? {} : { visualSources }),
+  };
+  await persistAndPublish(sessionId, userMessage);
 
   await persistAndPublish(sessionId, {
     id: ulid(),
@@ -194,6 +236,7 @@ async function runUserTurnInternal(
       id: ulid(),
       ts: Date.now(),
       type: "status.error",
+      code: "backend_unavailable",
       message: `${backendId} CLI not found on PATH. ${backend?.install_hint ?? "Install and retry."}`,
       recoverable: true,
     });
@@ -209,49 +252,63 @@ async function runUserTurnInternal(
 
   const binaryPath = backend.binary_path;
   const config = await loadConfig();
-  const prompt = await buildPrompt(sessionContext, payload, { contextMode: config.chat.contextMode });
-  await appendSessionTrace(sessionId, { level: "prompt_built", turnId, prompt_chars: prompt.length, context_mode: config.chat.contextMode, backend_id: backendId, binary: binaryPath });
   const projectDir = sessionContext.project.project_dir;
   const project = await getProjectDetail(sessionContext.project.project_id);
   if (project === null) throw new Error("project_not_found");
   const coordinator = new ArtifactCoordinator(getSqlite());
   const base = await coordinator.initialize(project.id, projectDir);
   let operationPrepared = false;
+  const terminalEvents: NormalizedEvent[] = [];
+  const selectedAttachments = sessionContext.attachments.filter((attachment) => payload.attachments?.includes(attachment.file_path) ?? false);
+  const forbiddenSha256 = new Set(selectedAttachments.filter((attachment) => attachment.source_role === "immutable_reference").flatMap((attachment) => attachment.sha256 === null ? [] : [attachment.sha256]));
   try {
     await coordinator.run({
       projectId: project.id, projectDir, kind: "turn", operationId,
       expectedRevision: project.current_revision, expectedArtifactDigest: base.tree_digest,
+      publicationPolicy: { forbiddenSha256 },
       onPrepared: () => { operationPrepared = true; onPrepared(); },
       mutate: async (stageDir) => {
         const waitsForInterrupt = process.env.BG_ARTIFACT_QA === "1" && operationId === process.env.BG_ARTIFACT_TURN_OPERATION_ID && process.env.BG_ARTIFACT_TURN_BARRIER === "abort";
         if (waitsForInterrupt && !activeTurn.abortController.signal.aborted) await new Promise<void>((resolve) => activeTurn.abortController.signal.addEventListener("abort", () => resolve(), { once: true }));
         if (activeTurn.abortController.signal.aborted) throw new ArtifactOperationError("operation_cancelled", "Turn was interrupted");
         await appendSessionTrace(sessionId, { level: "adapter_stage_dir", turnId, operationId, projectDir: stageDir });
-        await runAdapterTurn(backendId, {
-          sessionId, turnId, projectDir: stageDir, binaryPath, prompt,
-          signal: activeTurn.abortController.signal, userEvent: payload,
-          onEvent: async (event) => {
-            if (event.type === "file.changed") return;
-            await persistAndPublish(sessionId, event);
-            if (event.type === "usage.delta") await bumpSessionUsage(sessionId, { input: event.input, output: event.output, cached: event.cached ?? 0 });
-          },
-          onStderr: async (line) => { await appendSessionTrace(sessionId, { level: "stderr", turnId, line }); },
-          onDecision: (handler) => {
-            activeTurn.decisionHandler = handler;
-            for (const decision of activeTurn.decisionQueue.splice(0)) handler(decision);
-            return () => { if (activeTurn.decisionHandler === handler) activeTurn.decisionHandler = null; };
-          },
-        });
+        const immutableSnapshots = await captureImmutableAttachments(selectedAttachments);
+        try {
+          await withPrivateAttachmentInputs({ operationDir: path.dirname(stageDir), projectDir, attachments: sessionContext.attachments, requestedPaths: payload.attachments ?? [], immutableSnapshots }, async (stageInputs) => {
+            const prompt = await buildPrompt(sessionContext, payload, { contextMode: config.chat.contextMode, visualSourceManifest: visualSources, stageAttachmentInputs: stageInputs });
+            await appendSessionTrace(sessionId, { level: "prompt_built", turnId, prompt_chars: prompt.length, context_mode: config.chat.contextMode, backend_id: backendId, binary: binaryPath });
+            await runAdapterTurn(backendId, {
+              sessionId, turnId, projectDir: stageDir, binaryPath, prompt,
+              signal: activeTurn.abortController.signal, userEvent: payload,
+              onEvent: async (event) => {
+                if (event.type === "file.changed") return;
+                const safeEvent = redactPrivateAttachmentPaths(event, stageInputs);
+                if (safeEvent.type === "chat.message_end" || safeEvent.type === "status.idle") { terminalEvents.push(safeEvent); return; }
+                const eventError = event.type === "status.error" ? Object.assign(new Error(event.message), event.code === undefined ? {} : { code: event.code }) : undefined;
+                await persistAndPublish(sessionId, safeEvent, eventError);
+                if (safeEvent.type === "usage.delta") await bumpSessionUsage(sessionId, { input: safeEvent.input, output: safeEvent.output, cached: safeEvent.cached ?? 0 });
+              },
+              onStderr: async (line) => { await appendSessionTrace(sessionId, { level: "stderr", turnId, line }); },
+              onDecision: (handler) => {
+                activeTurn.decisionHandler = handler;
+                for (const decision of activeTurn.decisionQueue.splice(0)) handler(decision);
+                return () => { if (activeTurn.decisionHandler === handler) activeTurn.decisionHandler = null; };
+              },
+            });
+          });
+        } finally {
+          await verifyImmutableAttachments(immutableSnapshots);
+        }
         if (activeTurn.abortController.signal.aborted) throw new ArtifactOperationError("operation_cancelled", "Turn was interrupted");
       },
     });
+    for (const event of terminalEvents) await persistAndPublish(sessionId, event);
   } catch (error) {
     if (!operationPrepared) throw error;
     if (activeTurn.interrupted || activeTurn.abortController.signal.aborted) {
       await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.idle", stopReason: "interrupted" });
     } else {
-      const message = error instanceof Error ? error.message : String(error);
-      await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.error", message, recoverable: true });
+      await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.error", message: "turn_failed", recoverable: true }, error);
       await persistAndPublish(sessionId, { id: ulid(), ts: Date.now(), type: "status.idle", stopReason: "error" });
     }
     await setSessionStatus(sessionId, "idle");

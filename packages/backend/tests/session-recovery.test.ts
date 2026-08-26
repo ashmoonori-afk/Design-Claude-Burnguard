@@ -119,6 +119,11 @@ describe("sequence replay", () => {
       { id: "tf", ts: 1, type: "tool.finished", turnId: "t", toolCallId: "c", tool: "Bash", ok: true, output: {} },
       { id: "tp", ts: 1, type: "tool.permission_required", turnId: "t", toolCallId: "c", tool: "Bash", input: {} },
       { id: "a", ts: 1, type: "artifact.operation", operationId: "o", revision: 1, digest: "d", changedPaths: ["index.html"], outcome: "committed" },
+      { id: "dd", ts: 1, type: "design.direction_state", state: { schema_version: 1, project_id: "p", session_id: "s", generation_id: "g", status: "loading", content_outline: ["outline"], directions: [
+        { id: "editorial", order: 0, layout_key: "editorial", title: "a", summary: "a", style_facts: ["a"], status: "pending", preview_url: null, error: null },
+        { id: "modular", order: 1, layout_key: "modular", title: "b", summary: "b", style_facts: ["b"], status: "pending", preview_url: null, error: null },
+        { id: "narrative", order: 2, layout_key: "narrative", title: "c", summary: "c", style_facts: ["c"], status: "pending", preview_url: null, error: null },
+      ], selected_id: null, selection_revision: 0, selection_history: [], error: null, updated_at: 1 } },
       { id: "f", ts: 1, type: "file.changed", turnId: "t", action: "edited", path: "index.html" },
       { id: "r", ts: 1, type: "status.running" },
       { id: "i", ts: 1, type: "status.idle", stopReason: "end_turn" },

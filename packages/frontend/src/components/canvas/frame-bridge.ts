@@ -24,6 +24,9 @@
  *     ignored cheaply.
  */
 
+import type { GraphicCanvasV1 } from "@bg/shared";
+import { buildGraphicPreviewInjection } from "@/lib/graphic-preview";
+
 export interface FrameRect {
   left: number;
   top: number;
@@ -183,23 +186,32 @@ export function subscribeFrameEvent<E extends FrameEventName>(
   };
 }
 
+export type SandboxedArtifactOptions = {
+  readonly graphicCanvas?: GraphicCanvasV1;
+};
+
 export function buildSandboxedArtifactSrcDoc(
   html: string,
   baseHref: string,
+  options?: SandboxedArtifactOptions,
 ): string {
   const baseTag = `<base href="${escapeHtmlAttr(baseHref)}">`;
+  const graphicPreview = options?.graphicCanvas === undefined
+    ? ""
+    : buildGraphicPreviewInjection(options.graphicCanvas);
   const scriptTag = `<script>${BRIDGE_SCRIPT}<\/script>`;
   if (/<head[\s>]/i.test(html)) {
-    return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}${scriptTag}`);
+    return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}${graphicPreview}${scriptTag}`);
   }
   if (/<html[\s>]/i.test(html)) {
     return html.replace(
       /<html([^>]*)>/i,
-      `<html$1><head>${baseTag}${scriptTag}</head>`,
+      `<html$1><head>${baseTag}${graphicPreview}${scriptTag}</head>`,
     );
   }
-  return `<!doctype html><html><head>${baseTag}${scriptTag}</head><body>${html}</body></html>`;
+  return `<!doctype html><html><head>${baseTag}${graphicPreview}${scriptTag}</head><body>${html}</body></html>`;
 }
+
 
 export async function requestFrameSelectAtPoint(
   iframe: HTMLIFrameElement | null,

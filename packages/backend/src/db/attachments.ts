@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ulid } from "ulid";
+import type { VisualSourceRole } from "@bg/shared";
 import { getDb } from "./client";
 import { attachmentsTable } from "./schema";
 
@@ -12,6 +13,8 @@ export interface AttachmentRecord {
   original_name: string;
   size_bytes: number;
   sha256: string | null;
+  source_role: VisualSourceRole;
+  source_role_explicit: boolean;
   created_at: number;
 }
 
@@ -23,6 +26,8 @@ export async function insertAttachment(input: {
   originalName: string;
   sizeBytes: number;
   sha256?: string | null;
+  sourceRole?: VisualSourceRole;
+  sourceRoleExplicit?: boolean;
 }) {
   const db = getDb();
   const id = ulid();
@@ -36,6 +41,8 @@ export async function insertAttachment(input: {
     originalName: input.originalName,
     sizeBytes: input.sizeBytes,
     sha256: input.sha256 ?? null,
+    sourceRole: input.sourceRole ?? "ordinary_content",
+    sourceRoleExplicit: input.sourceRoleExplicit ?? false,
     createdAt,
   });
 
@@ -48,6 +55,8 @@ export async function insertAttachment(input: {
     original_name: input.originalName,
     size_bytes: input.sizeBytes,
     sha256: input.sha256 ?? null,
+    source_role: input.sourceRole ?? "ordinary_content",
+    source_role_explicit: input.sourceRoleExplicit ?? false,
     created_at: createdAt,
   } satisfies AttachmentRecord;
 }
@@ -64,6 +73,8 @@ export async function listSessionAttachments(sessionId: string) {
       original_name: attachmentsTable.originalName,
       size_bytes: attachmentsTable.sizeBytes,
       sha256: attachmentsTable.sha256,
+      source_role: attachmentsTable.sourceRole,
+      source_role_explicit: attachmentsTable.sourceRoleExplicit,
       created_at: attachmentsTable.createdAt,
     })
     .from(attachmentsTable)

@@ -13,6 +13,7 @@ import EditPanel from "./EditPanel";
 import SelectorReadOnlyPanel from "./SelectorReadOnlyPanel";
 import TweaksPanel from "./TweaksPanel";
 import type { TweakChangePreview } from "./TweaksPanel";
+import QualityPanel, { type QualityPanelBinding } from "./QualityPanel";
 
 /**
  * Right-side mode pane. Renders nothing when no mode is active so the canvas
@@ -50,6 +51,7 @@ export default function ModePanel({
   onUndoDraw,
   onRedoDraw,
   onClearDraw,
+  quality,
 }: {
   mode: CanvasMode | null;
   selection: SelectedNode | null;
@@ -84,11 +86,12 @@ export default function ModePanel({
   onUndoDraw: () => void;
   onRedoDraw: () => void;
   onClearDraw: () => void;
+  quality: QualityPanelBinding;
 }) {
   if (!mode) return null;
 
   return (
-    <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:max-h-[48vh] max-[900px]:border-l-0 max-[900px]:border-t">
+    <aside className="w-[320px] shrink-0 border-l border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:max-h-[48vh] max-[900px]:shrink max-[900px]:border-l-0 max-[900px]:border-t">
       {mode === "select" && (
         <SelectorReadOnlyPanel
           selection={selection}
@@ -124,6 +127,7 @@ export default function ModePanel({
           onClear={onClearEdit}
         />
       )}
+      {mode === "quality" && <QualityPanel quality={quality} />}
       {mode === "draw" && (
         <DrawPanel
           tool={drawTool}
