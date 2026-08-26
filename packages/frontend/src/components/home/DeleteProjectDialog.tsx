@@ -29,9 +29,11 @@ export default function DeleteProjectDialog({
           <div className="h-10 w-10 rounded-md bg-destructive/10 text-destructive grid place-items-center mb-3">
             <AlertTriangle className="h-5 w-5" />
           </div>
-          <DialogTitle>Delete &ldquo;{projectName}&rdquo;?</DialogTitle>
-          <DialogDescription>
-            This permanently removes the project, its session history, attachments, and generated files. This cannot be undone.
+          <DialogTitle className="break-keep leading-snug">
+            &ldquo;{projectName}&rdquo; 프로젝트를 삭제할까요?
+          </DialogTitle>
+          <DialogDescription className="break-keep">
+            프로젝트와 대화 기록, 첨부 파일, 생성된 파일이 모두 영구 삭제돼요. 되돌릴 수 없어요.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="pt-2 border-t border-border">
@@ -40,14 +42,14 @@ export default function DeleteProjectDialog({
             onClick={() => onOpenChange(false)}
             disabled={isPending}
           >
-            Cancel
+            취소
           </Button>
           <Button
             variant="destructive"
             onClick={onConfirm}
             disabled={isPending}
           >
-            {isPending ? "Deleting…" : "Delete"}
+            {isPending ? "삭제하는 중..." : "삭제"}
           </Button>
         </DialogFooter>
       </DialogContent>

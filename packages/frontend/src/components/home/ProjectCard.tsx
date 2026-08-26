@@ -52,9 +52,9 @@ export default function ProjectCard(
         {props.isTemplate && (
           <Badge
             variant="outline"
-            className="absolute top-2 left-2 bg-background/95 text-[10px] uppercase tracking-wider"
+            className="absolute top-2 left-2 bg-background/95 text-[10px] tracking-wider"
           >
-            Template
+            템플릿
           </Badge>
         )}
         <div data-qa="project-card-details" className="p-3">
@@ -77,7 +77,7 @@ export default function ProjectCard(
                   e.stopPropagation();
                 }}
                 className="h-7 w-7 rounded-md bg-background/95 border border-border grid place-items-center text-muted-foreground hover:text-foreground shadow-app-1"
-                aria-label="Project actions"
+                aria-label={`${props.name} 옵션 메뉴`}
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
@@ -91,7 +91,7 @@ export default function ProjectCard(
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Delete
+                삭제
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

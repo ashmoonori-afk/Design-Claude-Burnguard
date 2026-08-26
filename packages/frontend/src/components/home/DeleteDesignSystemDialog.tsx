@@ -45,15 +45,17 @@ export default function DeleteDesignSystemDialog({
           <div className="h-10 w-10 rounded-md bg-destructive/10 text-destructive grid place-items-center mb-3">
             <AlertTriangle className="h-5 w-5" />
           </div>
-          <DialogTitle>
-            {hasBlocker ? "Can't delete yet" : `Delete "${systemName}"?`}
+          <DialogTitle className="break-keep leading-snug">
+            {hasBlocker
+              ? "아직 삭제할 수 없어요"
+              : `“${systemName}” 디자인 시스템을 삭제할까요?`}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-keep">
             {hasBlocker
               ? blocker?.reason === "is_template"
-                ? "This is a seeded template design system and cannot be deleted."
-                : "Projects still use this design system. Reassign or archive them first."
-              : "This permanently removes the design system row, every preview card, and the canonical folder under ~/.burnguard/data/systems. This cannot be undone."}
+                ? "기본으로 제공되는 템플릿 디자인 시스템이라 삭제할 수 없어요."
+                : "이 디자인 시스템을 쓰는 프로젝트가 아직 있어요. 아래 프로젝트에서 다른 디자인 시스템을 고르거나 프로젝트를 보관 처리한 뒤 다시 시도해 주세요."
+              : "디자인 시스템 항목과 모든 미리보기 카드, ~/.burnguard/data/systems 아래 표준 폴더가 영구 삭제돼요. 되돌릴 수 없어요."}
           </DialogDescription>
         </DialogHeader>
 
@@ -74,7 +76,7 @@ export default function DeleteDesignSystemDialog({
             onClick={() => onOpenChange(false)}
             disabled={isPending}
           >
-            {hasBlocker ? "Close" : "Cancel"}
+            {hasBlocker ? "닫기" : "취소"}
           </Button>
           {!hasBlocker ? (
             <Button
@@ -82,7 +84,7 @@ export default function DeleteDesignSystemDialog({
               onClick={onConfirm}
               disabled={isPending}
             >
-              {isPending ? "Deleting…" : "Delete"}
+              {isPending ? "삭제하는 중..." : "삭제"}
             </Button>
           ) : null}
         </DialogFooter>

@@ -15,6 +15,13 @@ const TYPES: Array<{ id: ProjectType; label: string }> = [
   { id: "other", label: "기타" },
 ];
 
+/**
+ * The seeded default display name is app chrome rather than user data,
+ * so it is shown in Korean. Any name the user actually set is rendered
+ * verbatim.
+ */
+const DEFAULT_DISPLAY_NAME = "You";
+
 const FALLBACK_SETTINGS: SettingsSummary = {
   user: { id: "local", display_name: "You" },
   app_version: "0.4.0",
@@ -54,6 +61,10 @@ export default function Sidebar() {
 
   const settings = settingsQuery.data ?? FALLBACK_SETTINGS;
   const systems = systemsQuery.data ?? [];
+  const displayName =
+    settings.user.display_name === DEFAULT_DISPLAY_NAME
+      ? "나"
+      : settings.user.display_name;
 
   return (
     <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-background max-[900px]:order-2 max-[900px]:w-full max-[900px]:border-b max-[900px]:border-r-0">
@@ -110,9 +121,7 @@ export default function Sidebar() {
       <footer className="border-t border-border p-4">
         <div className="text-xs text-foreground/70">
           사용자{" "}
-          <span className="text-foreground">
-            {settings.user.display_name}
-          </span>
+          <span className="text-foreground">{displayName}</span>
         </div>
         <div className="mt-1 flex items-center gap-3">
           <button

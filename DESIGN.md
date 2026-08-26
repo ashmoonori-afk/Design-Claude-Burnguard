@@ -19,13 +19,13 @@ the chrome around it.
 - `background`: `#ffffff`
 - `foreground`: `#17191a`
 - `muted`: `#f1f3f5`
-- `muted-foreground`: `#757b80`
+- `muted-foreground`: `#5e646c`
 - `border`: `#dce4ea`
 - `accent`: `#004fff`
 - `accent-soft`: `#ecf4ff`
 - `success`: `#00ce78`
 - `warning`: `#fca63d`
-- `danger`: `#ff524c`
+- `danger`: `#d92d20`
 - `canvas-ink`: `#111111`
 
 Use semantic Tailwind tokens instead of new one-off colors. Accent is reserved

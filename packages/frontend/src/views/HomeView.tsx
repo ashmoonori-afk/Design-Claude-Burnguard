@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -46,6 +46,7 @@ export default function HomeView() {
   const pushToast = useUIStore((s) => s.pushToast);
   const [activeTab, setActiveTab] = useState<HomeTab>("recent");
   const [projectQuery, setProjectQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const cliMissingShown = useUIStore((s) => s.cliMissingShown);
   const setCliMissingShown = useUIStore((s) => s.setCliMissingShown);
   const [cliMissingOpen, setCliMissingOpen] = useState(false);
@@ -116,12 +117,12 @@ export default function HomeView() {
     mutationFn: (id: string) => deleteProject(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
-      pushToast({ title: "Project deleted", tone: "success" });
+      pushToast({ title: "프로젝트를 삭제했어요", tone: "success" });
       setDeleteTarget(null);
     },
     onError: (err) => {
       pushToast({
-        title: "Delete failed",
+        title: "프로젝트를 삭제하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -132,11 +133,11 @@ export default function HomeView() {
     mutationFn: () => restoreSamples(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
-      pushToast({ title: "Samples restored", tone: "success" });
+      pushToast({ title: "기본 예제를 복원했어요", tone: "success" });
     },
     onError: (err) => {
       pushToast({
-        title: "Restore failed",
+        title: "예제를 복원하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -147,7 +148,7 @@ export default function HomeView() {
     mutationFn: (id: string) => deleteDesignSystem(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["design-systems"] });
-      pushToast({ title: "Design system deleted", tone: "success" });
+      pushToast({ title: "디자인 시스템을 삭제했어요", tone: "success" });
       setDeleteSystemTarget(null);
       setDeleteSystemBlocker(null);
     },
@@ -170,7 +171,7 @@ export default function HomeView() {
         }
       }
       pushToast({
-        title: "Delete failed",
+        title: "디자인 시스템을 삭제하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -181,7 +182,7 @@ export default function HomeView() {
     mutationFn: async () => {
       if (systemImportMode === "upload") {
         if (!systemUploadFile) {
-          throw new Error("Choose a .pptx or .pdf file to upload.");
+          throw new Error("업로드할 .pptx 또는 .pdf 파일을 선택해 주세요.");
         }
         return await uploadDesignSystem(systemUploadFile, {
           name: systemDraftName.trim() || undefined,
@@ -206,19 +207,21 @@ export default function HomeView() {
       pushToast({
         title:
           systemImportMode === "upload"
-            ? "Design file imported"
-            : "Design system imported",
-        body: `${created.system.name} was created as a draft.`,
+            ? "디자인 파일을 가져왔어요"
+            : "디자인 시스템을 가져왔어요",
+        body: `${created.system.name} 초안을 만들었어요. 내용을 확인한 뒤 게시할 수 있어요.`,
         tone: "success",
       });
       navigate(`/systems/${created.system.id}`);
     },
     onError: (err) => {
       const message =
-        err instanceof Error ? err.message : "Failed to import design system";
+        err instanceof Error
+          ? err.message
+          : "디자인 시스템을 가져오지 못했어요. 주소나 파일을 확인한 뒤 다시 시도해 주세요.";
       setSystemImportError(message);
       pushToast({
-        title: "Import failed",
+        title: "디자인 시스템을 가져오지 못했어요",
         body: message,
         tone: "error",
       });
@@ -250,6 +253,23 @@ export default function HomeView() {
   const onProjectDelete = (card: CardViewModel) =>
     setDeleteTarget({ id: card.id, name: card.name });
 
+  // Clearing from an empty-result panel removes the button the user is
+  // standing on, so focus returns to the search field instead of the
+  // document body.
+  const clearProjectQuery = () => {
+    setProjectQuery("");
+    searchInputRef.current?.focus();
+  };
+
+  // The creation form lives in the app shell's sidebar, outside this
+  // view's tree, so the empty state hands off by focusing its name
+  // field by id. Plain focus() also scrolls the control into view,
+  // which is what the narrow layout needs since the sidebar is ordered
+  // below the grid there.
+  const startProject = () => {
+    document.getElementById("project-name")?.focus();
+  };
+
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -260,10 +280,10 @@ export default function HomeView() {
         >
           <div className="flex items-center justify-between gap-4 px-8 pb-4 pt-8 max-[640px]:flex-col max-[640px]:items-stretch max-[640px]:px-4 max-[640px]:pt-4">
             <TabsList className="max-[640px]:grid max-[640px]:h-auto max-[640px]:w-full max-[640px]:grid-cols-2">
-              <TabsTrigger value="recent">Recent</TabsTrigger>
-              <TabsTrigger value="mine">Your designs</TabsTrigger>
-              <TabsTrigger value="examples">Examples</TabsTrigger>
-              <TabsTrigger value="systems">Design systems</TabsTrigger>
+              <TabsTrigger value="recent">최근</TabsTrigger>
+              <TabsTrigger value="mine">내 디자인</TabsTrigger>
+              <TabsTrigger value="examples">예제</TabsTrigger>
+              <TabsTrigger value="systems">디자인 시스템</TabsTrigger>
             </TabsList>
 
             {activeTab === "systems" ? null : (
@@ -273,6 +293,7 @@ export default function HomeView() {
                   className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
                 />
                 <Input
+                  ref={searchInputRef}
                   type="search"
                   aria-label="프로젝트 검색"
                   placeholder="프로젝트 검색"
@@ -280,7 +301,7 @@ export default function HomeView() {
                   onChange={(event) => setProjectQuery(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
-                      setProjectQuery("");
+                      clearProjectQuery();
                     }
                   }}
                   className="pl-8"
@@ -297,8 +318,11 @@ export default function HomeView() {
                 query={projectQuery}
                 isLoading={recentQuery.isPending}
                 error={recentQuery.error}
-                emptyText="최근 프로젝트가 아직 없습니다."
+                emptyText="최근 프로젝트가 아직 없어요."
+                emptyHint="프로젝트 종류를 고르고 이름을 입력하면 여기에 바로 나타나요."
                 onRetry={() => void recentQuery.refetch()}
+                onClearQuery={clearProjectQuery}
+                onStartProject={startProject}
                 onDelete={onProjectDelete}
               />
             </TabsContent>
@@ -310,8 +334,11 @@ export default function HomeView() {
                 query={projectQuery}
                 isLoading={mineQuery.isPending}
                 error={mineQuery.error}
-                emptyText="내 프로젝트가 아직 없습니다."
+                emptyText="내 프로젝트가 아직 없어요."
+                emptyHint="프로젝트 종류를 고르고 이름을 입력하면 만든 프로젝트가 모두 여기에 모여요."
                 onRetry={() => void mineQuery.refetch()}
+                onClearQuery={clearProjectQuery}
+                onStartProject={startProject}
                 onDelete={onProjectDelete}
               />
             </TabsContent>
@@ -319,9 +346,9 @@ export default function HomeView() {
             <TabsContent value="examples">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Built-in tutorials, prompt-samples, and template fixtures.
-                  Deleting any of them is fine — Restore samples brings the
-                  built-in set back.
+                  기본으로 들어 있는 튜토리얼, 프롬프트 샘플, 템플릿 예제예요.
+                  지워도 괜찮아요 — ‘예제 복원’을 누르면 기본 세트가 다시
+                  생겨요.
                 </p>
                 <Button
                   size="sm"
@@ -330,8 +357,8 @@ export default function HomeView() {
                   onClick={() => restoreSamplesMutation.mutate()}
                 >
                   {restoreSamplesMutation.isPending
-                    ? "Restoring…"
-                    : "Restore samples"}
+                    ? "복원하는 중..."
+                    : "예제 복원"}
                 </Button>
               </div>
               <ProjectCardSection
@@ -340,8 +367,11 @@ export default function HomeView() {
                 query={projectQuery}
                 isLoading={examplesQuery.isPending}
                 error={examplesQuery.error}
-                emptyText="예제 프로젝트가 아직 없습니다."
+                emptyText="예제 프로젝트가 아직 없어요."
+                emptyHint="‘예제 복원’을 누르면 기본 예제 세트를 다시 받아올 수 있어요."
                 onRetry={() => void examplesQuery.refetch()}
+                onClearQuery={clearProjectQuery}
+                onStartProject={startProject}
                 onDelete={onProjectDelete}
               />
             </TabsContent>
@@ -471,12 +501,12 @@ function SystemsSection({
   return (
     <div className="space-y-4">
       <div className="max-w-3xl rounded-xl border border-border bg-card/70 px-4 py-3 text-sm leading-6 text-muted-foreground">
-        Design systems across draft, review, and published states appear here.
-        Use the <span className="font-medium text-foreground">+</span> tile to
-        import a new design system from a git repository, website URL, or an
-        uploaded `.pptx` / `.pdf`. BurnGuard scaffolds the same canonical
-        output shape as the bundled sample, and uploads go through a compact
-        Python summarizer so the downstream prompt payload stays token-light.
+        초안 · 검토 중 · 게시됨 상태의 디자인 시스템이 모두 여기에 모여요.{" "}
+        <span className="font-medium text-foreground">+</span> 타일을 누르면 Git
+        저장소, 웹사이트 URL, 또는 업로드한 PPTX/PDF 파일에서 새 디자인 시스템을
+        가져올 수 있어요. BurnGuard는 기본 제공 샘플과 같은 표준 출력
+        구조를 만들고, 업로드 파일은 Python 요약 단계를 거쳐 프롬프트에 실리는
+        토큰을 가볍게 유지해요.
       </div>
 
       <CardGrid>
@@ -490,17 +520,17 @@ function SystemsSection({
               <div className="grid h-12 w-12 place-items-center rounded-full border border-current/20 bg-white/70">
                 <Plus className="h-6 w-6" />
               </div>
-              <div className="text-xs font-medium uppercase tracking-[0.16em]">
-                Import
+              <div className="text-xs font-medium tracking-[0.16em]">
+                가져오기
               </div>
             </div>
           </div>
           <div className="p-3">
             <div className="text-sm font-medium text-foreground">
-              Import design system
+              디자인 시스템 가져오기
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              Git URL, website URL, or PPT/PDF upload
+              Git URL, 웹사이트 URL, 또는 PPTX/PDF 업로드
             </div>
           </div>
         </button>
@@ -517,13 +547,13 @@ function SystemsSection({
       {importOpen ? (
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="text-sm font-medium text-foreground">
-            Import design system
+            디자인 시스템 가져오기
           </div>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-            BurnGuard can ingest a repository or live website directly, or
-            accept a `.pptx` / `.pdf` upload. Uploaded files go through a
-            Python extraction pass that keeps only token-relevant signals and
-            compact page summaries before generating the canonical draft bundle.
+            BurnGuard가 저장소나 웹사이트를 바로 읽어 오거나, PPTX/PDF 업로드를
+            받을 수 있어요. 업로드한 파일은 Python 추출 단계를 거쳐
+            토큰에 필요한 신호와 짧은 페이지 요약만 남긴 뒤 표준 초안 묶음을
+            만들어요.
           </p>
 
           <div className="mt-4 inline-flex rounded-lg border border-border bg-background p-1">
@@ -537,7 +567,7 @@ function SystemsSection({
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              URL import
+              URL로 가져오기
             </button>
             <button
               type="button"
@@ -549,7 +579,7 @@ function SystemsSection({
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              Upload file
+              파일 업로드
             </button>
           </div>
 
@@ -558,7 +588,7 @@ function SystemsSection({
               <>
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Source URL
+                    원본 URL
                   </label>
                   <Input
                     value={sourceUrl}
@@ -571,7 +601,7 @@ function SystemsSection({
 
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">
-                    Source type
+                    원본 종류
                   </label>
                   <select
                     value={sourceType}
@@ -587,15 +617,15 @@ function SystemsSection({
                     disabled={isPending}
                     className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
                   >
-                    <option value="auto">Auto-detect</option>
-                    <option value="github">Git repository</option>
-                    <option value="website">Website</option>
-                    <option value="figma">Figma file</option>
+                    <option value="auto">자동 감지</option>
+                    <option value="github">Git 저장소</option>
+                    <option value="website">웹사이트</option>
+                    <option value="figma">Figma 파일</option>
                   </select>
                   {sourceType === "figma" && (
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Requires a Figma personal access token. Set it in
-                      Settings → Figma access.
+                      Figma 개인 액세스 토큰이 필요해요. 설정 → Figma 액세스에서
+                      먼저 등록해 주세요.
                     </p>
                   )}
                 </div>
@@ -604,7 +634,7 @@ function SystemsSection({
               <>
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Upload file
+                    업로드할 파일
                   </label>
                   <input
                     type="file"
@@ -616,28 +646,29 @@ function SystemsSection({
                     className="mt-1.5 block h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent/10 file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-accent"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Supported: `.pptx`, `.pdf` · Max 48 MB
+                    지원 형식: PPTX, PDF · 최대 48 MB
                     {uploadFile
-                      ? ` · Selected: ${uploadFile.name} (${formatBytes(uploadFile.size)})`
+                      ? ` · 선택한 파일: ${uploadFile.name} (${formatBytes(uploadFile.size)})`
                       : ""}
                   </p>
                   {uploadTooLarge && uploadFile ? (
                     <p className="mt-1 text-xs text-destructive">
-                      {uploadFile.name} is {formatBytes(uploadFile.size)} — the
-                      backend accepts up to 48 MB. Export a trimmed version or
-                      split the deck into multiple uploads.
+                      선택한 {uploadFile.name} 크기는{" "}
+                      {formatBytes(uploadFile.size)}예요. 최대 48 MB까지 올릴 수
+                      있으니 용량을 줄여 다시 내보내거나 파일을 나눠서 올려
+                      주세요.
                     </p>
                   ) : null}
                 </div>
 
                 <div className="rounded-md border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
-                  Python pass:
+                  Python 추출 항목:
                   <div className="mt-1 font-mono text-[11px] text-foreground">
-                    fonts / colors
+                    폰트 / 색상
                     <br />
-                    headings / body
+                    제목 / 본문
                     <br />
-                    page summaries
+                    페이지 요약
                     <br />
                     upload-manifest.json
                   </div>
@@ -647,19 +678,19 @@ function SystemsSection({
 
             <div className="md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">
-                Draft name
+                초안 이름
               </label>
               <Input
                 value={draftName}
                 onChange={(e) => onDraftNameChange(e.target.value)}
-                placeholder="Optional override"
+                placeholder="비워 두면 원본 이름을 그대로 써요"
                 disabled={isPending}
                 className="mt-1.5"
               />
             </div>
 
             <div className="rounded-md border border-border bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
-              Output:
+              생성 결과:
               <div className="mt-1 font-mono text-[11px] text-foreground">
                 README.md
                 <br />
@@ -680,14 +711,14 @@ function SystemsSection({
             <Button variant="cta" disabled={!canImport} onClick={onImport}>
               {isPending
                 ? importMode === "upload"
-                  ? "Uploading..."
-                  : "Importing..."
+                  ? "올리는 중..."
+                  : "가져오는 중..."
                 : importMode === "upload"
-                  ? "Upload design file"
-                  : "Import design system"}
+                  ? "디자인 파일 올리기"
+                  : "디자인 시스템 가져오기"}
             </Button>
             <Button variant="outline" disabled={isPending} onClick={onToggleImport}>
-              Cancel
+              취소
             </Button>
           </div>
         </div>

@@ -1,4 +1,8 @@
-import type { DesignSystemSummary, ProjectSummary } from "@bg/shared";
+import type {
+  DesignSystemStatus,
+  DesignSystemSummary,
+  ProjectSummary,
+} from "@bg/shared";
 import { formatRelativeDay, projectTypeLabel } from "@/lib/format";
 
 /**
@@ -38,6 +42,12 @@ const PROJECT_TINTS: Record<string, string> = {
 
 const SYSTEM_TINTS = ["bg-amber-100", "bg-sky-100", "bg-emerald-100", "bg-violet-100"];
 
+const SYSTEM_STATUS_SUFFIX: Record<DesignSystemStatus, string> = {
+  draft: "디자인 시스템 · 초안",
+  review: "디자인 시스템 · 검토 중",
+  published: "디자인 시스템",
+};
+
 export function projectToCard(p: ProjectSummary): CardViewModel {
   const name = stripInternalProjectTag(p.name);
   return {
@@ -52,8 +62,7 @@ export function projectToCard(p: ProjectSummary): CardViewModel {
 }
 
 export function systemToCard(s: DesignSystemSummary, index = 0): CardViewModel {
-  const statusSuffix =
-    s.status === "published" ? "Design system" : `Design system · ${capitalize(s.status)}`;
+  const statusSuffix = SYSTEM_STATUS_SUFFIX[s.status];
   return {
     id: s.id,
     name: s.name,
@@ -63,10 +72,6 @@ export function systemToCard(s: DesignSystemSummary, index = 0): CardViewModel {
     thumbnail: s.thumbnail_path,
     isTemplate: s.is_template,
   };
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function stripInternalProjectTag(name: string): string {
