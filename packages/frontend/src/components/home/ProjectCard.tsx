@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MoreHorizontal, Trash2 } from "lucide-react";
+import { resolveThumbnailSource } from "./thumbnail-source";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -13,6 +15,9 @@ import type { CardViewModel } from "./mappers";
 export default function ProjectCard(
   props: CardViewModel & { onDelete?: () => void },
 ) {
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const thumbnailSource = resolveThumbnailSource(props.thumbnail, failedSource);
+
   return (
     <div className="group relative">
       <Link
@@ -20,15 +25,28 @@ export default function ProjectCard(
         className="block rounded-xl border border-border bg-card overflow-hidden hover:shadow-app-3 transition-shadow"
       >
         <div
+          data-qa="project-thumbnail"
+          data-state={thumbnailSource === null ? "fallback" : "image"}
           className={cn(
-            "h-[120px] grid place-items-center text-2xl",
+            "aspect-video grid place-items-center overflow-hidden text-2xl",
             props.tintClass,
           )}
         >
-          {props.emoji ? (
-            <span className="text-3xl">{props.emoji}</span>
+          {thumbnailSource === null ? (
+            props.emoji ? (
+              <span className="text-3xl">{props.emoji}</span>
+            ) : (
+              <div className="h-10 w-10 rounded bg-white/50 border border-border" />
+            )
           ) : (
-            <div className="h-10 w-10 rounded bg-white/50 border border-border" />
+            <img
+              src={thumbnailSource}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+              onError={() => setFailedSource(thumbnailSource)}
+            />
           )}
         </div>
         {props.isTemplate && (
@@ -39,7 +57,7 @@ export default function ProjectCard(
             Template
           </Badge>
         )}
-        <div className="p-3">
+        <div data-qa="project-card-details" className="p-3">
           <div className="text-sm font-medium text-foreground line-clamp-1">
             {props.name}
           </div>
