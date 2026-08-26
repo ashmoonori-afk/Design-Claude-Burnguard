@@ -7,6 +7,7 @@ export * from "./comment";
 export * from "./contract-parser";
 export * from "./design-system";
 export * from "./design-brief";
+export * from "./design-direction";
 export * from "./events";
 export * from "./export";
 export * from "./export-attempt";

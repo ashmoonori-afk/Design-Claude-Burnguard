@@ -27,7 +27,7 @@ export interface SelectedNode {
 export interface ArtifactTab {
   id: string;
   title: string;
-  kind: "design_system" | "design_files" | "file";
+  kind: "design_system" | "design_files" | "directions" | "file";
   relPath?: string;
   closeable: boolean;
 }

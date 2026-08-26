@@ -1,3 +1,5 @@
+import type { DesignDirectionState } from "./design-direction";
+
 export type NormalizedEvent =
   | {
       id: string;
@@ -65,6 +67,12 @@ export type NormalizedEvent =
       projectRevision: number;
       projectDigest: string;
       stopReason: import("./export-attempt").ExportStopReason | null;
+    }
+  | {
+      id: string;
+      ts: number;
+      type: "design.direction_state";
+      state: DesignDirectionState;
     }
   | {
       id: string;

@@ -19,6 +19,7 @@ import { detectBackends } from "./backends";
 import { buildPrompt } from "../harness/prompt-builder";
 import { runAdapterTurn } from "../adapters/registry";
 import { loadConfig } from "../config";
+import { isDirectionOperationActive } from "./direction-operation-registry";
 
 type ToolDecision = Extract<UserEvent, { type: "user.tool_decision" }>;
 
@@ -118,7 +119,7 @@ export function submitToolDecisionToTurn(
 }
 
 export function startUserTurn(sessionId: string, payload: Extract<UserEvent, { type: "user.message" }>, requestedOperationId?: string) {
-  if (activeTurns.has(sessionId)) return null;
+  if (activeTurns.has(sessionId) || isDirectionOperationActive(sessionId)) return null;
   const activeTurn: ActiveTurn = { abortController: new AbortController(), interrupted: false, decisionQueue: [], decisionHandler: null };
   const turnId = ulid();
   const operationId = requestedOperationId ?? ulid();

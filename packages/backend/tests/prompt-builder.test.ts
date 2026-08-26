@@ -37,6 +37,30 @@ function makeContext(
 }
 
 describe("buildPrompt", () => {
+  test("includes only the selected ready design direction", async () => {
+    const base = {
+      schema_version: 1, project_id: "p1", session_id: "s1", generation_id: "g1", status: "ready",
+      content_outline: ["outline-input-a", "outline-input-b"], selection_revision: 1, selection_history: [null], error: null, updated_at: 1,
+      directions: [
+        { id: "editorial", order: 0, layout_key: "editorial", title: "selected-input-title", summary: "selected-summary", style_facts: ["selected-input-fact"], status: "ready", preview_url: "/a", error: null },
+        { id: "modular", order: 1, layout_key: "modular", title: "unselected-input-title-b", summary: "other", style_facts: ["unselected-input-fact-b"], status: "ready", preview_url: "/b", error: null },
+        { id: "narrative", order: 2, layout_key: "narrative", title: "unselected-input-title-c", summary: "other", style_facts: ["unselected-input-fact-c"], status: "ready", preview_url: "/c", error: null },
+      ],
+      selected_id: "editorial",
+    } as const;
+    const selected = await buildPrompt(makeContext({}, { designDirectionState: base }), { type: "user.message", text: "continue" });
+    const beforeSelection = await buildPrompt(makeContext({}, { designDirectionState: { ...base, selected_id: null, selection_revision: 0, selection_history: [] } }), { type: "user.message", text: "continue" });
+
+    expect(selected).toContain("## Selected design direction");
+    expect(selected).toContain("outline-input-a");
+    expect(selected).toContain("selected-input-title");
+    expect(selected).toContain("editorial");
+    expect(selected).toContain("selected-input-fact");
+    expect(selected).not.toContain("unselected-input-title-b");
+    expect(selected).not.toContain("unselected-input-fact-c");
+    expect(beforeSelection).not.toContain("## Selected design direction");
+  });
+
   test("emits project + delivery + request sections for prototype", async () => {
     const prompt = await buildPrompt(makeContext(), {
       type: "user.message",

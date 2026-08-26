@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -10,6 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Comment,
+  DesignDirectionState,
   FileInfo,
   NormalizedEvent,
   PatchFileRequest,
@@ -17,6 +19,7 @@ import type {
   ProjectDetail,
   SessionInfo,
 } from "@bg/shared";
+import { parseDesignDirectionState } from "@bg/shared";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   getArtifacts,
@@ -35,6 +38,14 @@ import {
 } from "@/api/comments";
 import { getSettings } from "@/api/home";
 import {
+  cancelDesignDirections,
+  generateDesignDirections,
+  getDesignDirectionState,
+  retryDesignDirections,
+  selectDesignDirection,
+  undoDesignDirectionSelection,
+} from "@/api/design-directions";
+import {
   interruptSession,
   listSessionEvents,
   sendUserEvent,
@@ -42,6 +53,8 @@ import {
   subscribeSessionStream,
 } from "@/api/session";
 import ChatPane from "@/components/chat/ChatPane";
+import { DirectionsView } from "@/components/directions/DirectionsView";
+import { DirectionStatusBar } from "@/components/directions/DirectionStatusBar";
 import PermissionDialog, {
   type PermissionRequest,
 } from "@/components/chat/PermissionDialog";
@@ -73,6 +86,10 @@ import DesignFilesView from "@/views/DesignFilesView";
 import DesignSystemView from "@/views/DesignSystemView";
 import { useUIStore } from "@/state/uiStore";
 import type { ArtifactTab, SelectedNode } from "@/types/project";
+import {
+  latestDirectionState,
+  preferDirectionState,
+} from "@/lib/design-direction-state";
 
 export default function ProjectView() {
   const { id } = useParams();
@@ -136,6 +153,7 @@ export default function ProjectView() {
   );
   const [refreshTick, setRefreshTick] = useState(0);
   const [sendPending, setSendPending] = useState(false);
+  const [directionActionError, setDirectionActionError] = useState<Error | null>(null);
   const seenEventIdsRef = useRef(new Set<string>());
   const latestEventTsRef = useRef<number | undefined>(undefined);
   const activeTabIdRef = useRef(activeTabId);
@@ -174,6 +192,73 @@ export default function ProjectView() {
   const settingsQuery = useQuery({
     queryKey: ["settings"],
     queryFn: getSettings,
+  });
+  const directionQueryKey = useMemo(
+    () => ["project", id, "design-directions"] as const,
+    [id],
+  );
+  const directionQuery = useQuery({
+    queryKey: directionQueryKey,
+    queryFn: async () => {
+      const incoming = await getDesignDirectionState(id ?? "");
+      const current =
+        queryClient.getQueryData<DesignDirectionState | null>(directionQueryKey) ?? null;
+      return preferDirectionState(current, incoming);
+    },
+    enabled: Boolean(id),
+  });
+  const mergeDirectionCache = useCallback(
+    (incoming: DesignDirectionState | null) => {
+      queryClient.setQueryData<DesignDirectionState | null>(
+        directionQueryKey,
+        (current) => preferDirectionState(current ?? null, incoming),
+      );
+    },
+    [directionQueryKey, queryClient],
+  );
+
+  const generateDirectionsMutation = useMutation({
+    mutationFn: () => generateDesignDirections(id ?? ""),
+    onMutate: () => setDirectionActionError(null),
+    onSuccess: mergeDirectionCache,
+    onError: setDirectionActionError,
+  });
+  const cancelDirectionsMutation = useMutation({
+    mutationFn: () => cancelDesignDirections(id ?? ""),
+    onMutate: () => setDirectionActionError(null),
+    onSuccess: mergeDirectionCache,
+    onError: setDirectionActionError,
+  });
+  const retryDirectionsMutation = useMutation({
+    mutationFn: () => retryDesignDirections(id ?? ""),
+    onMutate: () => setDirectionActionError(null),
+    onSuccess: mergeDirectionCache,
+    onError: setDirectionActionError,
+  });
+  const selectDirectionMutation = useMutation({
+    mutationFn: (input: {
+      readonly generationId: string;
+      readonly revision: number;
+      readonly directionId: string;
+    }) =>
+      selectDesignDirection(id ?? "", {
+        generation_id: input.generationId,
+        expected_selection_revision: input.revision,
+        direction_id: input.directionId,
+      }),
+    onMutate: () => setDirectionActionError(null),
+    onSuccess: mergeDirectionCache,
+    onError: setDirectionActionError,
+  });
+  const undoDirectionMutation = useMutation({
+    mutationFn: (input: { readonly generationId: string; readonly revision: number }) =>
+      undoDesignDirectionSelection(id ?? "", {
+        generation_id: input.generationId,
+        expected_selection_revision: input.revision,
+      }),
+    onMutate: () => setDirectionActionError(null),
+    onSuccess: mergeDirectionCache,
+    onError: setDirectionActionError,
   });
 
   const refreshMutation = useMutation({
@@ -378,6 +463,7 @@ export default function ProjectView() {
     setDrawResetKey("");
     setPresentOpen(false);
     setDecidedToolCallIds(new Set());
+    setDirectionActionError(null);
     setRefreshTick(0);
   }, [id]);
 
@@ -538,7 +624,9 @@ export default function ProjectView() {
   useEffect(() => {
     if (!replayQuery.data) return;
     appendEvents(replayQuery.data, seenEventIdsRef, latestEventTsRef, setEvents);
-  }, [replayQuery.data]);
+    const latest = latestDirectionState(replayQuery.data);
+    mergeDirectionCache(latest === null ? null : parseDesignDirectionState(latest));
+  }, [mergeDirectionCache, replayQuery.data]);
 
   useEffect(() => {
     const sessionId = sessionQuery.data?.id;
@@ -549,6 +637,9 @@ export default function ProjectView() {
 
     const connect = () => {
       cleanup = subscribeSessionStream(sessionId, (event) => {
+        if (event.type === "design.direction_state") {
+          mergeDirectionCache(parseDesignDirectionState(event.state));
+        }
         appendEvents([event], seenEventIdsRef, latestEventTsRef, setEvents);
         setSessionState((current) => applyEventToSession(current, event));
         if (
@@ -583,7 +674,7 @@ export default function ProjectView() {
       active = false;
       cleanup();
     };
-  }, [id, queryClient, replayQuery.status, sessionQuery.data?.id]);
+  }, [id, mergeDirectionCache, queryClient, replayQuery.status, sessionQuery.data?.id]);
 
   useEffect(() => {
     const project = projectQuery.data;
@@ -595,7 +686,21 @@ export default function ProjectView() {
   const files: FileInfo[] = filesQuery.data ?? [];
   const artifacts = artifactsQuery.data ?? null;
   const session = sessionState;
-  const composerDisabled = sendPending || session?.status === "running";
+  const directionState = directionQuery.data ?? null;
+  const directionActionPending =
+    generateDirectionsMutation.isPending ||
+    cancelDirectionsMutation.isPending ||
+    retryDirectionsMutation.isPending ||
+    selectDirectionMutation.isPending ||
+    undoDirectionMutation.isPending;
+  const directionError =
+    directionActionError ??
+    (directionState === null && directionQuery.error instanceof Error
+      ? directionQuery.error
+      : null);
+  const directionLoading = directionState?.status === "loading";
+  const chatComposerDisabled = sendPending || session?.status === "running";
+  const composerDisabled = chatComposerDisabled || directionLoading;
 
   // Turn clock. When the composer flips from idle to busy we stamp a
   // start time; a 1s ticker then drives re-renders so `canInterrupt`
@@ -603,21 +708,21 @@ export default function ProjectView() {
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [nowTs, setNowTs] = useState(() => Date.now());
   useEffect(() => {
-    if (composerDisabled) {
+    if (chatComposerDisabled) {
       setTurnStartedAt((prev) => prev ?? Date.now());
     } else {
       setTurnStartedAt(null);
     }
-  }, [composerDisabled]);
+  }, [chatComposerDisabled]);
   useEffect(() => {
-    if (!composerDisabled) return;
+    if (!chatComposerDisabled) return;
     const handle = window.setInterval(() => setNowTs(Date.now()), 1000);
     return () => window.clearInterval(handle);
-  }, [composerDisabled]);
+  }, [chatComposerDisabled]);
   const abortThresholdMs =
     settingsQuery.data?.chat_abort_threshold_ms ?? 300_000;
   const canInterrupt =
-    composerDisabled &&
+    chatComposerDisabled &&
     turnStartedAt != null &&
     nowTs - turnStartedAt >= abortThresholdMs;
 
@@ -792,6 +897,14 @@ export default function ProjectView() {
           interruptPending={interruptMutation.isPending}
           onInterrupt={() => interruptMutation.mutate()}
           composerInitialText={composerPrefill}
+          statusSlot={
+            <DirectionStatusBar
+              state={directionState}
+              cancelPending={cancelDirectionsMutation.isPending}
+              onOpen={() => setActiveTabId("directions")}
+              onCancel={() => cancelDirectionsMutation.mutate()}
+            />
+          }
           onSend={async (text, attachedFiles, signal) => {
             if (composerDisabled) {
               return;
@@ -847,6 +960,34 @@ export default function ProjectView() {
             onOpenInCanvas={(relPath) =>
               openFileAsTab(relPath, setOpenFileTabs, setActiveTabId)
             }
+          />
+        )}
+
+        {activeTab?.kind === "directions" && (
+          <DirectionsView
+            state={directionState}
+            recovering={directionQuery.isLoading}
+            actionPending={directionActionPending}
+            cancelPending={cancelDirectionsMutation.isPending}
+            error={directionError}
+            onGenerate={() => generateDirectionsMutation.mutate()}
+            onCancel={() => cancelDirectionsMutation.mutate()}
+            onRetry={() => retryDirectionsMutation.mutate()}
+            onSelect={(directionId) => {
+              if (directionState === null) return;
+              selectDirectionMutation.mutate({
+                generationId: directionState.generation_id,
+                revision: directionState.selection_revision,
+                directionId,
+              });
+            }}
+            onUndo={() => {
+              if (directionState === null) return;
+              undoDirectionMutation.mutate({
+                generationId: directionState.generation_id,
+                revision: directionState.selection_revision,
+              });
+            }}
           />
         )}
 
@@ -1057,6 +1198,12 @@ function buildTabs(
       id: "design-system",
       title: project?.design_system_name ?? "Design System",
       kind: "design_system",
+      closeable: false,
+    },
+    {
+      id: "directions",
+      title: "방향 정하기",
+      kind: "directions",
       closeable: false,
     },
     {

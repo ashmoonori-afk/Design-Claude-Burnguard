@@ -94,6 +94,21 @@ export async function buildPrompt(
   }
   lines.push("");
 
+  const directionState = context.designDirectionState;
+  const selectedDirection = directionState?.selected_id === null
+    ? undefined
+    : directionState?.directions.find((direction) => direction.id === directionState.selected_id && direction.status === "ready");
+  if (directionState !== null && selectedDirection !== undefined) {
+    lines.push("## Selected design direction");
+    lines.push("### Content outline");
+    for (const item of directionState.content_outline.slice(0, 12)) lines.push(`- ${item.slice(0, 300)}`);
+    lines.push(`- title: ${selectedDirection.title.slice(0, 200)}`);
+    lines.push(`- layout: ${selectedDirection.layout_key}`);
+    lines.push(`- style facts: ${selectedDirection.style_facts.slice(0, 8).map((fact) => fact.slice(0, 200)).join("; ")}`);
+    lines.push("- Follow this selected direction only; do not merge details from unselected directions.");
+    lines.push("");
+  }
+
   lines.push("<burnguard-research-context-v1>");
   lines.push(JSON.stringify(buildResearchPromptContext({
     projectType: project.project_type,

@@ -36,7 +36,7 @@ export default function ProjectTopBar({
           </div>
         </div>
       </div>
-      <div className="flex-1 min-w-0 overflow-x-auto">{tabsSlot}</div>
+      <div className="min-w-0 flex-1 overflow-hidden">{tabsSlot}</div>
       <div className="px-3 flex items-center gap-2 shrink-0 max-[900px]:px-2 max-[900px]:gap-1">
         <Button
           variant="ghost"

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ExportAttemptStatus, ExportProgress, ExportStopReason, NormalizedEvent, SequencedEventEnvelope, UserEvent } from "@bg/shared";
+import { parseDesignDirectionState, type ExportAttemptStatus, type ExportProgress, type ExportStopReason, type NormalizedEvent, type SequencedEventEnvelope, type UserEvent } from "@bg/shared";
 import { PipelineRepositoryError, parseJsonRecord } from "./pipeline-errors";
 
 export { insertSequencedEvent } from "./sequenced-event-writer";
@@ -28,6 +28,8 @@ export function parsePersistedNormalizedEvent(value: string, id: string): Normal
       return { ...base, type, operationId: text(item, "operationId", id), revision: integer(item, "revision", id), digest: text(item, "digest", id), changedPaths: texts(item, "changedPaths", id), outcome: operationOutcome(item, id) };
     case "export.attempt":
       return { ...base, type, jobId: text(item, "jobId", id), attemptId: text(item, "attemptId", id), status: exportStatus(item, id), progress: exportProgress(item, id), projectRevision: integer(item, "projectRevision", id), projectDigest: text(item, "projectDigest", id), stopReason: exportStopReason(item, id) };
+    case "design.direction_state":
+      return { ...base, type, state: parseDesignDirectionState(item["state"]) };
     case "file.changed":
       return { ...base, type, turnId: text(item, "turnId", id), action: fileAction(item, id), path: text(item, "path", id) };
     case "status.running":

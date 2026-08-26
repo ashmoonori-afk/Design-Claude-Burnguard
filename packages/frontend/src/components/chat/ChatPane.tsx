@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { MessageSquare, MessageCircleMore } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { BackendId, NormalizedEvent, SessionInfo } from "@bg/shared";
@@ -22,6 +22,7 @@ export default function ChatPane({
   onRevertTurn,
   revertingTurnId,
   composerInitialText,
+  statusSlot,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
@@ -38,6 +39,7 @@ export default function ChatPane({
   onRevertTurn?: (turnId: string) => void;
   revertingTurnId?: string | null;
   composerInitialText?: string;
+  statusSlot?: ReactNode;
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const queryClient = useQueryClient();
@@ -105,6 +107,7 @@ export default function ChatPane({
             onRevertTurn={onRevertTurn}
             revertingTurnId={revertingTurnId}
           />
+          {statusSlot}
           <Composer
             onSend={onSend}
             disabled={composerDisabled}
