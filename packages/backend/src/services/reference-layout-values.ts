@@ -13,11 +13,13 @@ type Dimensions = {
 };
 
 const INTENT_PATTERN =
-  /\b(?:reference layout|match (?:the )?layout|blueprint|floor plan|drawing|underlay|paper size|canvas size|artboard)\b|참조\s*(?:레이아웃|이미지)|도면|설계도|평면도|밑그림|용지\s*(?:크기|사이즈)|출력\s*크기/iu;
+  /\b(?:reference layout|match (?:the )?layout|blueprint|floor plan|underlay|paper size|canvas size|artboard|(?:this|the|attached)\s+drawing|drawing\s+(?:file|plan|layout|reference))\b|참조\s*(?:레이아웃|이미지)|도면|설계도|평면도|밑그림|용지\s*(?:크기|사이즈)|출력\s*크기/iu;
 const HARD_GEOMETRY_PATTERN =
-  /\b(?:blueprint|floor plan|drawing|underlay|spatial plan)\b|도면|설계도|평면도|배치도|밑그림/iu;
+  /\b(?:blueprint|floor plan|underlay|spatial plan|(?:this|the|attached)\s+drawing|drawing\s+(?:file|plan|layout|reference))\b|도면|설계도|평면도|배치도|밑그림/iu;
 const VISUAL_INSPIRATION_PATTERN =
   /\b(?:visual inspiration|style reference|mood reference)\b|스타일\s*참고|분위기\s*참고|시각\s*참고/iu;
+const REFERENCE_FILENAME_PATTERN =
+  /(?:^|[-_.\s])(?:blueprint|floor[-_.\s]?plan|drawing|layout|reference|sketch|underlay|도면|설계도|평면도|배치도|밑그림)(?:[-_.\s]|$)/iu;
 const DIMENSION_PATTERN =
   /(\d+(?:\.\d+)?)\s*(?:x|×|by)\s*(\d+(?:\.\d+)?)\s*(mm|cm|inches?|in|px|밀리미터|센티미터|인치|픽셀)\b/iu;
 const LABELLED_ASPECT_PATTERN =
@@ -44,14 +46,17 @@ export function hasReferenceLayoutIntent(request: string): boolean {
 export function isReferenceLayoutAttachment(input: {
   readonly mime_type: string;
   readonly original_name: string;
-}): boolean {
-  if (
+}, requestHasLayoutIntent: boolean): boolean {
+  const supported =
     input.mime_type.startsWith("image/") ||
-    input.mime_type === "application/pdf"
-  ) {
-    return true;
-  }
-  return /\.(?:svg|ai|eps|dwg|dxf|pdf)$/iu.test(input.original_name);
+    input.mime_type === "application/pdf" ||
+    /\.(?:svg|ai|eps|dwg|dxf|pdf)$/iu.test(input.original_name);
+  return (
+    supported &&
+    (requestHasLayoutIntent ||
+      REFERENCE_FILENAME_PATTERN.test(input.original_name) ||
+      /\.(?:dwg|dxf)$/iu.test(input.original_name))
+  );
 }
 
 export function parseReferenceLayoutCanvas(
@@ -135,11 +140,23 @@ function parsePreset(
 ): Exclude<ReferenceLayoutPreset, "custom"> | null {
   if (/\bA3\b/iu.test(request)) return "a3";
   if (/\bA4\b/iu.test(request)) return "a4";
-  if (/\b(?:US\s*)?Letter\b/iu.test(request)) return "letter";
+  if (
+    /\b(?:US\s+Letter|Letter(?=\s+(?:size|paper|page|sheet|portrait|landscape)))\b/iu.test(
+      request,
+    )
+  ) {
+    return "letter";
+  }
   if (/\b(?:16\s*:\s*9|widescreen)\b/iu.test(request)) {
     return "widescreen-16x9";
   }
-  if (/\b(?:4\s*:\s*3|standard)\b/iu.test(request)) return "standard-4x3";
+  if (
+    /\b(?:4\s*:\s*3|standard\s+(?:4\s*:\s*3|slide|page|aspect|format))\b/iu.test(
+      request,
+    )
+  ) {
+    return "standard-4x3";
+  }
   return null;
 }
 

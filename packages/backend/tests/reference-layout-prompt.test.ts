@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { getSqlite } from "../src/db/sqlite-client";
 import { buildPrompt } from "../src/harness/prompt-builder";
+import {
+  hasReferenceLayoutIntent,
+  parseReferenceLayoutCanvas,
+} from "../src/services/reference-layout-values";
 import { ensureLearningSchema } from "./learning-fixture";
 
 type BuildContext = Parameters<typeof buildPrompt>[0];
@@ -211,5 +215,55 @@ describe("reference layout prompt context", () => {
     expect(prompt).not.toMatch(
       /<burnguard-reference-layout-v1>\n[^\n]+\n<\/burnguard-reference-layout-v1>/u,
     );
+  });
+
+  test("Given an ordinary selected logo When requested as content Then no layout contract is emitted", async () => {
+    const filePath = "/tmp/logo.png";
+    const prompt = await buildPrompt(
+      context([attachment(filePath, "image/png", "logo.png")]),
+      {
+        type: "user.message",
+        text: "Add our logo to the header",
+        attachments: [filePath],
+      },
+    );
+
+    expect(prompt).not.toMatch(
+      /<burnguard-reference-layout-v1>\n[^\n]+\n<\/burnguard-reference-layout-v1>/u,
+    );
+  });
+
+  test("Given ordinary English wording When canvas values are parsed Then no preset is inferred", () => {
+    expect(
+      parseReferenceLayoutCanvas(
+        "Use this cover letter as a style reference with a standard report structure",
+      ).preset,
+    ).toBeNull();
+    expect(
+      parseReferenceLayoutCanvas(
+        "Consider drawing attention to the primary call to action",
+      ).preset,
+    ).toBeNull();
+    expect(
+      hasReferenceLayoutIntent(
+        "Consider drawing attention to the primary call to action",
+      ),
+    ).toBe(false);
+  });
+
+  test("Given a selected drawing filename When request text is generic Then the layout contract still activates", async () => {
+    const filePath = "/tmp/floor-plan.svg";
+    const prompt = await buildPrompt(
+      context([attachment(filePath, "image/svg+xml", "floor-plan.svg")]),
+      {
+        type: "user.message",
+        text: "Use the attached file",
+        attachments: [filePath],
+      },
+    );
+
+    const block = taggedJson(prompt);
+    expect(nested(block, "intent")["source"]).toBe("attachment");
+    expect(nested(block, "reference")["role"]).toBe("immutable_underlay");
   });
 });

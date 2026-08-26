@@ -23,12 +23,12 @@ export type ReferenceLayoutInput = {
 export function buildReferenceLayoutContext(
   input: ReferenceLayoutInput,
 ): ReferenceLayoutContextV1 | null {
+  const requestDetected = hasReferenceLayoutIntent(input.request);
   const selected = input.attachments.filter(
     (attachment) =>
       input.requestedPaths.includes(attachment.file_path) &&
-      isReferenceLayoutAttachment(attachment),
+      isReferenceLayoutAttachment(attachment, requestDetected),
   );
-  const requestDetected = hasReferenceLayoutIntent(input.request);
   if (!requestDetected && selected.length === 0) return null;
 
   const reference = selected[0] ?? null;
