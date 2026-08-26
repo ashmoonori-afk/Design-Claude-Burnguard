@@ -14,6 +14,7 @@
     "./design-system": "./src/design-system.ts",
     "./design-brief": "./src/design-brief.ts",
     "./design-direction": "./src/design-direction.ts",
+    "./design-audit": "./src/design-audit.ts",
     "./home": "./src/home.ts",
     "./project": "./src/project.ts",
     "./reference-layout": "./src/reference-layout.ts",

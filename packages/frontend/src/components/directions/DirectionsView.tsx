@@ -161,7 +161,7 @@ function DirectionShell({
 }) {
   return (
     <main
-      className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-background max-[900px]:overflow-visible"
+      className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-background"
       aria-busy={busy}
     >
       {children}

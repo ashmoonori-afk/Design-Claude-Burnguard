@@ -62,6 +62,10 @@
     --muted-foreground: 94 100 108;  /* grey-600 */
     --accent: 0 79 255;              /* blue-500 (brand) */
     --accent-foreground: 255 255 255;
+    --success: 0 206 120;           /* green-500 */
+    --success-foreground: 23 25 26;
+    --warning: 252 166 61;          /* yellow-500 */
+    --warning-foreground: 23 25 26;
     --destructive: 217 45 32;        /* red-700 */
     --destructive-foreground: 255 255 255;
     --border: 220 228 234;           /* grey-100 */
@@ -86,6 +90,12 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer components {
+  [data-radix-popper-content-wrapper]:has([data-export-menu-content]) {
+    z-index: 100 !important;
   }
 }
 

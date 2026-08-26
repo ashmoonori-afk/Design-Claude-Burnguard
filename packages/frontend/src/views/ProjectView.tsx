@@ -11,6 +11,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Comment,
+  DesignAuditFinding,
+  DesignAuditResult,
   DesignDirectionState,
   FileInfo,
   NormalizedEvent,
@@ -29,8 +31,9 @@ import {
   refreshArtifacts,
 } from "@/api/project";
 import { apiFetch, ApiError } from "@/api/client";
+import { getProjectDesignAudit, retryProjectDesignAudit } from "@/api/design-audit";
 import { restoreCheckpoint } from "@/api/checkpoints";
-import { getFileUndoInfo, undoLastFilePatch } from "@/api/files";
+import { getFileUndoInfo, patchProjectFile, undoLastFilePatch } from "@/api/files";
 import {
   createProjectComment,
   listProjectComments,
@@ -75,6 +78,7 @@ import { getProjectDraws, putProjectDraws } from "@/api/draws";
 import PresentOverlay from "@/components/present/PresentOverlay";
 import ModePanel from "@/components/modes/ModePanel";
 import { selectedNodeToTweaksTarget } from "@/components/modes/SelectorReadOnlyPanel";
+import { DESIGN_AUDIT_ERROR_COPY } from "@/components/modes/design-audit-copy";
 import {
   buildTweakChangePreview,
   type TweakChangePreview,
@@ -90,6 +94,13 @@ import {
   latestDirectionState,
   preferDirectionState,
 } from "@/lib/design-direction-state";
+import {
+  designAuditErrorCode,
+  designAuditViewState,
+  groupDesignAuditResult,
+  isDesignAuditCurrent,
+  preferDesignAuditResult,
+} from "@/lib/design-audit-state";
 
 export default function ProjectView() {
   const { id } = useParams();
@@ -139,6 +150,9 @@ export default function ProjectView() {
   const [tweakReview, setTweakReview] = useState<TweakChangePreview | null>(
     null,
   );
+  const [auditFocus, setAuditFocus] = useState<{ readonly findingId: string; readonly nodeBgId: string; readonly relPath: string } | null>(null);
+  const [auditRevealResult, setAuditRevealResult] = useState<"found" | "not_found" | null>(null);
+  const [auditActionError, setAuditActionError] = useState<Error | null>(null);
   const tweaksUndoRef = useRef<TweaksUndoFrame[]>([]);
   const tweaksRedoRef = useRef<TweaksUndoFrame[]>([]);
   const [presentOpen, setPresentOpen] = useState(false);
@@ -158,6 +172,7 @@ export default function ProjectView() {
   const latestEventTsRef = useRef<number | undefined>(undefined);
   const activeTabIdRef = useRef(activeTabId);
   const sendPendingTimeoutRef = useRef<number | null>(null);
+  const turnTouchedFilesRef = useRef(false);
 
   const projectQuery = useQuery({
     queryKey: ["project", id],
@@ -179,6 +194,19 @@ export default function ProjectView() {
     queryFn: () => getArtifacts(id!),
     enabled: Boolean(id),
   });
+  const designAuditQueryKey = useMemo(() => ["project", id, "design-audit"] as const, [id]);
+  const designAuditQuery = useQuery({
+    queryKey: designAuditQueryKey,
+    queryFn: async () => {
+      const incoming = await getProjectDesignAudit(id ?? "");
+      const current = queryClient.getQueryData<DesignAuditResult | null>(designAuditQueryKey) ?? null;
+      return preferDesignAuditResult(current, incoming, id ?? "");
+    },
+    enabled: Boolean(id && artifactsQuery.data?.entrypoint_url),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+  const invalidateDesignAudit = useCallback(() => queryClient.invalidateQueries({ queryKey: designAuditQueryKey }), [designAuditQueryKey, queryClient]);
   const replayQuery = useQuery({
     queryKey: ["session", sessionQuery.data?.id, "events"],
     queryFn: () => listSessionEvents(sessionQuery.data!.id),
@@ -261,6 +289,34 @@ export default function ProjectView() {
     onError: setDirectionActionError,
   });
 
+  const mergeDesignAuditCache = useCallback((incoming: DesignAuditResult) => {
+    queryClient.setQueryData<DesignAuditResult | null>(designAuditQueryKey, (current) => preferDesignAuditResult(current ?? null, incoming, id ?? ""));
+  }, [designAuditQueryKey, id, queryClient]);
+  const retryDesignAuditMutation = useMutation({
+    mutationFn: () => retryProjectDesignAudit(id ?? ""),
+    onMutate: () => setAuditActionError(null),
+    onSuccess: mergeDesignAuditCache,
+    onError: (error) => setAuditActionError(error instanceof Error ? error : new Error(String(error))),
+  });
+  const safeFixMutation = useMutation({
+    mutationFn: (input: { readonly findingId: string; readonly relPath: string; readonly request: PatchFileRequest }) =>
+      patchProjectFile(id ?? "", input.relPath, input.request),
+    onSuccess: async (_response, input) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", id] }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", id, "fs", input.relPath, "undo-info"] }),
+        invalidateDesignAudit(),
+      ]);
+      setRefreshTick((value) => value + 1);
+      pushToast({ title: "안전 수정을 적용했어요", tone: "success" });
+    },
+    onError: (error) => {
+      pushToast({ title: "안전 수정을 적용하지 못했어요", body: DESIGN_AUDIT_ERROR_COPY[designAuditErrorCode(error)], tone: "error" });
+    },
+  });
+
   const refreshMutation = useMutation({
     mutationFn: () => refreshArtifacts(id!),
     onSuccess: async () => {
@@ -269,6 +325,7 @@ export default function ProjectView() {
         queryClient.invalidateQueries({
           queryKey: ["project", id, "artifacts"],
         }),
+        invalidateDesignAudit(),
       ]);
       setRefreshTick((value) => value + 1);
     },
@@ -380,6 +437,7 @@ export default function ProjectView() {
       void queryClient.invalidateQueries({
         queryKey: ["project", id, "fs", variables.relPath, "undo-info"],
       });
+      void invalidateDesignAudit();
       setRefreshTick((value) => value + 1);
     },
     onError: (error) => {
@@ -418,6 +476,7 @@ export default function ProjectView() {
         queryClient.invalidateQueries({
           queryKey: ["project", id, "fs", variables.relPath, "undo-info"],
         }),
+        invalidateDesignAudit(),
       ]);
       setRefreshTick((value) => value + 1);
     },
@@ -464,6 +523,10 @@ export default function ProjectView() {
     setPresentOpen(false);
     setDecidedToolCallIds(new Set());
     setDirectionActionError(null);
+    setAuditFocus(null);
+    setAuditRevealResult(null);
+    setAuditActionError(null);
+    turnTouchedFilesRef.current = false;
     setRefreshTick(0);
   }, [id]);
 
@@ -478,6 +541,7 @@ export default function ProjectView() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
         queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+        invalidateDesignAudit(),
       ]);
       setRefreshTick((value) => value + 1);
       pushToast({ title: "Turn reverted", tone: "info" });
@@ -651,6 +715,16 @@ export default function ProjectView() {
           clearSendPending(sendPendingTimeoutRef, setSendPending);
         }
 
+        if (event.type === "file.changed") turnTouchedFilesRef.current = true;
+        if (event.type === "status.idle" && turnTouchedFilesRef.current) {
+          turnTouchedFilesRef.current = false;
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] }),
+            invalidateDesignAudit(),
+          ]);
+        }
+        if (event.type === "status.error") turnTouchedFilesRef.current = false;
+
         if (event.type === "file.changed" && id) {
           openFileAsTab(event.path, setOpenFileTabs, setActiveTabId);
           if (activeTabIdRef.current === event.path) {
@@ -674,7 +748,7 @@ export default function ProjectView() {
       active = false;
       cleanup();
     };
-  }, [id, mergeDirectionCache, queryClient, replayQuery.status, sessionQuery.data?.id]);
+  }, [id, invalidateDesignAudit, mergeDirectionCache, queryClient, replayQuery.status, sessionQuery.data?.id]);
 
   useEffect(() => {
     const project = projectQuery.data;
@@ -739,6 +813,33 @@ export default function ProjectView() {
       });
     },
   });
+  useEffect(() => {
+    if (designAuditQuery.dataUpdatedAt > 0) setAuditActionError(null);
+  }, [designAuditQuery.dataUpdatedAt]);
+  const auditReport = designAuditQuery.data ?? null;
+  const auditError = auditActionError ?? (designAuditQuery.error instanceof Error ? designAuditQuery.error : null);
+  const auditState = designAuditViewState({
+    renderable: Boolean(artifactsQuery.data?.entrypoint_url), report: auditReport,
+    pending: designAuditQuery.isFetching, rerunning: retryDesignAuditMutation.isPending,
+    errorCode: auditError === null ? null : designAuditErrorCode(auditError),
+    currentDigest: artifactsQuery.data?.current_digest ?? "",
+  });
+  const openQuality = useCallback(() => {
+    const detail = projectQuery.data;
+    if (!artifactsQuery.data?.entrypoint_url || !detail) {
+      pushToast({ title: "품질 점검을 열 수 없어요", body: "렌더링 가능한 결과물이 아직 없어요.", tone: "warn" });
+      return;
+    }
+    if (!openFileTabs.some((tab) => tab.id === activeTabId)) openFileAsTab(detail.entrypoint, setOpenFileTabs, setActiveTabId);
+    setMode("quality");
+  }, [activeTabId, artifactsQuery.data?.entrypoint_url, openFileTabs, projectQuery.data, pushToast]);
+  const qualityGate = auditReport !== null && isDesignAuditCurrent(auditReport, artifactsQuery.data?.current_digest ?? "") && auditReport.overall_status === "must_fix"
+    ? { mustFixCount: groupDesignAuditResult(auditReport).mustFix.length } : null;
+
+  const handleQualityRevealResult = useCallback((nodeBgId: string, found: boolean) => {
+    if (auditFocus?.nodeBgId === nodeBgId) setAuditRevealResult(found ? "found" : "not_found");
+  }, [auditFocus?.nodeBgId]);
+
   const tabs = useMemo(
     () => buildTabs(project, openFileTabs),
     [openFileTabs, project],
@@ -812,13 +913,14 @@ export default function ProjectView() {
         queryClient.invalidateQueries({
           queryKey: ["project", id, "artifacts"],
         }),
+        invalidateDesignAudit(),
       ]);
       setSelection(null);
       setTweaksTarget(null);
       setTweakReview(null);
-      setMode(null);
+      setMode((current) => current === "quality" ? current : null);
       setRefreshTick((value) => value + 1);
-      pushToast({ title: "Last save undone", tone: "success" });
+      pushToast({ title: "마지막 저장을 실행 취소했어요", tone: "success" });
     },
     onError: (err) => {
       pushToast({
@@ -834,6 +936,11 @@ export default function ProjectView() {
       setActiveTabId(tabs[0]?.id ?? "design-system");
     }
   }, [activeTabId, tabs]);
+
+  useEffect(() => {
+    if (mode !== "quality") { setAuditFocus(null); setAuditRevealResult(null); }
+  }, [mode]);
+  useEffect(() => { setAuditFocus(null); setAuditRevealResult(null); }, [auditReport?.artifact_digest, auditReport?.created_at]);
 
   const isLoading =
     projectQuery.isLoading ||
@@ -872,6 +979,8 @@ export default function ProjectView() {
           Boolean(canvasSrc)
         }
         onPresent={() => setPresentOpen(true)}
+        qualityGate={qualityGate}
+        onOpenQuality={openQuality}
         tabsSlot={
           <ArtifactTabs
             tabs={tabs}
@@ -888,7 +997,7 @@ export default function ProjectView() {
           />
         }
       />
-      <div className="flex min-h-0 flex-1 overflow-hidden max-[900px]:flex-col max-[900px]:overflow-y-auto">
+      <div className="flex min-h-0 flex-1 overflow-hidden max-[900px]:flex-col">
         <ChatPane
           events={events}
           session={session}
@@ -1009,6 +1118,8 @@ export default function ProjectView() {
               canUndo={Boolean(undoInfoQuery.data?.can_undo)}
               undoPending={undoMutation.isPending}
               onUndo={() => undoMutation.mutate()}
+              qualityFocusedNodeId={auditFocus?.relPath === activeRelPath ? auditFocus.nodeBgId : null}
+              onQualityRevealResult={handleQualityRevealResult}
               comments={comments}
               activeRelPath={activeRelPath}
               activeSlideIdx={activeSlideIdx}
@@ -1048,6 +1159,28 @@ export default function ProjectView() {
             />
             <ModePanel
               mode={mode}
+              quality={{
+                state: auditState,
+                pendingFindingId: safeFixMutation.isPending ? safeFixMutation.variables?.findingId ?? null : null,
+                focusedFindingId: auditFocus?.findingId ?? null,
+                revealResult: auditRevealResult,
+                onRetry: () => { if (!safeFixMutation.isPending && !designAuditQuery.isFetching && !retryDesignAuditMutation.isPending) retryDesignAuditMutation.mutate(); },
+                onOpenFile: (finding) => openFileAsTab(finding.source.rel_path, setOpenFileTabs, setActiveTabId),
+                onReveal: (finding) => {
+                  openFileAsTab(finding.source.rel_path, setOpenFileTabs, setActiveTabId);
+                  setMode("quality");
+                  if (finding.source.node_bg_id !== null) {
+                    setAuditFocus({ findingId: finding.id, nodeBgId: finding.source.node_bg_id, relPath: finding.source.rel_path });
+                    setAuditRevealResult(null);
+                  }
+                },
+                onApplySafeFix: (finding) => {
+                  if (finding.safe_fix === undefined || auditReport === null || designAuditQuery.isFetching || retryDesignAuditMutation.isPending || safeFixMutation.isPending || !isDesignAuditCurrent(auditReport, artifacts.current_digest)) return;
+                  openFileAsTab(finding.safe_fix.rel_path, setOpenFileTabs, setActiveTabId);
+                  if (finding.source.node_bg_id !== null) setAuditFocus({ findingId: finding.id, nodeBgId: finding.source.node_bg_id, relPath: finding.source.rel_path });
+                  safeFixMutation.mutate({ findingId: finding.id, relPath: finding.safe_fix.rel_path, request: finding.safe_fix.request });
+                },
+              }}
               selection={selection}
               onPromoteToTweaks={() => {
                 const target = selectedNodeToTweaksTarget(selection);

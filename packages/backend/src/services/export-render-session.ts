@@ -13,7 +13,7 @@ export class RenderSessionError extends Error {
   constructor(readonly code: "chromium_not_installed" | "render_failed" | "deck_not_ready" | "render_aborted", message: string, readonly findings: readonly RenderFinding[] = []) { super(message); }
 }
 
-export async function openRenderSession(input: { readonly stagedDir: string; readonly entrypoint: string; readonly viewport: RenderViewport; readonly deck: boolean; readonly signal: AbortSignal; readonly onPhase?: (phase: RenderPhase) => void }): Promise<RenderSession> {
+export async function openRenderSession(input: { readonly stagedDir: string; readonly entrypoint: string; readonly viewport: RenderViewport; readonly deck: boolean; readonly signal: AbortSignal; readonly strict?: boolean; readonly onPhase?: (phase: RenderPhase) => void }): Promise<RenderSession> {
   if (input.signal.aborted) throw new RenderSessionError("render_aborted", "Render was cancelled");
   const browser = await launchChromium(input.signal); const owner = registerExportBrowser(() => browser.close()); const findings: RenderFinding[] = []; let abort: (() => void) | null = null;
   try {
@@ -21,7 +21,7 @@ export async function openRenderSession(input: { readonly stagedDir: string; rea
     page.on("console", (message) => { if (message.type() === "error") findings.push({ code: "console_error", path: message.text() }); });
     page.on("pageerror", (error) => findings.push({ code: "page_error", path: error.message })); page.on("requestfailed", (request) => findings.push({ code: "request_failed", path: request.url() }));
     await page.route("**/*", async (route) => { const url = new URL(route.request().url()); if (url.protocol === "file:" || url.protocol === "data:") await route.continue(); else { findings.push({ code: "remote_request", path: sanitizeUrl(url) }); await route.abort("blockedbyclient"); } });
-    abort = (): void => { void browser.close(); }; input.signal.addEventListener("abort", abort, { once: true }); input.onPhase?.("browser_ready");
+    abort = (): void => { void owner.close(); }; input.signal.addEventListener("abort", abort, { once: true }); input.onPhase?.("browser_ready");
     const htmlPath = resolveWithin(input.stagedDir, input.entrypoint); await page.goto(`${pathToFileURL(htmlPath)}${input.deck ? "?print=1" : ""}`, { waitUntil: "load", timeout: 30_000 }); input.onPhase?.("navigated");
     await page.evaluate(async () => { if (document.readyState !== "complete") await new Promise<void>((resolve) => addEventListener("load", () => resolve(), { once: true })); await document.fonts.ready; });
     const state = await page.evaluate(() => {
@@ -30,10 +30,10 @@ export async function openRenderSession(input: { readonly stagedDir: string; rea
     });
     for (const font of state.fonts) findings.push({ code: "font_error", path: font });
     if (input.deck && (state.slideCount === 0 || !state.owned || !state.geometry)) throw new RenderSessionError("deck_not_ready", "Owned deck runtime did not produce finite slide geometry", findings);
-    if (findings.length > 0) throw new RenderSessionError("render_failed", "Render emitted browser errors", findings); input.onPhase?.("content_ready"); let closed = false;
-    return { browser, context, page, findings, close: async () => { if (closed) return; closed = true; if (abort !== null) input.signal.removeEventListener("abort", abort); owner.release(); await browser.close(); } };
+    if ((input.strict ?? true) && findings.length > 0) throw new RenderSessionError("render_failed", "Render emitted browser errors", findings); input.onPhase?.("content_ready"); let closed = false;
+    return { browser, context, page, findings, close: async () => { if (closed) return; closed = true; if (abort !== null) input.signal.removeEventListener("abort", abort); await owner.close(); } };
   } catch (error) {
-    if (abort !== null) input.signal.removeEventListener("abort", abort); owner.release(); await browser.close().catch((closeError) => { if (!(error instanceof Error)) throw closeError; });
+    if (abort !== null) input.signal.removeEventListener("abort", abort); try { await owner.close(); } catch (closeError) { throw new AggregateError([error, closeError], "Render failed and Chromium cleanup failed"); }
     if (input.signal.aborted) throw new RenderSessionError("render_aborted", "Render was cancelled", findings); if (error instanceof RenderSessionError) throw error; throw new RenderSessionError("render_failed", error instanceof Error ? error.message : String(error), findings);
   }
 }

@@ -3,7 +3,7 @@ import path from "node:path";
 import { parse } from "node-html-parser";
 import type { ExportFormat, ExportOptions, ExportProgress, ExportStopReason } from "@bg/shared";
 import { getExportJob } from "../db/exports";
-import { createExportAuthority, createRetryAuthority, advanceExportAttempt, completeExportAttempt, failExportAttempt, requestExportCancellation, type ExportIdentity } from "../db/export-lifecycle-repository";
+import { createExportAuthority, createRetryAuthority, advanceExportAttempt, completeExportAttempt, failExportAttempt, recordExportAuditFindings, requestExportCancellation, type ExportIdentity } from "../db/export-lifecycle-repository";
 import { getProjectDetail } from "../db/project-read-repository";
 import { getSqlite } from "../db/sqlite-client";
 import { exportsDir, projectsDir, resolveManagedPath, systemsDir } from "../lib/paths";
@@ -23,6 +23,7 @@ import { renderDeckToPptx } from "./export-pptx-render";
 import { canonicalJson, parseExportReceipt, receiptDigest, sha256, type ExportReceipt } from "./export-receipt";
 import type { ExportValidation } from "./export-receipt-validation";
 import { openRenderSession } from "./export-render-session";
+import { auditRenderedTree } from "./design-audit";
 import { prepareSlideDeckExport } from "./export-stage";
 import { zipDirectory } from "./zip";
 
@@ -33,7 +34,7 @@ export type ExportHooks = { readonly phase?: (attemptId: string, phase: ExportPh
 
 export class ExportServiceError extends Error {
   readonly name = "ExportServiceError";
-  constructor(readonly code: "project_not_found" | "source_changed" | "format_requires_deck" | "attempt_not_found", message: string) { super(message); }
+  constructor(readonly code: "project_not_found" | "source_changed" | "format_requires_deck" | "attempt_not_found" | "design_audit_failed", message: string) { super(message); }
 }
 
 export async function enqueueProjectExport(projectId: string, format: ExportFormat, options: ExportOptions, hooks: ExportHooks = {}) {
@@ -74,7 +75,14 @@ async function runExport(input: RunInput): Promise<void> {
     if (live.tree_digest !== context.identity.digest) throw new ExportServiceError("source_changed", "Live project digest differs from stable identity");
     await materializeManagedTree(source, renderRoot); await validateCanonicalTree(renderRoot, live);
     if (context.project.type === "slide_deck") await prepareSlideDeckExport(renderRoot, context.project.entrypoint);
-    const renderManifest = await inspectCanonicalTree(renderRoot); await resolveStaticClosure(renderRoot, context.project.entrypoint, renderManifest);
+    const renderManifest = await inspectCanonicalTree(renderRoot);
+    const audit = await auditRenderedTree({ projectId: context.identity.projectId, projectDir: renderRoot, entrypoint: context.project.entrypoint, revision: context.identity.revision, digest: context.identity.digest, treeDigest: renderManifest.tree_digest, safeFix: false, deck: context.project.type === "slide_deck", signal: input.controller.signal });
+    const auditUnknowns = audit.checks.filter((check) => check.reason !== null).map((check) => ({ code: `design_audit:${check.code}:${check.status}`, path: null }));
+    const auditFindings = audit.checks.flatMap((check) => check.findings.map((finding) => ({ code: finding.check_code, path: finding.source.rel_path }))).slice(0, 200 - auditUnknowns.length);
+    recordExportAuditFindings(db, input.attemptId, [...auditFindings, ...auditUnknowns]);
+    const mustFixCount = audit.checks.flatMap((check) => check.findings).filter((finding) => finding.severity === "must_fix").length;
+    if (mustFixCount > 0) throw new ExportServiceError("design_audit_failed", `Design audit found ${mustFixCount} must-fix finding${mustFixCount === 1 ? "" : "s"}`);
+    await resolveStaticClosure(renderRoot, context.project.entrypoint, renderManifest);
     const inputDigest = sha256(canonicalJson({ schema_version: 1, project: context.identity, entrypoint: context.project.entrypoint, manifest: renderManifest }));
     advanceExportAttempt(db, { attemptId: input.attemptId, status: "running", stage: "rendering", inputClosureDigest: inputDigest, designSystemDigest: context.identity.designSystemDigest });
     emit(context.identity, input, "running", { stage: "rendering", completed: 2, total: 6 }, null); await input.hooks.phase?.(input.attemptId, "after_snapshot", input.controller.signal);
@@ -92,7 +100,7 @@ async function runExport(input: RunInput): Promise<void> {
     emit(context.identity, input, "validated", { stage: "complete", completed: 6, total: 6 }, null);
   } catch (error) {
     await rm(stageRoot, { recursive: true, force: true }); await rm(publishedRoot, { recursive: true, force: true });
-    const cancelled = input.controller.signal.aborted; const reason: ExportStopReason = cancelled ? "user_cancelled" : error instanceof ExportServiceError && error.code === "source_changed" ? "source_changed" : "render_failed";
+    const cancelled = input.controller.signal.aborted; const reason: ExportStopReason = cancelled ? "user_cancelled" : error instanceof ExportServiceError && error.code === "source_changed" ? "source_changed" : error instanceof ExportServiceError && error.code === "design_audit_failed" ? "validation_failed" : "render_failed";
     failExportAttempt(db, { jobId: input.jobId, attemptId: input.attemptId, status: cancelled ? "cancelled" : "failed", reason, message: error instanceof Error ? error.message : String(error) });
     emit(context.identity, input, cancelled ? "cancelled" : "failed", { stage: "rendering", completed: 2, total: 6 }, reason);
   }

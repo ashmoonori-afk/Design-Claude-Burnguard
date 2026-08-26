@@ -11,6 +11,7 @@ import DrawLayer, {
 import EditLayer, { type EditTarget } from "./EditLayer";
 import SelectorOverlay from "./SelectorOverlay";
 import TweaksLayer, { type TweaksTarget } from "./TweaksLayer";
+import QualityLayer from "./QualityLayer";
 import {
   buildSandboxedArtifactSrcDoc,
   requestFrameSetActiveSlide,
@@ -96,6 +97,8 @@ export default function Canvas({
   canUndo,
   undoPending,
   onUndo,
+  qualityFocusedNodeId,
+  onQualityRevealResult,
 }: {
   mode: CanvasMode | null;
   src?: string | null;
@@ -130,6 +133,8 @@ export default function Canvas({
   canUndo?: boolean;
   undoPending?: boolean;
   onUndo?: () => void;
+  qualityFocusedNodeId: string | null;
+  onQualityRevealResult: (nodeBgId: string, found: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -137,6 +142,7 @@ export default function Canvas({
   const restoreTargetSlideIdxRef = useRef<number | null>(null);
   const restoringSlideRef = useRef(false);
   const [frameSrcDoc, setFrameSrcDoc] = useState<string | null>(null);
+  const [loadedFrameKey, setLoadedFrameKey] = useState<string | null>(null);
   // Surfaces fetch failures inline instead of falling back to the
   // placeholder with no signal (audit fix #6). Cleared on every src
   // change so a successful Refresh recovers cleanly.
@@ -162,6 +168,7 @@ export default function Canvas({
   }, [frameKey, src]);
 
   useEffect(() => {
+    setLoadedFrameKey(null);
     if (!src) {
       setFrameSrcDoc(null);
       setLoadError(null);
@@ -267,7 +274,7 @@ export default function Canvas({
   }, [frameKey, frameSrcDoc, src]);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-muted/40">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40 max-[900px]:min-h-48">
       <CanvasTopBar
         mode={mode}
         onModeChange={onModeChange}
@@ -286,6 +293,7 @@ export default function Canvas({
             sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
             allow="fullscreen"
             className="absolute inset-0 h-full w-full border-0 bg-background"
+            onLoad={() => setLoadedFrameKey(frameKey ?? src)}
           />
         ) : (
           <iframe
@@ -325,6 +333,13 @@ export default function Canvas({
           selectedBgId={mode === "tweaks" ? tweaksSelectedBgId : null}
           onSelect={onSelectTweaksTarget}
         />
+        {mode === "quality" && <QualityLayer
+          active={loadedFrameKey === (frameKey ?? src ?? null)}
+          iframeRef={iframeRef}
+          nodeBgId={qualityFocusedNodeId}
+          requestKey={loadedFrameKey ?? "not-loaded"}
+          onRevealResult={onQualityRevealResult}
+        />}
         <DrawLayer
           ref={drawLayerRef}
           active={mode === "draw"}

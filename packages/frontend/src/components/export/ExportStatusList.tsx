@@ -59,7 +59,7 @@ export default function ExportStatusList({
             <li
               key={j.id}
               className="flex items-center gap-2 px-1 text-xs"
-              title={j.error_message ?? undefined}
+              title={j.latest_attempt?.stop_reason === "validation_failed" && j.error_message?.startsWith("Design audit found ") ? "품질 점검에서 고쳐야 할 문제가 발견됐어요." : (j.error_message ?? undefined)}
             >
               <Icon className={iconClass} />
               <span className="flex-1 truncate">{formatLabel(j.format)}</span>

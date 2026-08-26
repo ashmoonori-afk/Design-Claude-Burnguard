@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { UpgradeContractError, parseExportOptions } from "@bg/shared";
 import type {
   ApiErrorBody,
@@ -67,6 +67,19 @@ artifactRoutes.post("/api/projects/:id/refresh", async (c) => {
   }
   return c.json(ok(artifacts satisfies ArtifactSummary));
 });
+
+artifactRoutes.get("/api/projects/:id/design-audit", async (c) => designAuditResponse(c.req.param("id"), false, c.req.raw.signal, c));
+artifactRoutes.post("/api/projects/:id/design-audit/retry", async (c) => designAuditResponse(c.req.param("id"), true, c.req.raw.signal, c));
+
+async function designAuditResponse(projectId: string, force: boolean, signal: AbortSignal, c: Context) {
+  const { DesignAuditServiceError, getProjectDesignAudit } = await import("../services/design-audit");
+  try { return c.json(ok(await getProjectDesignAudit(projectId, force, signal))); }
+  catch (error) {
+    if (!(error instanceof DesignAuditServiceError)) throw error;
+    const status = error.code === "project_not_found" ? 404 : error.code === "stale_artifact_identity" ? 409 : 503;
+    return c.json(fail(error.code, error.message), status);
+  }
+}
 
 artifactRoutes.get("/api/projects/:id/exports", async (c) => {
   const projectId = c.req.param("id");

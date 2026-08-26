@@ -152,7 +152,7 @@ export function classifyApiRoute(pathname: string, method: string): ApiRouteDoma
     if (/\/draws(?:\/|$)/.test(pathname) && (method === "GET" || method === "PUT")) return "managed-files";
     if (/\/fs(?:\/|$)/.test(pathname) && method === "GET" && !pathname.endsWith("/undo-info")) return "managed-files";
     if (/\/(?:fs|operations)(?:\/|$)/.test(pathname)) return "artifact-operations";
-    if (/\/(?:files|artifacts|refresh|exports)(?:\/|$)/.test(pathname)) return "artifacts";
+    if (/\/(?:files|artifacts|refresh|exports|design-audit)(?:\/|$)/.test(pathname)) return "artifacts";
     return "project";
   }
   return "not-found";

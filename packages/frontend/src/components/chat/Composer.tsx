@@ -192,7 +192,7 @@ export default function Composer({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-foreground max-[600px]:h-11 max-[600px]:w-11"
+          className="h-7 w-7 text-muted-foreground max-[900px]:h-11 max-[900px]:w-11"
           title="설정 열기"
           onClick={() => setSettingsOpen(true)}
         >
@@ -201,7 +201,7 @@ export default function Composer({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 text-xs max-[600px]:h-11"
+          className="h-7 gap-1 text-xs max-[900px]:h-11"
           title="참고할 파일을 첨부합니다"
           disabled={disabled}
           onClick={() => fileInput.current?.click()}
@@ -213,7 +213,7 @@ export default function Composer({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 gap-1 text-xs max-[600px]:h-11"
+            className="h-7 gap-1 text-xs max-[900px]:h-11"
             onClick={() => sendAbort.current?.abort()}
             aria-label="전송 취소"
             title="전송 요청을 취소합니다"
@@ -224,7 +224,7 @@ export default function Composer({
           <Button
             variant="destructive"
             size="sm"
-            className="h-7 gap-1 text-xs max-[600px]:h-11"
+            className="h-7 gap-1 text-xs max-[900px]:h-11"
             disabled={interruptPending || !onInterrupt}
             onClick={() => onInterrupt?.()}
             title="진행 중인 작업을 중단합니다"
@@ -236,7 +236,7 @@ export default function Composer({
           <Button
             variant="cta"
             size="sm"
-            className="h-7 gap-1 text-xs max-[600px]:h-11"
+            className="h-7 gap-1 text-xs max-[900px]:h-11"
             disabled={!canSend}
             onClick={() => void send()}
             aria-label={retrying ? "다시 보내기 (Cmd/Ctrl+Enter)" : "보내기 (Cmd/Ctrl+Enter)"}

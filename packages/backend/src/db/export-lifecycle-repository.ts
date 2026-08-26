@@ -62,6 +62,12 @@ export function markExportAttemptCorrupt(db: Database, input: { readonly jobId: 
   })();
 }
 
+export function recordExportAuditFindings(db: Database, attemptId: string, findings: readonly { readonly code: string; readonly path: string | null }[]): void {
+  if (findings.length > 200 || findings.some((finding) => finding.code.length === 0 || finding.code.length > 100 || finding.path !== null && finding.path.length > 512)) throw new ExportLifecycleError("invalid_findings");
+  const changed = db.prepare("UPDATE export_attempts SET findings_json=?,updated_at=? WHERE id=? AND status IN ('running','validating')").run(canonicalJson(findings), Date.now(), attemptId);
+  if (changed.changes !== 1) throw new ExportLifecycleError("transition_conflict");
+}
+
 export function requestExportCancellation(db: Database, attemptId: string): boolean {
   const changed = db.prepare("UPDATE export_attempts SET cancel_requested_at=COALESCE(cancel_requested_at,?),updated_at=? WHERE id=? AND status IN ('pending','retrying','running','validating','recovering')").run(Date.now(), Date.now(), attemptId);
   return changed.changes === 1;
@@ -71,4 +77,4 @@ function insertAttempt(db: Database, input: { readonly attemptId: string; readon
   db.prepare(`INSERT INTO export_attempts(id,job_id,parent_attempt_id,status,progress_json,project_revision,project_digest,canonical_options_json,options_digest,input_closure_digest,design_system_digest,renderer_digest,capture_digest,output_digest,receipt_digest,findings_json,retention_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?,?,NULL,NULL,'[]',?,?,?)`).run(input.attemptId, input.jobId, input.parentAttemptId, input.status, canonicalJson({ stage: "queued", completed: 0, total: 6 }), input.identity.revision, input.identity.digest, input.optionsJson, sha256(input.optionsJson), input.identity.designSystemDigest, input.rendererDigest, input.captureDigest, canonicalJson({ retained_until: input.now + RETENTION_MS, output_available: false }), input.now, input.now);
 }
 function progressCompleted(stage: ExportProgressStage): number { switch (stage) { case "queued": return 0; case "snapshotting": return 1; case "rendering": return 2; case "validating": return 3; case "publishing": return 4; case "complete": return 6; } }
-export class ExportLifecycleError extends Error { readonly name = "ExportLifecycleError"; constructor(readonly code: "invalid_retry" | "transition_conflict") { super(code); } }
+export class ExportLifecycleError extends Error { readonly name = "ExportLifecycleError"; constructor(readonly code: "invalid_retry" | "transition_conflict" | "invalid_findings") { super(code); } }

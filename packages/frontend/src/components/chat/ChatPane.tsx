@@ -71,7 +71,7 @@ export default function ChatPane({
   const sessionRunning = session.status === "running";
 
   return (
-    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:h-[360px] max-[900px]:w-full max-[900px]:border-r-0 max-[900px]:border-b max-[480px]:h-[420px]">
+    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:h-[360px] max-[900px]:w-full max-[900px]:border-r-0 max-[900px]:border-b">
       <div className="flex items-stretch gap-1 px-3 pt-2 border-b border-border">
         <ChatTab
           id="chat"
@@ -107,7 +107,9 @@ export default function ChatPane({
             onRevertTurn={onRevertTurn}
             revertingTurnId={revertingTurnId}
           />
-          {statusSlot}
+          {statusSlot !== undefined && statusSlot !== null && (
+            <div className="shrink-0">{statusSlot}</div>
+          )}
           <Composer
             onSend={onSend}
             disabled={composerDisabled}
@@ -159,7 +161,7 @@ function BackendToggle({
                 : `Switch to ${opt} on next turn`
           }
           className={cn(
-            "px-1.5 py-0.5 font-mono uppercase transition-colors",
+            "max-[900px]:min-h-11 max-[900px]:min-w-11 px-1.5 py-0.5 font-mono uppercase transition-colors",
             opt === current
               ? "bg-foreground/90 text-background"
               : "bg-background text-muted-foreground hover:text-foreground",
@@ -194,7 +196,7 @@ function ChatTab({
     <button
       onClick={() => setActive(id)}
       className={cn(
-        "flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
+        "flex max-[900px]:min-h-11 items-center gap-1.5 px-2.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
         active === id
           ? "border-foreground text-foreground"
           : "border-transparent text-muted-foreground hover:text-foreground",
