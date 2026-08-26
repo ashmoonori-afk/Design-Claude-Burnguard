@@ -1,6 +1,9 @@
 import path from "node:path";
 
-export type SupportedUploadKind = "pdf" | "pptx";
+/** The only source kinds the upload extractor can truthfully process. */
+export const SUPPORTED_UPLOAD_KINDS = ["pdf", "pptx"] as const;
+
+export type SupportedUploadKind = (typeof SUPPORTED_UPLOAD_KINDS)[number];
 
 export function inferUploadKind(fileName: string, contentType?: string | null): SupportedUploadKind | null {
   const extension = path.extname(fileName).toLowerCase();

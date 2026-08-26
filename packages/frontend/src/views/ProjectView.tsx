@@ -792,7 +792,7 @@ export default function ProjectView() {
           interruptPending={interruptMutation.isPending}
           onInterrupt={() => interruptMutation.mutate()}
           composerInitialText={composerPrefill}
-          onSend={async (text, attachedFiles) => {
+          onSend={async (text, attachedFiles, signal) => {
             if (composerDisabled) {
               return;
             }
@@ -808,17 +808,20 @@ export default function ProjectView() {
                 type: "user.message",
                 text,
                 files: attachedFiles,
-              });
+              }, { signal });
             } catch (error) {
               clearSendPending(sendPendingTimeoutRef, setSendPending);
-              pushToast({
-                title:
-                  error instanceof ApiError && error.status === 409
-                    ? "Turn already running"
-                    : "Could not send message",
-                body: error instanceof Error ? error.message : String(error),
-                tone: "error",
-              });
+              if (!(error instanceof DOMException && error.name === "AbortError")) {
+                pushToast({
+                  title:
+                    error instanceof ApiError && error.status === 409
+                      ? "Turn already running"
+                      : "Could not send message",
+                  body: error instanceof Error ? error.message : String(error),
+                  tone: "error",
+                });
+              }
+              throw error;
             }
           }}
           onOpenFile={(relPath) =>

@@ -14,9 +14,14 @@ export async function listSessionEvents(
   return envelopes.map((item) => item.event);
 }
 
+/**
+ * `signal` cancels the HTTP request only. The backend keeps its own
+ * extraction lifecycle, and the client cannot observe extractor progress.
+ */
 export async function sendUserEvent(
   id: string,
   event: UserEvent & { files?: File[] },
+  options?: { readonly signal?: AbortSignal },
 ): Promise<void> {
   if (event.type === "user.message" && (event.files?.length ?? 0) > 0) {
     const form = new FormData();
@@ -26,16 +31,11 @@ export async function sendUserEvent(
       form.append("files", file);
     }
 
-    const res = await fetch(`/api/sessions/${id}/events`, {
+    await apiFetch<{ accepted: true }>(`/api/sessions/${id}/events`, {
       method: "POST",
-      credentials: "same-origin",
       body: form,
+      signal: options?.signal,
     });
-    if (!res.ok) {
-      throw new Error(
-        await res.text().catch(() => `Failed to send message to session ${id}`),
-      );
-    }
     return;
   }
 
@@ -47,6 +47,7 @@ export async function sendUserEvent(
         text: event.text,
         attachments: event.attachments,
       }),
+      signal: options?.signal,
     });
     return;
   }
@@ -54,6 +55,7 @@ export async function sendUserEvent(
   await apiFetch<{ accepted: true }>(`/api/sessions/${id}/events`, {
     method: "POST",
     body: JSON.stringify(event),
+    signal: options?.signal,
   });
 }
 

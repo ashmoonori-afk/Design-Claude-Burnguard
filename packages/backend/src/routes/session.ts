@@ -14,7 +14,8 @@ import {
   getProjectDetail,
   getSessionInfo,
 } from "../db/seed";
-import { saveSessionAttachments } from "../services/attachments";
+import { UnsupportedAttachmentKindError, saveSessionAttachments } from "../services/attachments";
+import { SUPPORTED_UPLOAD_KINDS } from "../services/upload-kind";
 import { broker, sequencedBroker } from "../services/broker";
 import { subscribeBeforeBackfill } from "../services/sequenced-event-replay";
 import {
@@ -118,6 +119,15 @@ sessionRoutes.post("/api/sessions/:id/events", async (c) => {
       try {
         attachmentPaths = await saveSessionAttachments(id, fileEntries);
       } catch (error) {
+        if (error instanceof UnsupportedAttachmentKindError) {
+          return c.json(
+            fail(error.code, "Unsupported source kind", {
+              files: error.fileNames,
+              supported_kinds: SUPPORTED_UPLOAD_KINDS,
+            }),
+            415,
+          );
+        }
         const message = error instanceof Error ? error.message : String(error);
         return c.json(
           fail("invalid_attachments", "Attachment upload rejected", { message }),

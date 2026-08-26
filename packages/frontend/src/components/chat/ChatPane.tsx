@@ -29,7 +29,11 @@ export default function ChatPane({
   canInterrupt?: boolean;
   interruptPending?: boolean;
   onInterrupt?: () => void;
-  onSend: (text: string, files: File[]) => void;
+  onSend: (
+    text: string,
+    files: File[],
+    signal: AbortSignal,
+  ) => void | Promise<void>;
   onOpenFile?: (relPath: string) => void;
   onRevertTurn?: (turnId: string) => void;
   revertingTurnId?: string | null;
@@ -65,7 +69,7 @@ export default function ChatPane({
   const sessionRunning = session.status === "running";
 
   return (
-    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:w-full max-[900px]:h-[300px] max-[900px]:border-r-0 max-[900px]:border-b">
+    <aside className="w-[360px] shrink-0 border-r border-border bg-background flex flex-col min-h-0 overflow-hidden max-[900px]:h-[360px] max-[900px]:w-full max-[900px]:border-r-0 max-[900px]:border-b max-[480px]:h-[420px]">
       <div className="flex items-stretch gap-1 px-3 pt-2 border-b border-border">
         <ChatTab
           id="chat"
