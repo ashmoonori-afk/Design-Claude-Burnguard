@@ -6,7 +6,7 @@ This catalog turns the source-grounded design review retrieved on 2026-08-25 int
 
 - `packages/backend/src/research-data/sources.json` is the provenance ledger. Each stable `S-*` record identifies its URL, retrieval date, owner or title, tags, a short paraphrase, usage boundary, confidence, and limitation.
 - `packages/backend/src/research-data/common-rules.json` contains reusable `CR-*` rules. Every rule cites ledger IDs and declares its authority class.
-- `packages/backend/src/research-data/purpose-references.json` contains the six supported reference sets. Purpose IDs are selectors, not new project types.
+- `packages/backend/src/research-data/purpose-references.json` contains the ten supported prompt reference sets. Purpose IDs are selectors, not new project types.
 
 All JSON is UTF-8, two-space indented, newline terminated, and sorted by stable ID. The focused validator rejects noncanonical serialization, duplicate or unsorted IDs, unresolved citations, incomplete provenance, and unsupported purpose IDs.
 
@@ -27,7 +27,9 @@ Purpose selection keeps four concepts separate:
 - `creation_mode` describes whether the reference set supports generated or authored output.
 - `fallback` records the generic fallback without treating it as a purpose.
 
-The catalog intentionally covers only `prototype.landing`, `prototype.dashboard`, `prototype.diagram`, `prototype.editorial`, `prototype.sandbox`, and `deck.pitch`. Editorial and sandbox remain prototype subgenres. Diagram remains request intent. Pitch guidance has medium confidence because the surviving sources support attention and accessible delivery, not a universal pitch narrative.
+The prompt catalog covers `prototype.landing`, `prototype.dashboard`, `prototype.diagram`, `prototype.editorial`, `prototype.sandbox`, `deck.company`, `deck.pitch`, `deck.report`, `deck.sales`, and `deck.training`. Editorial and sandbox remain prototype subgenres. Diagram remains request intent. Every deck purpose retains medium confidence because the sources support bounded communication principles, not a universal narrative for that deck kind.
+
+The persisted mass-research contract intentionally remains narrower. `ResearchProjectPurpose` accepts the five prototype purposes plus `deck.pitch`; the four additional deck purposes are prompt-catalog selectors only. `selectCatalogRules` can resolve all ten prompt purposes, while `selectResearchPromptContext` rejects a persisted result for a prompt-only purpose until the shared research contract is expanded deliberately.
 
 ## Applying records
 

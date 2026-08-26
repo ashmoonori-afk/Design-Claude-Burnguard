@@ -229,6 +229,63 @@ Format: one entry per decision, newest at the bottom. Numbering never reused.
 
 ---
 
+## ADR-013: Project creation persists a versioned design brief
+
+**Date**: 2026-08-25
+**Status**: Accepted
+
+**Context.** Project creation previously persisted only loose type-specific
+options and could silently select the first design-system row, including a
+draft. Korean non-designers need a bounded brief that survives creation and
+reaches the agent prompt. The product also exposes a `from_template` type, but
+real installs do not seed any row with `is_template = 1`.
+
+**Decision.** Persist a parsed `DesignBriefV1` inside `projects.options_json`
+alongside snake-case type-specific options. Require an explicit user choice
+before applying a design system. Ordinary projects may use a published
+non-template system or none; `from_template` requires an explicit published
+system and treats that system as the template source, regardless of its
+`is_template` flag.
+
+**Consequences.**
+- Audience, objective, locale, brand mode, visual mood, density, content
+  source, and output size reach the prompt as machine-readable context
+- Draft and review systems cannot silently become a project's brand
+- Template creation remains usable on a default install without inventing
+  template-marked seed data
+- The brief schema must be versioned when its persisted shape changes
+
+---
+
+## ADR-014: Reference layout is a versioned advisory prompt contract
+
+**Date**: 2026-08-25
+**Status**: Accepted
+
+**Context.** A selected drawing or plan plus page requirements must preserve
+dimensions, units, orientation, scale, bleed, safe margins, aspect ratio, and
+stable anchors without mutating the source. Treating every selected image as a
+drawing would misclassify ordinary logos and screenshots, while exporter
+support is limited to specific presets and dimensions.
+
+**Decision.** Derive `ReferenceLayoutContextV1` only from explicit
+layout/reference request intent or a selected attachment whose filename
+identifies a drawing, plan, layout, sketch, or reference. Keep selected
+attachment paths inside the existing attachment boundary. Mark the reference
+as an immutable underlay in the prompt contract, preserve missing measurements
+as explicit unknowns, use normalized top-left anchors, and report exporter
+limitations without coercing custom sizes.
+
+**Consequences.**
+- Ordinary content images do not trigger `layout-spec.json` work
+- Drawing filenames still activate the contract when request text is generic
+- Repeated inputs produce byte-stable layout context
+- Immutability is advisory to the coding agent; the filesystem does not enforce
+  a write lock on attachment bytes
+- Export support remains a declared capability rather than an inferred promise
+
+---
+
 ## Template for new ADRs
 
 ```
