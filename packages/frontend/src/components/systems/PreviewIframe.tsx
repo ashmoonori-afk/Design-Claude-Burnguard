@@ -53,7 +53,7 @@ export default function PreviewIframe({
         <div>
           <div className="truncate max-w-[180px]">{path}</div>
           <div className="mt-1 text-[9px] text-muted-foreground/70">
-            preview unavailable
+            미리보기를 사용할 수 없어요
           </div>
         </div>
       </div>
@@ -63,7 +63,7 @@ export default function PreviewIframe({
   if (!content) {
     return (
       <div className="aspect-video rounded-md bg-muted grid place-items-center text-[10px] font-mono text-muted-foreground">
-        loading…
+        불러오는 중…
       </div>
     );
   }

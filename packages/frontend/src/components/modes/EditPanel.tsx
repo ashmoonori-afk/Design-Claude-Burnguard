@@ -44,12 +44,13 @@ export default function EditPanel({
     return (
       <div className="p-4">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
-          Edit
+          편집
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Hover over the canvas to highlight editable elements, then click one
-          to inspect and edit it. Only elements with{" "}
-          <code className="font-mono">data-bg-node-id</code> are editable.
+          캔버스에 마우스를 올리면 편집할 수 있는 요소가 강조되고, 클릭하면
+          내용을 보고 고칠 수 있어요.{" "}
+          <code className="font-mono">data-bg-node-id</code>가 있는 요소만
+          편집할 수 있어요.
         </p>
       </div>
     );
@@ -91,14 +92,14 @@ export default function EditPanel({
       <div className="border-b border-border px-3 py-2">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Edit
+            편집
           </span>
           <button
             type="button"
             onClick={onClear}
             className="text-[10px] text-muted-foreground hover:text-foreground"
           >
-            Clear
+            선택 해제
           </button>
         </div>
         <div className="mt-1 font-mono text-xs">&lt;{target.tag}&gt;</div>
@@ -109,7 +110,7 @@ export default function EditPanel({
 
       <section className="px-3 py-2">
         <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Text content
+          텍스트 내용
         </label>
         <textarea
           value={text}
@@ -122,19 +123,19 @@ export default function EditPanel({
       <section className="px-3 py-2 border-t border-border">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Attributes
+            속성
           </span>
           <button
             type="button"
             onClick={() => setAttrRows((prev) => [...prev, { key: "", value: "" }])}
             className="text-[10px] text-muted-foreground hover:text-foreground"
           >
-            + Add
+            + 추가
           </button>
         </div>
         <div className="mt-1 flex flex-col gap-1">
           {attrRows.length === 0 && (
-            <p className="text-[10px] text-muted-foreground">No attributes.</p>
+            <p className="text-[10px] text-muted-foreground">속성이 없어요.</p>
           )}
           {attrRows.map((row, idx) => (
             <div key={idx} className="flex gap-1">
@@ -145,7 +146,7 @@ export default function EditPanel({
                   next[idx] = { ...next[idx], key: e.target.value };
                   setAttrRows(next);
                 }}
-                placeholder="name"
+                placeholder="이름"
                 className="min-w-0 flex-1 rounded border border-border bg-background p-1 text-[11px] font-mono"
               />
               <input
@@ -155,14 +156,14 @@ export default function EditPanel({
                   next[idx] = { ...next[idx], value: e.target.value };
                   setAttrRows(next);
                 }}
-                placeholder="value"
+                placeholder="값"
                 className="min-w-0 flex-1 rounded border border-border bg-background p-1 text-[11px] font-mono"
               />
               <button
                 type="button"
                 onClick={() => setAttrRows(attrRows.filter((_, i) => i !== idx))}
                 className="px-1 text-muted-foreground hover:text-foreground"
-                aria-label="Remove attribute"
+                aria-label="속성 삭제"
               >
                 ×
               </button>
@@ -181,7 +182,7 @@ export default function EditPanel({
             "hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60",
           )}
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? "저장하는 중..." : "저장"}
         </button>
       </div>
     </div>

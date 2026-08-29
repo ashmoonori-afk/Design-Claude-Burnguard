@@ -43,10 +43,10 @@ export default function PermissionDialog({
           <div className="mb-3 grid h-10 w-10 place-items-center rounded-md bg-amber-500/10 text-amber-600">
             <ShieldAlert className="h-5 w-5" />
           </div>
-          <DialogTitle>Allow this tool call?</DialogTitle>
+          <DialogTitle>이 도구 실행을 허용할까요?</DialogTitle>
           <DialogDescription>
-            The CLI requested permission to run a tool. Review the call and
-            decide whether to proceed. Denying aborts the turn.
+            CLI가 도구를 실행할 권한을 요청했어요. 내용을 확인하고 계속할지
+            정해 주세요. 거부하면 이번 턴이 중단돼요.
           </DialogDescription>
         </DialogHeader>
 
@@ -54,13 +54,13 @@ export default function PermissionDialog({
           <div className="rounded-md border border-border bg-muted/40 text-xs">
             <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
               <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Tool
+                도구
               </span>
               <span className="truncate font-mono">{request.tool}</span>
             </div>
             <div className="border-b border-border px-3 py-2">
               <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Input
+                입력
               </div>
               <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px]">
                 {formatInput(request.input)}
@@ -68,7 +68,7 @@ export default function PermissionDialog({
             </div>
             <div className="flex items-center justify-between gap-2 px-3 py-2">
               <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Call
+                호출 ID
               </span>
               <span className="truncate font-mono text-muted-foreground">
                 {request.toolCallId}
@@ -83,14 +83,14 @@ export default function PermissionDialog({
             onClick={() => onDecide("deny")}
             disabled={pending}
           >
-            Deny &amp; abort
+            거부하고 중단
           </Button>
           <Button
             variant="default"
             onClick={() => onDecide("allow")}
             disabled={pending}
           >
-            {pending ? "Submitting…" : "Allow"}
+            {pending ? "보내는 중…" : "허용"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -99,7 +99,7 @@ export default function PermissionDialog({
 }
 
 function formatInput(input: unknown): string {
-  if (input == null) return "(no input)";
+  if (input == null) return "(입력 없음)";
   if (typeof input === "string") return input;
   try {
     return JSON.stringify(input, null, 2);

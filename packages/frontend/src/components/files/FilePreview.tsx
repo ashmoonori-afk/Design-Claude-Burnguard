@@ -4,7 +4,7 @@ export default function FilePreview({ file }: { file: FileInfo | null }) {
   if (!file) {
     return (
       <div className="flex-1 grid place-items-center text-sm text-muted-foreground p-8">
-        Select a file to preview.
+        미리 볼 파일을 선택하세요.
       </div>
     );
   }
@@ -40,7 +40,7 @@ export default function FilePreview({ file }: { file: FileInfo | null }) {
 function PlaceholderImage({ name }: { name: string }) {
   return (
     <div className="aspect-video grid place-items-center bg-muted border border-border rounded-md text-muted-foreground text-sm">
-      {name} — image preview arrives in Sprint 4
+      {name} — 이미지 미리보기는 Sprint 4에서 제공돼요
     </div>
   );
 }

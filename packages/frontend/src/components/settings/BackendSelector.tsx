@@ -14,7 +14,7 @@ export default function BackendSelector({
   return (
     <div className="space-y-2">
       <label className="text-xs font-medium text-muted-foreground">
-        Default backend
+        기본 백엔드
       </label>
       <div className="space-y-2">
         {detection.backends.map((b) => {

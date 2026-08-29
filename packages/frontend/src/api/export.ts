@@ -15,11 +15,11 @@ export function formatLabel(format: ExportFormat): string {
     case "png":
       return "PNG";
     case "pptx":
-      return "PowerPoint";
+      return "파워포인트";
     case "html_zip":
-      return "HTML zip";
+      return "HTML ZIP 파일";
     case "handoff":
-      return "Developer handoff";
+      return "개발자 전달용";
   }
 }
 

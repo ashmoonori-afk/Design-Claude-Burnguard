@@ -32,7 +32,7 @@ export default function ExportStatusList({
   return (
     <div className="px-2 py-1.5">
       <div className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        Recent
+        최근 내보내기
       </div>
       <ul className="space-y-1">
         {jobs.slice(0, 5).map((j) => {
@@ -81,10 +81,10 @@ export default function ExportStatusList({
                   onClick={() => onRetry?.(j.format)}
                   disabled={retryDisabled}
                   className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent/10 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Retry this export"
+                  title="이 내보내기 다시 시도"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Retry
+                  다시 시도
                 </button>
               )}
               {!canDownload && !canRetry && (

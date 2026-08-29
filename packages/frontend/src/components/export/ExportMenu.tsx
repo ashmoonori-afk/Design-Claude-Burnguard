@@ -79,11 +79,11 @@ export default function ExportMenu({ projectId, projectType, projectOptionsJson,
       void queryClient.invalidateQueries({
         queryKey: ["project", projectId, "exports"],
       });
-      pushToast({ title: "Export queued", tone: "info" });
+      pushToast({ title: "내보내기를 예약했어요", tone: "info" });
     },
     onError: (err) => {
       pushToast({
-        title: "Export failed to start",
+        title: "내보내기를 시작하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -116,12 +116,12 @@ export default function ExportMenu({ projectId, projectType, projectOptionsJson,
         const looksLikeChromium = job.error_message?.toLowerCase().includes("chromium");
         const auditFailed = isDesignAuditExportFailure(job);
         pushToast({
-          title: `Export failed (${formatLabel(job.format)})`,
+          title: `내보내기에 실패했어요 (${formatLabel(job.format)})`,
           body: auditFailed
             ? "내보내기 전 품질 점검에서 고쳐야 할 문제가 발견됐어요."
             : looksLikeChromium
-              ? 'Chromium is not installed. Open Settings → "Chromium for exports" → Install, then re-run the export.'
-              : (job.error_message ?? "Unknown error."),
+              ? 'Chromium이 설치되어 있지 않아요. 설정 → "내보내기용 Chromium" → 설치를 실행한 뒤 다시 내보내 주세요.'
+              : (job.error_message ?? "알 수 없는 오류예요."),
           tone: "error",
         });
       }
@@ -135,13 +135,13 @@ export default function ExportMenu({ projectId, projectType, projectOptionsJson,
           variant="outline"
           size="sm"
           className="gap-1.5 focus:ring-2 focus:ring-ring focus:ring-offset-1 max-[900px]:min-h-11 max-[900px]:min-w-11 max-[900px]:justify-center max-[900px]:gap-0 max-[900px]:px-0 max-[900px]:text-[0px]"
-          aria-label="Export"
+          aria-label="내보내기"
         >
-          <Download className="h-3.5 w-3.5" /> Export
+          <Download className="h-3.5 w-3.5" /> 내보내기
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent data-export-menu-content align="end" className="z-[100] w-72">
-        <DropdownMenuLabel>Export as</DropdownMenuLabel>
+        <DropdownMenuLabel>내보내기 형식</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {qualityGate !== null && <div className="mx-2 mb-2 rounded-md border border-destructive/30 bg-destructive/10 p-2">
           <p className="text-pretty break-keep text-xs text-foreground">고쳐야 할 문제 {qualityGate.mustFixCount}개가 있어 내보내기를 {"시작할\u00A0수\u00A0없어요."}</p>
@@ -179,7 +179,7 @@ export default function ExportMenu({ projectId, projectType, projectOptionsJson,
               <span className="flex-1">{option.label}</span>
               {option.disabledReason === "deck_only" && (
                 <span className="text-[10px] text-muted-foreground">
-                  deck only
+                  덱 전용
                 </span>
               )}
             </DropdownMenuItem>

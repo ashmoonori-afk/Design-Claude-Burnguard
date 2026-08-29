@@ -16,13 +16,13 @@ export default function SelectorReadOnlyPanel({
     return (
       <div className="p-4">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
-          Select
+          선택
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Click an element in the canvas to inspect its computed styles.
+          캔버스에서 요소를 클릭하면 계산된 스타일을 볼 수 있어요.
         </p>
         <p className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
-          Select an authored element to carry its context into inline Tweaks.
+          코드에 있는 요소를 고르면 그 맥락을 그대로 스타일 모드로 넘길 수 있어요.
         </p>
       </div>
     );
@@ -30,7 +30,7 @@ export default function SelectorReadOnlyPanel({
 
   const groups: Array<{ title: string; keys: string[] }> = [
     {
-      title: "Typography",
+      title: "타이포그래피",
       keys: [
         "font-family",
         "font-size",
@@ -40,9 +40,9 @@ export default function SelectorReadOnlyPanel({
         "letter-spacing",
       ],
     },
-    { title: "Size", keys: ["width", "height"] },
+    { title: "크기", keys: ["width", "height"] },
     {
-      title: "Box",
+      title: "박스",
       keys: ["padding", "margin", "border", "border-radius", "background"],
     },
   ];
@@ -51,7 +51,7 @@ export default function SelectorReadOnlyPanel({
     <div className="p-3 overflow-y-auto">
       <div className="px-1 pb-2 border-b border-border mb-3">
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Selector
+          선택자
         </div>
         <div className="text-xs font-mono mt-0.5 truncate">
           {selection.nodeId}
@@ -80,8 +80,8 @@ export default function SelectorReadOnlyPanel({
       ))}
 
       <p className="text-[10px] text-muted-foreground px-1 mt-3 leading-relaxed">
-        Computed values come from the live canvas. Inline changes are saved as
-        reversible file patches.
+        계산된 값은 지금 캔버스에서 그대로 읽어 와요. 인라인 변경은 되돌릴 수
+        있는 파일 패치로 저장돼요.
       </p>
       {selection.bgId && (
         <button
@@ -89,7 +89,7 @@ export default function SelectorReadOnlyPanel({
           onClick={onPromoteToTweaks}
           className="mx-1 mt-3 w-[calc(100%-0.5rem)] rounded-md bg-accent px-3 py-2 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Open in Tweaks
+          스타일 모드에서 열기
         </button>
       )}
     </div>

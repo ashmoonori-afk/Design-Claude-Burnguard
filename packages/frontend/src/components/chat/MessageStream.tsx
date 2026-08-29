@@ -118,10 +118,10 @@ export default function MessageStream({
           type="button"
           onClick={jumpToBottom}
           className="absolute bottom-3 right-4 z-10 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-2.5 py-1 text-[11px] font-medium text-foreground shadow-sm backdrop-blur hover:bg-background"
-          title="Jump to latest"
+          title="최신으로 이동"
         >
           <ArrowDown className="h-3 w-3" />
-          New messages
+          새 메시지
         </button>
       )}
     </div>

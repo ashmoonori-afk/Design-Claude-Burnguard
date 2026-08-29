@@ -95,12 +95,12 @@ export default function TweaksPanel({
     return (
       <div className="p-4">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
-          Tweaks
+          스타일
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Hover the canvas to highlight an element, then click to inspect
-          and edit its CSS. Changes save as inline style overrides on the
-          picked element. Cmd/Ctrl+Z undoes the last change.
+          캔버스에 마우스를 올리면 요소가 강조되고, 클릭하면 CSS를 살펴보고
+          고칠 수 있어요. 바꾼 값은 선택한 요소의 인라인 스타일로 저장돼요.
+          Cmd/Ctrl+Z로 마지막 변경을 되돌릴 수 있어요.
         </p>
       </div>
     );
@@ -111,24 +111,24 @@ export default function TweaksPanel({
       <div className="border-b border-border px-3 py-2">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Tweaks
+            스타일
           </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onResetAll}
               className="text-[10px] text-muted-foreground hover:text-foreground"
-              title="Remove every inline override on this node"
+              title="이 요소의 인라인 덮어쓰기를 모두 지워요"
               disabled={saving || Object.keys(target.inline).length === 0}
             >
-              Reset
+              초기화
             </button>
             <button
               type="button"
               onClick={onClear}
               className="text-[10px] text-muted-foreground hover:text-foreground"
             >
-              Clear
+              선택 해제
             </button>
           </div>
         </div>
@@ -139,10 +139,10 @@ export default function TweaksPanel({
       </div>
       {review && (
         <section
-          aria-label="Last inline patch"
+          aria-label="마지막 인라인 패치"
           className="border-b border-border bg-muted/30 px-3 py-2"
         >
-          <SectionHeader>Last patch</SectionHeader>
+          <SectionHeader>마지막 변경</SectionHeader>
           <pre className="mt-1.5 overflow-x-auto rounded border border-border bg-background px-2 py-1.5 font-mono text-[10px] leading-relaxed">
             <span className="text-muted-foreground">
               - {review.property}: {review.from}
@@ -153,13 +153,13 @@ export default function TweaksPanel({
             </span>
           </pre>
           <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-            Saved as a reversible inline style override.
+            되돌릴 수 있는 인라인 스타일 덮어쓰기로 저장했어요.
           </p>
         </section>
       )}
 
       <section className="border-b border-border px-3 py-2">
-        <SectionHeader>Typography</SectionHeader>
+        <SectionHeader>타이포그래피</SectionHeader>
         <div className="mt-1.5 flex flex-col gap-2">
           <SizeRow target={target} styleKey="font-size" saving={saving} onApply={onApply} />
           <FontWeightRow target={target} saving={saving} onApply={onApply} />
@@ -170,7 +170,7 @@ export default function TweaksPanel({
       </section>
 
       <section className="border-b border-border px-3 py-2">
-        <SectionHeader>Box</SectionHeader>
+        <SectionHeader>박스</SectionHeader>
         <div className="mt-1.5 flex flex-col gap-2">
           <ColorRow target={target} styleKey="background-color" saving={saving} onApply={onApply} />
           <SidesRow target={target} styleKey="padding" saving={saving} onApply={onApply} />
@@ -180,9 +180,9 @@ export default function TweaksPanel({
       </section>
 
       <p className="px-3 py-2 text-[10px] leading-relaxed text-muted-foreground">
-        Sizes commit as <code className="font-mono">px</code>. Clear a size
-        field to drop that override; click a palette swatch or enter a hex
-        to set a colour.
+        크기는 <code className="font-mono">px</code> 단위로 저장돼요. 크기 칸을
+        비우면 그 덮어쓰기가 사라지고, 팔레트 색을 누르거나 hex 값을 입력하면
+        색이 지정돼요.
       </p>
     </div>
   );
@@ -290,7 +290,7 @@ function FontWeightRow({
 
   return (
     <label className="flex items-center gap-2 text-[11px]">
-      <RowLabel>font-weight</RowLabel>
+      <RowLabel>글꼴 굵기</RowLabel>
       <select
         value={inline}
         onChange={(e) => {
@@ -301,7 +301,7 @@ function FontWeightRow({
         className={inputCls("min-w-0 flex-1")}
       >
         <option value="">
-          {computed ? `inherit (${computed})` : "inherit"}
+          {computed ? `상속 (${computed})` : "상속"}
         </option>
         {FONT_WEIGHTS.map((w) => (
           <option key={w.value} value={w.value}>
@@ -449,9 +449,9 @@ function ColorRow({
                 "rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground",
                 !inline && "opacity-50 cursor-not-allowed",
               )}
-              title="Remove this inline override"
+              title="이 인라인 덮어쓰기를 지워요"
             >
-              Clear
+              지우기
             </button>
           </div>
         </div>
@@ -513,10 +513,10 @@ function SidesRow({
     <div className="flex items-center gap-2 text-[11px]">
       <RowLabel>{styleKey}</RowLabel>
       <div className="flex min-w-0 flex-1 items-center gap-1">
-        <SideInput title="top" value={sides.top} onCommit={commitSide("top")} disabled={saving} />
-        <SideInput title="right" value={sides.right} onCommit={commitSide("right")} disabled={saving} />
-        <SideInput title="bottom" value={sides.bottom} onCommit={commitSide("bottom")} disabled={saving} />
-        <SideInput title="left" value={sides.left} onCommit={commitSide("left")} disabled={saving} />
+        <SideInput title="위" value={sides.top} onCommit={commitSide("top")} disabled={saving} />
+        <SideInput title="오른쪽" value={sides.right} onCommit={commitSide("right")} disabled={saving} />
+        <SideInput title="아래" value={sides.bottom} onCommit={commitSide("bottom")} disabled={saving} />
+        <SideInput title="왼쪽" value={sides.left} onCommit={commitSide("left")} disabled={saving} />
       </div>
       <span className="w-6 shrink-0 text-[10px] text-muted-foreground">px</span>
     </div>

@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { MessageSquare, MessageCircleMore } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { BackendId, FileInfo, NormalizedEvent, SessionInfo } from "@bg/shared";
+import type { BackendId, Comment, FileInfo, NormalizedEvent, SessionInfo } from "@bg/shared";
 import MessageStream from "./MessageStream";
 import Composer from "./Composer";
+import CommentPanel from "@/components/modes/CommentPanel";
 import type { ReadyAttachmentSource } from "./attachment-intake";
 import { switchSessionBackend } from "@/api/session";
 import { useUIStore } from "@/state/uiStore";
@@ -16,6 +17,7 @@ export default function ChatPane({
   session,
   composerDisabled,
   canInterrupt,
+  turnElapsedMs,
   interruptPending,
   onInterrupt,
   onSend,
@@ -25,11 +27,19 @@ export default function ChatPane({
   composerInitialText,
   statusSlot,
   projectFiles,
+  comments,
+  activeRelPath,
+  activeSlideIdx,
+  focusedCommentId,
+  onFocusComment,
+  onUpdateCommentBody,
+  onToggleCommentResolved,
 }: {
   events: NormalizedEvent[];
   session: SessionInfo;
   composerDisabled?: boolean;
   canInterrupt?: boolean;
+  turnElapsedMs?: number | null;
   interruptPending?: boolean;
   onInterrupt?: () => void;
   onSend: (
@@ -43,6 +53,13 @@ export default function ChatPane({
   composerInitialText?: string;
   statusSlot?: ReactNode;
   projectFiles: readonly FileInfo[];
+  comments: Comment[];
+  activeRelPath: string | null;
+  activeSlideIdx: number | null;
+  focusedCommentId: string | null;
+  onFocusComment: (id: string | null) => void;
+  onUpdateCommentBody: (id: string, body: string) => void;
+  onToggleCommentResolved: (id: string, resolved: boolean) => void;
 }) {
   const [tab, setTab] = useState<Tab>("chat");
   const queryClient = useQueryClient();
@@ -57,14 +74,14 @@ export default function ChatPane({
         updated,
       );
       pushToast({
-        title: "Backend switched",
-        body: `Next turn will use ${backendLabel(updated.backend_id)}.`,
+        title: "백엔드를 바꿨어요",
+        body: `다음 턴부터 ${backendLabel(updated.backend_id)}를 사용해요.`,
         tone: "success",
       });
     },
     onError: (err) => {
       pushToast({
-        title: "Could not switch backend",
+        title: "백엔드를 바꾸지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -82,7 +99,7 @@ export default function ChatPane({
           setActive={setTab}
           icon={<MessageSquare className="h-3.5 w-3.5" />}
         >
-          Chat
+          채팅
         </ChatTab>
         <ChatTab
           id="comments"
@@ -90,10 +107,10 @@ export default function ChatPane({
           setActive={setTab}
           icon={<MessageCircleMore className="h-3.5 w-3.5" />}
         >
-          Comments
+          코멘트
         </ChatTab>
         <div className="ml-auto flex items-center gap-1 pb-1 text-[10px]">
-          <span className="text-muted-foreground">Backend</span>
+          <span className="text-muted-foreground">백엔드</span>
           <BackendToggle
             current={session.backend_id}
             disabled={switchBackend.isPending || sessionRunning}
@@ -117,6 +134,7 @@ export default function ChatPane({
             onSend={onSend}
             disabled={composerDisabled}
             canInterrupt={canInterrupt}
+            turnElapsedMs={turnElapsedMs}
             interruptPending={interruptPending}
             onInterrupt={onInterrupt}
             initialText={composerInitialText}
@@ -124,13 +142,15 @@ export default function ChatPane({
           />
         </>
       ) : (
-        <div className="flex-1 grid place-items-center p-6 text-center text-xs leading-relaxed text-foreground/80">
-          <p>
-            코멘트는 캔버스에서 남겨요. 위쪽 도구 막대에서 Comment 모드를 켠 뒤
-            화면의 원하는 위치를 클릭하면 그 자리에 코멘트가 붙고, 캔버스 옆
-            Comments 패널에 모입니다.
-          </p>
-        </div>
+        <CommentPanel
+          comments={comments}
+          activeRelPath={activeRelPath}
+          activeSlideIdx={activeSlideIdx}
+          focusedId={focusedCommentId}
+          onFocus={onFocusComment}
+          onUpdateBody={onUpdateCommentBody}
+          onToggleResolved={onToggleCommentResolved}
+        />
       )}
     </aside>
   );
@@ -157,12 +177,13 @@ function BackendToggle({
             onSwitch(opt);
           }}
           disabled={disabled}
+          aria-pressed={opt === current}
           title={
             disabled && opt !== current
-              ? "Cannot switch while a turn is running"
+              ? "턴 실행 중에는 바꿀 수 없어요"
               : opt === current
-                ? `Active: ${opt}`
-                : `Switch to ${opt} on next turn`
+                ? `사용 중: ${backendLabel(opt)}`
+                : `다음 턴부터 ${backendLabel(opt)} 사용`
           }
           className={cn(
             "max-[900px]:min-h-11 max-[900px]:min-w-11 px-1.5 py-0.5 font-mono uppercase transition-colors",
@@ -199,6 +220,7 @@ function ChatTab({
   return (
     <button
       onClick={() => setActive(id)}
+      aria-pressed={active === id}
       className={cn(
         "flex max-[900px]:min-h-11 items-center gap-1.5 px-2.5 py-2 text-xs font-medium border-b-2 -mb-px transition-colors",
         active === id
