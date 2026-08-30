@@ -21,50 +21,43 @@ import type { CanvasMode } from "@/components/modes/types";
 import type { SelectedNode } from "@/types/project";
 
 const PLACEHOLDER_SRC = `<!doctype html>
-<html>
+<html lang="ko">
 <head>
   <meta charset="utf-8">
   <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: light; }
     body {
       margin: 0;
-      background: #101318;
-      color: white;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f1f3f5;
+      color: #17191a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", sans-serif;
       display: grid;
       place-items: center;
       min-height: 100vh;
+      word-break: keep-all;
     }
-    .wrap { text-align: center; padding: 48px; }
+    .wrap { text-align: center; padding: 48px; max-width: 480px; }
     .eyebrow {
-      color: #E06B4C;
-      font-size: 12px;
+      color: #004fff;
+      font-size: 11px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
-    .title {
-      font-size: 120px;
-      line-height: 0.95;
-      letter-spacing: -0.03em;
-      font-weight: 800;
-      color: #fff;
-      margin: 0;
-    }
+    .title { font-size: 22px; font-weight: 700; margin: 0; }
     .subtitle {
-      color: rgba(255,255,255,0.7);
-      font-size: 20px;
+      color: #5e646c;
+      font-size: 14px;
       line-height: 1.6;
-      margin-top: 48px;
-      max-width: 640px;
+      margin-top: 12px;
     }
   </style>
 </head>
 <body>
   <section class="wrap">
     <div class="eyebrow">BurnGuard Canvas</div>
-    <h1 class="title">Artifact preview</h1>
-    <p class="subtitle">Your live project artifact appears here once the backend entrypoint is available.</p>
+    <h1 class="title">아직 표시할 결과물이 없어요</h1>
+    <p class="subtitle">왼쪽 채팅에 만들고 싶은 것을 적어 보내면, 생성된 파일이 이 자리에 바로 나타나요.</p>
   </section>
 </body>
 </html>`;
@@ -213,7 +206,7 @@ export default function Canvas({
         setFrameSrcDoc(null);
         setLoadError({
           status: err.httpStatus,
-          message: err.message || "Failed to load artifact.",
+          message: err.message || "결과물을 불러오지 못했어요.",
         });
       });
 
@@ -293,7 +286,7 @@ export default function Canvas({
           <iframe
             ref={iframeRef}
             key={frameKey}
-            title="Canvas"
+            title="캔버스"
             srcDoc={frameSrcDoc ?? PLACEHOLDER_SRC}
             sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
             allow="fullscreen"
@@ -303,7 +296,7 @@ export default function Canvas({
         ) : (
           <iframe
             ref={iframeRef}
-            title="Canvas placeholder"
+            title="캔버스 자리 표시자"
             srcDoc={PLACEHOLDER_SRC}
             sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
             allow="fullscreen"
@@ -359,7 +352,7 @@ export default function Canvas({
           <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/80 backdrop-blur-sm">
             <div className="pointer-events-auto max-w-sm rounded border border-destructive/40 bg-background px-4 py-3 text-xs shadow-md">
               <div className="font-semibold text-destructive">
-                Could not load artifact
+                결과물을 불러오지 못했어요
                 {loadError.status ? ` (HTTP ${loadError.status})` : ""}
               </div>
               <div className="mt-1 text-muted-foreground">
@@ -373,7 +366,7 @@ export default function Canvas({
                 }}
                 className="mt-2 inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted"
               >
-                Retry
+                다시 시도
               </button>
             </div>
           </div>

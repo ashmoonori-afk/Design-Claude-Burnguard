@@ -26,9 +26,9 @@ export default function CliMissingModal({
           <div className="h-10 w-10 rounded-md bg-destructive/10 text-destructive grid place-items-center mb-3">
             <AlertTriangle className="h-5 w-5" />
           </div>
-          <DialogTitle>No LLM CLI found</DialogTitle>
+          <DialogTitle>LLM CLI를 찾을 수 없어요</DialogTitle>
           <DialogDescription>
-            BurnGuard Design needs Claude Code or Codex CLI installed to create projects.
+            BurnGuard Design에서 프로젝트를 만들려면 Claude Code 또는 Codex CLI를 설치해야 해요.
           </DialogDescription>
         </DialogHeader>
 
@@ -42,7 +42,7 @@ export default function CliMissingModal({
                     {b.id.replace("-", " ")}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {b.found ? `installed (${b.version ?? "ok"})` : "not found"}
+                    {b.found ? `설치됨 (${b.version ?? "정상"})` : "찾을 수 없음"}
                   </span>
                 </div>
                 {!b.found && url && (
@@ -52,7 +52,7 @@ export default function CliMissingModal({
                     rel="noreferrer"
                     className="text-xs text-accent inline-flex items-center gap-1 mt-1"
                   >
-                    <ExternalLink className="h-3 w-3" /> Install guide
+                    <ExternalLink className="h-3 w-3" /> 설치 안내
                   </a>
                 )}
               </li>
@@ -61,7 +61,7 @@ export default function CliMissingModal({
         </ul>
 
         <DialogFooter className="pt-2 border-t border-border">
-          <Button onClick={() => onOpenChange(false)}>OK</Button>
+          <Button onClick={() => onOpenChange(false)}>확인</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

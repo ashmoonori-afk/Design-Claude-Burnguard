@@ -39,7 +39,6 @@ import {
   listProjectComments,
   updateProjectComment,
 } from "@/api/comments";
-import { getSettings } from "@/api/home";
 import {
   cancelDesignDirections,
   generateDesignDirections,
@@ -103,6 +102,7 @@ import {
   isDesignAuditCurrent,
   preferDesignAuditResult,
 } from "@/lib/design-audit-state";
+import { resolveCanvasSource } from "@/lib/canvas-source";
 
 export default function ProjectView() {
   const { id } = useParams();
@@ -219,10 +219,6 @@ export default function ProjectView() {
     queryFn: () => listProjectComments(id!),
     enabled: Boolean(id),
   });
-  const settingsQuery = useQuery({
-    queryKey: ["settings"],
-    queryFn: getSettings,
-  });
   const directionQueryKey = useMemo(
     () => ["project", id, "design-directions"] as const,
     [id],
@@ -333,7 +329,7 @@ export default function ProjectView() {
     },
     onError: (error) => {
       pushToast({
-        title: "Refresh failed",
+        title: "캔버스를 새로 고치지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -357,7 +353,7 @@ export default function ProjectView() {
     },
     onError: (error) => {
       pushToast({
-        title: "Could not create comment",
+        title: "코멘트를 만들지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -383,7 +379,7 @@ export default function ProjectView() {
     },
     onError: (error) => {
       pushToast({
-        title: "Could not update comment",
+        title: "코멘트를 수정하지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -405,7 +401,7 @@ export default function ProjectView() {
     },
     onError: (error) => {
       pushToast({
-        title: "Could not submit decision",
+        title: "권한 결정을 보내지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -444,7 +440,7 @@ export default function ProjectView() {
     },
     onError: (error) => {
       pushToast({
-        title: "Could not apply tweak",
+        title: "스타일을 적용하지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -484,7 +480,7 @@ export default function ProjectView() {
     },
     onError: (error) => {
       pushToast({
-        title: "Could not save edit",
+        title: "편집을 저장하지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -496,7 +492,7 @@ export default function ProjectView() {
     if (!(error instanceof ApiError) || error.status !== 404) {
       return;
     }
-    pushToast({ title: "Project not found", tone: "error" });
+    pushToast({ title: "프로젝트를 찾을 수 없어요", tone: "error" });
     navigate("/", { replace: true });
   }, [navigate, projectQuery.error, pushToast]);
 
@@ -546,11 +542,11 @@ export default function ProjectView() {
         invalidateDesignAudit(),
       ]);
       setRefreshTick((value) => value + 1);
-      pushToast({ title: "Turn reverted", tone: "info" });
+      pushToast({ title: "이전 턴으로 되돌렸어요", tone: "info" });
     },
     onError: (error) => {
       pushToast({
-        title: "Could not revert turn",
+        title: "턴을 되돌리지 못했어요",
         body: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -567,7 +563,7 @@ export default function ProjectView() {
     }) => putProjectDraws(id!, relPath, svg),
     onError: (err) => {
       pushToast({
-        title: "Could not save draw",
+        title: "그리기를 저장하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -603,6 +599,23 @@ export default function ProjectView() {
       cancelled = true;
     };
   }, [id, activeTabId, openFileTabs]);
+
+  // Escape는 현재 캔버스 모드를 끈다. 입력 필드 타이핑 중에는 무시해
+  // 인스펙터/컴포저의 자체 Escape 동작을 방해하지 않는다.
+  useEffect(() => {
+    if (mode === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
+      }
+      setMode(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode]);
 
   // Global Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z for Draw mode — routes to
   // DrawLayer's internal undo/redo stack via ref. Draw shapes don't need
@@ -801,12 +814,12 @@ export default function ProjectView() {
     const handle = window.setInterval(() => setNowTs(Date.now()), 1000);
     return () => window.clearInterval(handle);
   }, [chatComposerDisabled]);
-  const abortThresholdMs =
-    settingsQuery.data?.chat_abort_threshold_ms ?? 300_000;
+  // 통제권 우선: 실행 중이면 5초 유예 뒤 항상 중단 가능. 턴 시작 시점에
+  // 체크포인트를 뜨고 되돌리기가 있으므로 중단은 복구 가능한 동작이다.
+  const turnElapsedMs =
+    turnStartedAt == null ? null : Math.max(0, nowTs - turnStartedAt);
   const canInterrupt =
-    chatComposerDisabled &&
-    turnStartedAt != null &&
-    nowTs - turnStartedAt >= abortThresholdMs;
+    chatComposerDisabled && turnElapsedMs != null && turnElapsedMs >= 5_000;
 
   const interruptMutation = useMutation({
     mutationFn: () => {
@@ -815,7 +828,7 @@ export default function ProjectView() {
     },
     onError: (err) => {
       pushToast({
-        title: "Could not interrupt turn",
+        title: "작업을 중단하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -873,15 +886,22 @@ export default function ProjectView() {
     const activeFile = tabs.find(
       (tab) => tab.id === activeTabId && tab.kind === "file" && tab.relPath,
     );
-    if (activeFile?.relPath && project) {
-      return `/api/projects/${project.id}/fs/${encodeRelPath(activeFile.relPath)}`;
-    }
-    // Only accept an entrypoint URL that actually has a file segment.
-    // A bare `/api/projects/X/fs/` triggers the `relPath: ""` 404 loop.
-    const fallback = artifacts?.entrypoint_url ?? null;
-    if (!fallback || /\/fs\/?$/.test(fallback)) return null;
-    return fallback;
-  }, [activeTabId, artifacts?.entrypoint_url, project, tabs]);
+    return resolveCanvasSource({
+      projectId: project?.id ?? null,
+      activeRelPath: activeFile?.relPath ?? null,
+      indexedRelPaths: filesQuery.isSuccess
+        ? files.map((file) => file.rel_path)
+        : null,
+      entrypointUrl: artifacts?.entrypoint_url ?? null,
+    });
+  }, [
+    activeTabId,
+    artifacts?.entrypoint_url,
+    files,
+    filesQuery.isSuccess,
+    project?.id,
+    tabs,
+  ]);
 
   // File-level single-step undo (audit fix #7). Tracks per-file undo
   // availability and exposes it through the canvas top bar. Server
@@ -932,7 +952,7 @@ export default function ProjectView() {
     },
     onError: (err) => {
       pushToast({
-        title: "Could not undo",
+        title: "실행 취소하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -959,7 +979,7 @@ export default function ProjectView() {
   if (isLoading) {
     return (
       <div className="grid flex-1 place-items-center">
-        <div className="text-sm text-muted-foreground">Loading project...</div>
+        <div className="text-sm text-muted-foreground">프로젝트를 불러오는 중...</div>
       </div>
     );
   }
@@ -967,7 +987,7 @@ export default function ProjectView() {
   if (!project || !session || !artifacts) {
     return (
       <div className="grid flex-1 place-items-center">
-        <div className="text-sm text-destructive">Project unavailable</div>
+        <div className="text-sm text-destructive">프로젝트를 열 수 없어요</div>
       </div>
     );
   }
@@ -1010,8 +1030,20 @@ export default function ProjectView() {
           events={events}
           session={session}
           projectFiles={files}
+          comments={comments}
+          activeRelPath={activeRelPath}
+          activeSlideIdx={activeSlideIdx}
+          focusedCommentId={focusedCommentId}
+          onFocusComment={setFocusedCommentId}
+          onUpdateCommentBody={(commentId, body) =>
+            updateCommentMutation.mutate({ commentId, patch: { body } })
+          }
+          onToggleCommentResolved={(commentId, resolved) =>
+            updateCommentMutation.mutate({ commentId, patch: { resolved } })
+          }
           composerDisabled={composerDisabled}
           canInterrupt={canInterrupt}
+          turnElapsedMs={turnElapsedMs}
           interruptPending={interruptMutation.isPending}
           onInterrupt={() => interruptMutation.mutate()}
           composerInitialText={composerPrefill}
@@ -1046,8 +1078,8 @@ export default function ProjectView() {
                 pushToast({
                   title:
                     error instanceof ApiError && error.status === 409
-                      ? "Turn already running"
-                      : "Could not send message",
+                      ? "이미 실행 중인 턴이 있어요"
+                      : "메시지를 보내지 못했어요",
                   body: visualSourceSendErrorCopy(error),
                   tone: "error",
                 });
@@ -1339,7 +1371,7 @@ function buildTabs(
   return [
     {
       id: "design-system",
-      title: project?.design_system_name ?? "Design System",
+      title: project?.design_system_name ?? "디자인 시스템",
       kind: "design_system",
       closeable: false,
     },
@@ -1351,7 +1383,7 @@ function buildTabs(
     },
     {
       id: "design-files",
-      title: "Design Files",
+      title: "디자인 파일",
       kind: "design_files",
       closeable: false,
     },
@@ -1429,7 +1461,7 @@ function openFileAsTab(
       ...current,
       {
         id: relPath,
-        title: relPath,
+        title: relPath.split("/").pop() ?? relPath,
         kind: "file",
         relPath,
         closeable: true,

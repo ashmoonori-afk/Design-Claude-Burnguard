@@ -1,27 +1,24 @@
 #!/usr/bin/env bun
 import { mkdtemp } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { QaPreflightError, QaTimeoutError } from "./errors";
 import { OwnedResources, waitForExactReadiness } from "./runtime";
 
 async function allocatePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.once("listening", () => {
-      const address = server.address();
-      if (address === null || typeof address === "string") {
-        reject(new QaPreflightError("port_allocation_failed", "OS did not allocate a TCP port"));
-        return;
-      }
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-    server.listen(0, "127.0.0.1");
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: 204 }),
   });
+  const port = server.port;
+  await server.stop(true);
+  if (port === undefined) {
+    throw new QaPreflightError(
+      "port_allocation_failed",
+      "OS did not allocate a TCP port",
+    );
+  }
+  return port;
 }
 
 async function main(): Promise<void> {

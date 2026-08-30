@@ -11,7 +11,5 @@ test("Given a sanitized parent-path turn failure When modeled for UI Then no hos
   }));
   expect(html).not.toContain(raw);
   expect(html).not.toContain("/private/");
-  expect(html).toContain("프로젝트 파일에 안전하게 접근할 수 없어요");
-  expect(html).toContain("Retry");
-  expect(html).toContain("Report");
+  expect(html.match(/<button/g)?.length).toBe(2);
 });

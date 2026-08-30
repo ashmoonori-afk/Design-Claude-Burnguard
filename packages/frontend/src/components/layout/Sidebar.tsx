@@ -83,7 +83,7 @@ export default function Sidebar() {
                 variant="outline"
                 className="h-4 rounded-sm py-0 text-[10px]"
               >
-                Local
+                로컬
               </Badge>
               <span className="text-[11px] text-foreground/70">
                 v{settings.app_version}

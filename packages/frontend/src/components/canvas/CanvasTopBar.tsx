@@ -34,7 +34,7 @@ export default function CanvasTopBar({
 }) {
   return (
     <div className="h-10 border-b border-border bg-background flex items-center justify-between px-3 shrink-0 max-[900px]:h-auto max-[900px]:flex-col max-[900px]:items-stretch max-[900px]:px-2">
-      <div className="flex items-center gap-0.5 max-[900px]:grid max-[900px]:grid-cols-6">
+      <div className="flex items-center gap-0.5 max-[900px]:grid max-[900px]:grid-cols-3">
         {MODES.map((m) => {
           const disabled = Boolean(m.phase);
           const active = m.id === mode;
@@ -45,6 +45,7 @@ export default function CanvasTopBar({
                 !disabled && onModeChange(active ? null : m.id)
               }
               disabled={disabled}
+              aria-pressed={active}
               title={
                 disabled
                   ? `${m.phase}단계`

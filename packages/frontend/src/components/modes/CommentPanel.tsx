@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Comment } from "@bg/shared";
 import { cn } from "@/lib/utils";
 
@@ -32,14 +32,14 @@ export default function CommentPanel({
     : [];
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-border px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Comments
+          코멘트
         </div>
-        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-          Click on the canvas to drop a pin. Each pin is anchored to a
-          percentage position on the active file.
+        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground [word-break:keep-all]">
+          캔버스를 클릭하면 그 자리에 핀이 생겨요. 핀은 활성 파일의 백분율
+          위치에 고정돼요.
         </p>
       </div>
 
@@ -48,9 +48,9 @@ export default function CommentPanel({
           <p className="px-1 pt-2 text-xs text-muted-foreground">
             {activeRelPath
               ? activeSlideIdx != null
-                ? "No open comments on this slide yet."
-                : "No open comments on this file yet."
-              : "Open a file in the canvas to comment."}
+                ? "이 슬라이드에는 아직 열린 코멘트가 없어요."
+                : "이 파일에는 아직 열린 코멘트가 없어요."
+              : "코멘트를 남기려면 캔버스에서 파일을 여세요."}
           </p>
         )}
 
@@ -90,13 +90,14 @@ function CommentItem({
   onToggleResolved: () => void;
 }) {
   const [draft, setDraft] = useState(comment.body);
+  const editingRef = useRef(false);
   const resolved = comment.resolved_at !== null;
 
-  // Sync local draft whenever the server-side body changes and the user isn't
-  // actively editing (cheap heuristic: only when not focused).
   useEffect(() => {
-    if (!focused) setDraft(comment.body);
-  }, [comment.body, focused]);
+    setDraft((current) =>
+      nextCommentDraft(current, comment.body, editingRef.current),
+    );
+  }, [comment.body]);
 
   const commitIfDirty = () => {
     if (draft !== comment.body) onUpdateBody(draft);
@@ -128,7 +129,7 @@ function CommentItem({
           {comment.node_selector || "body"}
         </span>
         <span className="text-[10px] text-muted-foreground">
-          {resolved ? "resolved" : "open"}
+          {resolved ? "해결됨" : "열림"}
         </span>
       </button>
 
@@ -136,8 +137,14 @@ function CommentItem({
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={commitIfDirty}
-          placeholder="Add a note..."
+          onFocus={() => {
+            editingRef.current = true;
+          }}
+          onBlur={() => {
+            commitIfDirty();
+            editingRef.current = false;
+          }}
+          placeholder="메모를 남겨 보세요..."
           rows={2}
           className="w-full resize-none rounded border border-border bg-background p-1.5 text-xs"
         />
@@ -150,10 +157,18 @@ function CommentItem({
             onClick={onToggleResolved}
             className="text-[10px] text-muted-foreground hover:text-foreground"
           >
-            {resolved ? "Reopen" : "Resolve"}
+            {resolved ? "다시 열기" : "해결하기"}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+export function nextCommentDraft(
+  current: string,
+  serverBody: string,
+  editing: boolean,
+): string {
+  return editing ? current : serverBody;
 }

@@ -27,7 +27,7 @@ export default function ProjectTopBar({
         <Link
           to="/"
           className="text-muted-foreground hover:text-foreground"
-          title="Home"
+          title="홈"
         >
           <Home className="h-4 w-4" />
         </Link>
@@ -50,11 +50,11 @@ export default function ProjectTopBar({
           disabled={!canPresent || !onPresent}
           title={
             canPresent
-              ? "Start presentation"
-              : "Open a deck file in the canvas to present"
+              ? "발표 시작"
+              : "발표하려면 캔버스에서 덱 파일을 여세요"
           }
         >
-          <Play className="h-3.5 w-3.5" /> Present
+          <Play className="h-3.5 w-3.5" /> 발표
         </Button>
         <ExportMenu projectId={project.id} projectType={project.type} projectOptionsJson={project.options_json} qualityGate={qualityGate} onOpenQuality={onOpenQuality} />
       </div>

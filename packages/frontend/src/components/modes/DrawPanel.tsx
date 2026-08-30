@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 import type { DrawTool } from "@/components/canvas/DrawLayer";
 
 const TOOLS: Array<{ id: DrawTool; label: string; icon: typeof Pencil }> = [
-  { id: "pen", label: "Pen", icon: Pencil },
-  { id: "rect", label: "Rect", icon: Square },
-  { id: "arrow", label: "Arrow", icon: ArrowUpRight },
+  { id: "pen", label: "펜", icon: Pencil },
+  { id: "rect", label: "사각형", icon: Square },
+  { id: "arrow", label: "화살표", icon: ArrowUpRight },
 ];
 
 const COLORS = ["#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#111827"];
@@ -38,17 +38,17 @@ export default function DrawPanel({
     <div className="flex min-h-0 flex-col overflow-y-auto">
       <div className="border-b border-border px-3 py-2">
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Draw
+          그리기
         </div>
         <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-          Sketch annotations over the canvas. Saved per file; excluded
-          from the html_zip export.
+          캔버스 위에 메모를 스케치해요. 파일마다 저장되고 html_zip
+          내보내기에는 포함되지 않아요.
         </p>
       </div>
 
       <section className="px-3 py-2 border-b border-border">
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
-          Tool
+          도구
         </div>
         <div className="grid grid-cols-3 gap-1">
           {TOOLS.map((t) => (
@@ -72,7 +72,7 @@ export default function DrawPanel({
 
       <section className="px-3 py-2 border-b border-border">
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
-          Color
+          색상
         </div>
         <div className="flex flex-wrap gap-1.5">
           {COLORS.map((c) => (
@@ -93,7 +93,7 @@ export default function DrawPanel({
 
       <section className="px-3 py-2 border-b border-border">
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
-          Stroke
+          선 굵기
         </div>
         <div className="flex gap-1.5">
           {WIDTHS.map((w) => (
@@ -123,26 +123,26 @@ export default function DrawPanel({
           onClick={onUndo}
           disabled={!hasShapes}
           className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Undo (Ctrl+Z)"
+          title="실행 취소 (Ctrl+Z)"
         >
-          <Undo2 className="h-3 w-3" /> Undo
+          <Undo2 className="h-3 w-3" /> 실행 취소
         </button>
         <button
           type="button"
           onClick={onRedo}
           className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground"
-          title="Redo (Ctrl+Shift+Z)"
+          title="다시 실행 (Ctrl+Shift+Z)"
         >
-          <Redo2 className="h-3 w-3" /> Redo
+          <Redo2 className="h-3 w-3" /> 다시 실행
         </button>
         <button
           type="button"
           onClick={onClear}
           disabled={!hasShapes}
           className="ml-auto inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Clear all shapes on this file"
+          title="이 파일의 그리기를 모두 지워요"
         >
-          <Trash2 className="h-3 w-3" /> Clear
+          <Trash2 className="h-3 w-3" /> 모두 지우기
         </button>
       </div>
     </div>

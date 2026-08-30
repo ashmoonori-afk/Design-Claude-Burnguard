@@ -36,7 +36,7 @@ export default function ToastContainer() {
             <button
               onClick={() => dismiss(t.id)}
               className="text-muted-foreground hover:text-foreground"
-              aria-label="Dismiss"
+              aria-label="닫기"
             >
               <X className="h-3.5 w-3.5" />
             </button>

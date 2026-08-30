@@ -13,17 +13,17 @@ export default function ErrorCard({
       <div className="flex items-start gap-2">
         <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-destructive">Error</div>
+          <div className="font-medium text-destructive">오류</div>
           <div className="text-destructive/80 mt-0.5 break-words">
             {message}
           </div>
           {recoverable && (
             <div className="mt-2 flex gap-2">
               <Button size="sm" variant="outline" className="h-7 gap-1">
-                <RefreshCw className="h-3 w-3" /> Retry
+                <RefreshCw className="h-3 w-3" /> 다시 시도
               </Button>
               <Button size="sm" variant="ghost" className="h-7">
-                Report
+                신고
               </Button>
             </div>
           )}

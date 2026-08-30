@@ -21,7 +21,7 @@ export default function UserMessage({
         {text}
         {attachmentCount && attachmentCount > 0 ? (
           <div className="mt-1 text-[10px] text-muted-foreground">
-            📎 {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
+            📎 첨부 파일 {attachmentCount}개
           </div>
         ) : null}
       </div>
@@ -31,12 +31,12 @@ export default function UserMessage({
           onClick={() => {
             if (!turnId || !onRevert || reverting) return;
             const ok = window.confirm(
-              "Revert to the state before this turn? Files changed since then will be lost.",
+              "이 턴 이전 상태로 되돌릴까요? 이후 변경된 파일은 사라져요.",
             );
             if (ok) onRevert(turnId);
           }}
           disabled={reverting}
-          title="Revert to the state before this turn"
+          title="이 턴 이전 상태로 되돌리기"
           className={cn(
             "absolute -left-6 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground opacity-0 transition-opacity",
             "group-hover:opacity-100 hover:text-foreground",
@@ -44,7 +44,7 @@ export default function UserMessage({
           )}
         >
           <RotateCcw className="h-3 w-3" />
-          <span className="sr-only">Revert this turn</span>
+          <span className="sr-only">이 턴 되돌리기</span>
         </button>
       )}
     </div>

@@ -19,13 +19,13 @@ const CATEGORY_ORDER: FileInfo["category"][] = [
 ];
 
 const CATEGORY_LABEL: Record<FileInfo["category"], string> = {
-  folder: "Folders",
-  stylesheet: "Stylesheets",
-  script: "Scripts",
-  html: "Html",
-  asset: "Assets",
-  document: "Documents",
-  other: "Other",
+  folder: "폴더",
+  stylesheet: "스타일시트",
+  script: "스크립트",
+  html: "HTML",
+  asset: "에셋",
+  document: "문서",
+  other: "기타",
 };
 
 function iconFor(category: FileInfo["category"]) {

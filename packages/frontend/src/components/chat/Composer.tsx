@@ -40,6 +40,7 @@ export default function Composer({
   onSend,
   disabled = false,
   canInterrupt = false,
+  turnElapsedMs = null,
   interruptPending = false,
   onInterrupt,
   initialText = "",
@@ -60,6 +61,8 @@ export default function Composer({
    * disabled — idle composers never show Stop.
    */
   canInterrupt?: boolean;
+  /** 현재 턴 경과(ms). 중단 버튼 라벨에 mm:ss로 표시한다. */
+  turnElapsedMs?: number | null;
   interruptPending?: boolean;
   onInterrupt?: () => void;
   /**
@@ -225,7 +228,11 @@ export default function Composer({
             title="진행 중인 작업을 중단합니다"
           >
             <StopCircle className="h-3.5 w-3.5" />
-            {interruptPending ? "중단하는 중..." : "중단"}
+            {interruptPending
+              ? "중단하는 중..."
+              : turnElapsedMs == null
+                ? "중단"
+                : `중단 · ${formatElapsed(turnElapsedMs)}`}
           </Button>
         ) : (
           <Button
@@ -244,4 +251,11 @@ export default function Composer({
       </div>
     </div>
   );
+}
+
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }

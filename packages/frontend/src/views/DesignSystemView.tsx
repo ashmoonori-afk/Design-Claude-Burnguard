@@ -17,6 +17,29 @@ import { useUIStore } from "@/state/uiStore";
 
 type FontRole = "display" | "sans" | "serif" | "mono";
 
+const STATUS_LABELS = {
+  draft: "초안",
+  review: "검토",
+  published: "게시됨",
+} as const;
+
+const FONT_ROLE_LABELS = {
+  display: "디스플레이",
+  sans: "산세리프",
+  serif: "세리프",
+  mono: "고정폭",
+} as const;
+
+const CATALOG_DETAIL_LABELS: Record<string, string> = {
+  Status: "상태",
+  Template: "템플릿",
+  Source: "출처",
+  "Source URI": "출처 URI",
+  Directory: "디렉터리",
+  "Tokens CSS": "토큰 CSS",
+  Archived: "보관됨",
+};
+
 export default function DesignSystemView({
   systemIdOverride,
 }: {
@@ -53,7 +76,7 @@ export default function DesignSystemView({
       if (!id) throw new Error("missing id");
       if (!system) throw new Error("missing system");
       const trimmedName = draftName.trim();
-      if (!trimmedName) throw new Error("Name cannot be empty.");
+      if (!trimmedName) throw new Error("이름을 비워 둘 수 없어요.");
       return await updateDesignSystemWithConflictReload(id, {
         expected_revision: system.metadata_revision,
         name: trimmedName,
@@ -69,20 +92,20 @@ export default function DesignSystemView({
         setDraftDescription(result.current.description ?? "");
         setDraftStatus(result.current.status);
         pushToast({
-          title: "Design system changed elsewhere",
-          body: "Current metadata was reloaded. Review and save again.",
+          title: "다른 곳에서 디자인 시스템이 변경됐어요",
+          body: "현재 메타데이터를 다시 불러왔어요. 검토한 뒤 다시 저장해 주세요.",
           tone: "error",
         });
         return;
       }
       setSystem(result.system);
       setEditing(false);
-      pushToast({ title: "Design system updated", tone: "success" });
+      pushToast({ title: "디자인 시스템을 업데이트했어요", tone: "success" });
       await queryClient.invalidateQueries({ queryKey: ["design-systems"] });
     },
     onError: (err) => {
       pushToast({
-        title: "Could not update design system",
+        title: "디자인 시스템을 업데이트하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -104,11 +127,11 @@ export default function DesignSystemView({
       setDraftColorName("");
       setDraftColorValue("#000000");
       setPreviewRefreshKey((key) => key + 1);
-      pushToast({ title: "Color token saved", tone: "success" });
+      pushToast({ title: "색상 토큰을 저장했어요", tone: "success" });
     },
     onError: (err) => {
       pushToast({
-        title: "Could not save color",
+        title: "색상을 저장하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -118,7 +141,7 @@ export default function DesignSystemView({
   const fontMutation = useMutation({
     mutationFn: async () => {
       if (!id) throw new Error("missing id");
-      if (!fontFile) throw new Error("Choose a font file first.");
+      if (!fontFile) throw new Error("먼저 글꼴 파일을 선택해 주세요.");
       return await uploadDesignSystemFont(id, fontFile, {
         family: fontFamily,
         role: fontRole,
@@ -132,14 +155,14 @@ export default function DesignSystemView({
       }
       setPreviewRefreshKey((key) => key + 1);
       pushToast({
-        title: "Font uploaded",
-        body: `${font.family} saved to ${font.rel_path}`,
+        title: "글꼴을 업로드했어요",
+        body: `${font.family}을(를) ${font.rel_path}에 저장했어요`,
         tone: "success",
       });
     },
     onError: (err) => {
       pushToast({
-        title: "Could not upload font",
+        title: "글꼴을 업로드하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -196,7 +219,7 @@ export default function DesignSystemView({
     return (
       <div className="grid flex-1 place-items-center">
         <div className="text-sm text-muted-foreground">
-          Loading design system...
+          디자인 시스템을 불러오는 중...
         </div>
       </div>
     );
@@ -208,7 +231,7 @@ export default function DesignSystemView({
         <div className="mx-auto max-w-4xl rounded-2xl border border-border bg-card p-8 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Design system
+              디자인 시스템
             </div>
             {!editing ? (
               <Button
@@ -223,7 +246,7 @@ export default function DesignSystemView({
                 }}
               >
                 <Pencil className="h-3.5 w-3.5" />
-                Edit details
+                세부 정보 편집
               </Button>
             ) : null}
           </div>
@@ -235,7 +258,7 @@ export default function DesignSystemView({
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
                 {system.description ??
-                  "Bundled local design system. Files are available to sessions as project context."}
+                  "기본 제공 로컬 디자인 시스템이에요. 파일은 프로젝트 컨텍스트로 세션에 제공돼요."}
               </p>
             </>
           ) : (
@@ -245,7 +268,7 @@ export default function DesignSystemView({
                   htmlFor="ds-name"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Name
+                  이름
                 </label>
                 <Input
                   id="ds-name"
@@ -259,7 +282,7 @@ export default function DesignSystemView({
                   htmlFor="ds-description"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Description
+                  설명
                 </label>
                 <textarea
                   id="ds-description"
@@ -275,7 +298,7 @@ export default function DesignSystemView({
                   htmlFor="ds-status"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Status
+                  상태
                 </label>
                 <select
                   id="ds-status"
@@ -288,9 +311,9 @@ export default function DesignSystemView({
                   disabled={updateMutation.isPending}
                   className="flex h-9 w-full max-w-[200px] rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
                 >
-                  <option value="draft">Draft</option>
-                  <option value="review">Review</option>
-                  <option value="published">Published</option>
+                  <option value="draft">{STATUS_LABELS.draft}</option>
+                  <option value="review">{STATUS_LABELS.review}</option>
+                  <option value="published">{STATUS_LABELS.published}</option>
                 </select>
               </div>
               <div className="flex items-center gap-2 pt-1">
@@ -301,14 +324,14 @@ export default function DesignSystemView({
                     updateMutation.isPending || !draftName.trim()
                   }
                 >
-                  {updateMutation.isPending ? "Saving…" : "Save changes"}
+                  {updateMutation.isPending ? "저장하는 중…" : "변경 사항 저장"}
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={() => setEditing(false)}
                   disabled={updateMutation.isPending}
                 >
-                  Cancel
+                  취소
                 </Button>
               </div>
             </div>
@@ -319,7 +342,7 @@ export default function DesignSystemView({
           ) : null}
 
           <dl className="mt-8 grid gap-4 text-sm md:grid-cols-2">
-            {catalogDetailRows(system).map((row) => <InfoRow key={row.label} label={row.label} value={row.value} />)}
+            {catalogDetailRows(system).map((row) => <InfoRow key={row.label} label={CATALOG_DETAIL_LABELS[row.label] ?? row.label} value={row.label === "Status" ? STATUS_LABELS[system.status] : row.label === "Template" ? system.is_template ? "예" : "아니요" : row.value} />)}
           </dl>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -417,16 +440,16 @@ function FontUploadCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Fonts
+            글꼴
           </div>
-          <h2 className="mt-1 text-base font-semibold">Upload font</h2>
+          <h2 className="mt-1 text-base font-semibold">글꼴 업로드</h2>
         </div>
         <Upload className="mt-1 h-4 w-4 text-muted-foreground" />
       </div>
       <div className="mt-4 space-y-3">
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Font file
+            글꼴 파일
           </label>
           <Input
             ref={inputRef}
@@ -443,18 +466,18 @@ function FontUploadCard({
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Font family
+            글꼴 패밀리
           </label>
           <Input
             value={family}
-            placeholder="Leave blank to infer from filename"
+            placeholder="비워 두면 파일 이름에서 추정해요"
             onChange={(e) => onFamilyChange(e.target.value)}
             disabled={saving}
           />
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Assign to token
+            토큰에 할당
           </label>
           <select
             value={role}
@@ -462,10 +485,10 @@ function FontUploadCard({
             disabled={saving}
             className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-50"
           >
-            <option value="sans">Sans</option>
-            <option value="display">Display</option>
-            <option value="serif">Serif</option>
-            <option value="mono">Mono</option>
+            <option value="sans">{FONT_ROLE_LABELS.sans}</option>
+            <option value="display">{FONT_ROLE_LABELS.display}</option>
+            <option value="serif">{FONT_ROLE_LABELS.serif}</option>
+            <option value="mono">{FONT_ROLE_LABELS.mono}</option>
           </select>
         </div>
         <Button
@@ -474,7 +497,7 @@ function FontUploadCard({
           onClick={onUpload}
           disabled={saving || !file}
         >
-          {saving ? "Uploading..." : "Upload font"}
+          {saving ? "업로드하는 중..." : "글꼴 업로드"}
         </Button>
       </div>
     </section>
@@ -517,28 +540,28 @@ function ColorTokenEditor({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Colors
+            색상
           </div>
-          <h2 className="mt-1 text-base font-semibold">Color tokens</h2>
+          <h2 className="mt-1 text-base font-semibold">색상 토큰</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {tokenFilePath ? "Backed by colors_and_type.css" : "No token file found"}
+            {tokenFilePath ? "colors_and_type.css에서 관리돼요" : "토큰 파일을 찾을 수 없어요"}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onAdd}>
           <Plus className="h-3.5 w-3.5" />
-          Add color
+          색상 추가
         </Button>
       </div>
 
       {hasDraft ? (
         <div className="mt-4 rounded-xl border border-border bg-card p-4">
           <div className="mb-3 text-xs font-medium">
-            {editingToken ? `Edit --${editingToken.name}` : "Add color token"}
+            {editingToken ? `--${editingToken.name} 편집` : "색상 토큰 추가"}
           </div>
           <div className="grid gap-3 md:grid-cols-[1fr_0.8fr]">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Token name
+                토큰 이름
               </label>
               <Input
                 value={name}
@@ -549,7 +572,7 @@ function ColorTokenEditor({
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Color value
+                색상 값
               </label>
               <div className="flex gap-2">
                 <input
@@ -575,10 +598,10 @@ function ColorTokenEditor({
               onClick={onSave}
               disabled={saving || !name.trim() || !value.trim()}
             >
-              {saving ? "Saving..." : "Save color"}
+              {saving ? "저장하는 중..." : "색상 저장"}
             </Button>
             <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
-              Cancel
+              취소
             </Button>
           </div>
         </div>
@@ -587,7 +610,7 @@ function ColorTokenEditor({
       <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
         {tokens.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            No color tokens detected yet.
+            아직 감지된 색상 토큰이 없어요.
           </div>
         ) : (
           tokens.map((token) => (
@@ -612,7 +635,7 @@ function ColorTokenEditor({
                 onClick={() => onEdit(token)}
               >
                 <Pencil className="h-3 w-3" />
-                Edit
+                편집
               </Button>
             </div>
           ))
@@ -643,49 +666,48 @@ function DraftValidationCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="border-amber-300 bg-white text-amber-800">
-              Issue
+              확인 필요
             </Badge>
             <span className="text-xs font-medium uppercase tracking-[0.16em] text-amber-800">
-              Draft validation
+              초안 검증
             </span>
           </div>
           <h2 className="mt-2 text-base font-semibold text-foreground">
-            Do these components and typography patterns actually match the source?
+            이 컴포넌트와 타이포그래피 패턴이 실제 원본과 일치하나요?
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            This draft was scaffolded automatically. The main review question is
-            whether the extracted component patterns, typography samples, and
-            preview sections are actually faithful to the source material for{" "}
-            {system.name}. If not, the next step should be to dig through the
-            source CSS and HTML again and rebuild the draft with better matches.
+            이 초안은 자동으로 만들었어요. 검토할 핵심은 추출된 컴포넌트 패턴, 타이포그래피
+            샘플, 미리보기 섹션이 {system.name}의 원본 자료를 충실히 반영하는지예요.
+            그렇지 않다면 원본 CSS와 HTML을 다시 살펴보고, 더 잘 맞도록 초안을
+            다시 만들어야 해요.
           </p>
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <IssueBox
-              label="Check components"
-              body="Are the buttons, cards, forms, badges, tables, and other previewed components actually representative of the source design system?"
+              label="컴포넌트 확인"
+              body="버튼, 카드, 폼, 배지, 표와 그 밖의 미리보기 컴포넌트가 원본 디자인 시스템을 제대로 대표하나요?"
             />
             <IssueBox
-              label="Check typography"
-              body="Do the display, heading, and body samples reflect the real source type choices, scale, weight, and tone rather than guessed defaults?"
+              label="타이포그래피 확인"
+              body="디스플레이, 제목, 본문 샘플이 추정한 기본값이 아니라 실제 원본의 글꼴 선택, 크기, 굵기, 분위기를 반영하나요?"
             />
           </div>
 
           <div className="mt-3 rounded-xl border border-amber-200 bg-white/80 px-4 py-3">
             <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-800">
-              If the answer is no
+              아니라면
             </div>
             <p className="mt-2 text-sm leading-6 text-foreground">
-              Re-run extraction with a stronger pass over the source CSS, HTML,
-              and captured UI files so the draft reflects the real system more
-              accurately before review or publish.
+              검토 또는 게시하기 전에 원본 CSS, HTML, 캡처한 UI 파일을 더 면밀히
+              분석하여 추출을 다시 실행하고, 초안이 실제 시스템을 더 정확히
+              반영하도록 해 주세요.
             </p>
           </div>
 
           {notes.length > 0 ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-white/80 px-4 py-3">
               <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-800">
-                Extraction notes
+                추출 메모
               </div>
               <ul className="mt-2 space-y-1 text-sm leading-6 text-foreground">
                 {notes.map((note, idx) => (

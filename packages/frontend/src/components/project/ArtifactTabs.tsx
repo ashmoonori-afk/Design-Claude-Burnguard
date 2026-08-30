@@ -77,6 +77,7 @@ export default function ArtifactTabs({
             <button
               type="button"
               onClick={() => onSelect(tab.id)}
+              title={tab.relPath ?? tab.title}
               className={cn(
                 "flex h-full items-center gap-2 border-b-2 px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 isActive

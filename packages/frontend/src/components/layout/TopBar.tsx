@@ -10,7 +10,7 @@ export default function TopBar() {
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" />
-        Home
+        홈
       </Link>
       <div className="mx-3 text-muted-foreground text-sm">·</div>
       <div className="text-sm text-foreground font-mono">{pathname}</div>

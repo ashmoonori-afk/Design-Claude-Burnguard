@@ -1,4 +1,3 @@
-import { createServer } from "node:net";
 import { QaInputError } from "./errors";
 
 export function parseQaPort(raw: string): number {
@@ -13,20 +12,24 @@ export function parseQaPort(raw: string): number {
 }
 
 export async function isPortFree(port: number): Promise<boolean> {
-  return await new Promise<boolean>((resolve, reject) => {
-    const server = createServer();
-    server.once("error", (error: NodeJS.ErrnoException) => {
-      if (error.code === "EADDRINUSE") resolve(false);
-      else reject(error);
+  try {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port,
+      fetch: () => new Response(null, { status: 204 }),
     });
-    server.once("listening", () => {
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(true);
-      });
-    });
-    server.listen(port, "127.0.0.1");
-  });
+    await server.stop(true);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "EADDRINUSE"
+    ) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 async function portOwnerPids(port: number): Promise<readonly number[]> {

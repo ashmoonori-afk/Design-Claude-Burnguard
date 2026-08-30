@@ -27,6 +27,17 @@ import {
 } from "@/api/settings";
 import { useUIStore } from "@/state/uiStore";
 
+const CHAT_CONTEXT_MODE_LABELS = {
+  compact: "간단",
+  full: "전체",
+} as const;
+
+const THEME_LABELS = {
+  light: "밝게",
+  dark: "어둡게",
+  auto: "시스템 설정",
+} as const;
+
 export default function SettingsModal() {
   const open = useUIStore((s) => s.settingsOpen);
   const setOpen = useUIStore((s) => s.setSettingsOpen);
@@ -98,7 +109,7 @@ export default function SettingsModal() {
       setPw(next);
     } catch (err) {
       pushToast({
-        title: "Could not start Playwright install",
+        title: "Playwright 설치를 시작하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -140,7 +151,7 @@ export default function SettingsModal() {
       setPy(next);
     } catch (err) {
       pushToast({
-        title: "Could not start pypdf install",
+        title: "pypdf 설치를 시작하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -161,11 +172,11 @@ export default function SettingsModal() {
         user: settings.user,
       });
       queryClient.setQueryData(["settings"], next);
-      pushToast({ title: "Settings saved", tone: "success" });
+      pushToast({ title: "설정을 저장했어요", tone: "success" });
       setOpen(false);
     } catch (err) {
       pushToast({
-        title: "Could not save settings",
+        title: "설정을 저장하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -182,12 +193,12 @@ export default function SettingsModal() {
       queryClient.setQueryData(["settings"], next);
       setFigmaTokenInput("");
       pushToast({
-        title: value === null ? "Figma token cleared" : "Figma token saved",
+        title: value === null ? "Figma 토큰을 지웠어요" : "Figma 토큰을 저장했어요",
         tone: "success",
       });
     } catch (err) {
       pushToast({
-        title: "Could not save Figma token",
+        title: "Figma 토큰을 저장하지 못했어요",
         body: err instanceof Error ? err.message : String(err),
         tone: "error",
       });
@@ -200,15 +211,15 @@ export default function SettingsModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
+          <DialogTitle>설정</DialogTitle>
           <DialogDescription>
-            Local preferences — saved to <code className="font-mono text-[11px]">~/.burnguard/config.json</code>
+            이 컴퓨터에만 저장되는 설정이에요 — <code className="font-mono text-[11px]">~/.burnguard/config.json</code>
           </DialogDescription>
         </DialogHeader>
 
         {!settings || !detection ? (
           <div className="py-8 text-center text-sm text-muted-foreground">
-            Loading…
+            불러오는 중…
           </div>
         ) : (
           <div className="space-y-5 py-2">
@@ -217,7 +228,7 @@ export default function SettingsModal() {
                 htmlFor="display-name"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Display name
+                표시 이름
               </label>
               <Input
                 id="display-name"
@@ -241,7 +252,7 @@ export default function SettingsModal() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Chromium for exports
+                내보내기용 Chromium
               </label>
               <div className="rounded-md border border-border bg-muted/30 p-3">
                 <div className="flex items-center gap-2">
@@ -254,7 +265,7 @@ export default function SettingsModal() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      title="Refresh"
+                      title="새로 고침"
                       onClick={async () => {
                         try {
                           setPw(await getPlaywrightInstallStatus());
@@ -276,10 +287,10 @@ export default function SettingsModal() {
                     >
                       <Download className="h-3 w-3" />
                       {pw?.state === "installing"
-                        ? "Installing…"
+                        ? "설치하는 중…"
                         : pw?.state === "success"
-                          ? "Reinstall"
-                          : "Install Chromium"}
+                          ? "다시 설치"
+                          : "Chromium 설치"}
                     </Button>
                   </div>
                 </div>
@@ -294,18 +305,18 @@ export default function SettingsModal() {
                   </p>
                 )}
                 <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-                  PDF and PPTX export need a Chromium build. This runs{" "}
+                  PDF·PPTX 내보내기에는 Chromium이 필요해요. 서버에서{" "}
                   <code className="font-mono">
                     npx playwright install chromium
                   </code>{" "}
-                  on the server. ~170MB download, first run only.
+                  를 실행해요. 약 170MB이고 처음 한 번만 받아요.
                 </p>
               </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Python for uploads
+                업로드용 Python
               </label>
               <div className="rounded-md border border-border bg-muted/30 p-3">
                 <div className="flex items-center gap-2">
@@ -316,7 +327,7 @@ export default function SettingsModal() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      title="Refresh"
+                      title="새로 고침"
                       onClick={async () => {
                         try {
                           setPy(await getPythonSettings());
@@ -339,16 +350,16 @@ export default function SettingsModal() {
                       }
                       title={
                         py?.health.python.found === false
-                          ? "Install Python 3.10+ first"
+                          ? "먼저 Python 3.10 이상을 설치해 주세요"
                           : undefined
                       }
                     >
                       <Download className="h-3 w-3" />
                       {py?.install.state === "installing"
-                        ? "Installing…"
+                        ? "설치하는 중…"
                         : py?.health.pypdf.found
-                          ? "Reinstall pypdf"
-                          : "Install pypdf"}
+                          ? "pypdf 다시 설치"
+                          : "pypdf 설치"}
                     </Button>
                   </div>
                 </div>
@@ -363,12 +374,12 @@ export default function SettingsModal() {
                   </p>
                 )}
                 <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-                  PDF / PPTX design-system uploads shell out to Python with{" "}
-                  <code className="font-mono">pypdf</code>. Install runs{" "}
+                  PDF·PPTX 디자인 시스템 업로드는 Python의{" "}
+                  <code className="font-mono">pypdf</code>를 사용해요. 설치는{" "}
                   <code className="font-mono">
                     python -m pip install --user pypdf
                   </code>{" "}
-                  — small download, first run only.
+                  를 실행해요. 용량이 작고 처음 한 번만 받아요.
                 </p>
               </div>
             </div>
@@ -378,7 +389,7 @@ export default function SettingsModal() {
                 htmlFor="abort-threshold"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Interrupt button delay (seconds)
+                중단 버튼이 나타나기까지 (초)
               </label>
               <Input
                 id="abort-threshold"
@@ -399,15 +410,15 @@ export default function SettingsModal() {
                 }}
               />
               <p className="text-[11px] text-muted-foreground">
-                Stop button appears once a chat turn has been running this
-                long. Default 300s (5 min) — lower it if local CLIs stall
-                often, raise it to stay out of the way on cold starts.
+                채팅 턴이 이 시간만큼 이어지면 중단 버튼이 나타나요. 기본값은
+                300초(5분)예요. 로컬 CLI가 자주 멈춘다면 줄이고, 초기 실행이
+                느린 편이라면 늘려 주세요.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Chat context
+                채팅 컨텍스트
               </label>
               <div className="flex gap-2">
                 {(["compact", "full"] as const).map((mode) => (
@@ -421,26 +432,26 @@ export default function SettingsModal() {
                       setSettings({ ...settings, chat_context_mode: mode })
                     }
                   >
-                    {mode}
+                    {CHAT_CONTEXT_MODE_LABELS[mode]}
                   </Button>
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Compact keeps stable project and design-system context as file
-                references so long slide-deck chats stay lighter. Full inlines
-                those excerpts every turn.
+                간단 모드는 프로젝트와 디자인 시스템 맥락을 파일 참조로만 넘겨서
+                긴 슬라이드 덱 대화를 가볍게 유지해요. 전체 모드는 매 턴 그 내용을
+                본문에 그대로 담아요.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Figma access
+                Figma 연동
               </label>
               {settings.figma_token_set ? (
                 <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-xs">
                   <span className="flex items-center gap-2">
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-                    Connected — Figma personal access token is set.
+                    연결됨 — Figma 개인 액세스 토큰이 설정돼 있어요.
                   </span>
                   <Button
                     variant="outline"
@@ -448,7 +459,7 @@ export default function SettingsModal() {
                     disabled={figmaTokenSaving}
                     onClick={() => saveFigmaToken(null)}
                   >
-                    Disconnect
+                    연결 해제
                   </Button>
                 </div>
               ) : (
@@ -468,22 +479,21 @@ export default function SettingsModal() {
                     }
                     onClick={() => saveFigmaToken(figmaTokenInput.trim())}
                   >
-                    {figmaTokenSaving ? "Saving…" : "Save"}
+                    {figmaTokenSaving ? "저장하는 중…" : "저장"}
                   </Button>
                 </div>
               )}
               <p className="text-[11px] text-muted-foreground">
-                Used by the Systems → Import flow to extract published color
-                and text styles from a Figma file. Generate a token at
-                Figma → Settings → Personal access tokens. The value is stored
-                only in your local <code className="font-mono">~/.burnguard/config.json</code>{" "}
-                and is never echoed back through this UI.
+                Figma 파일에서 공개된 색·텍스트 스타일을 가져올 때 사용해요.
+                토큰은 Figma → Settings → Personal access tokens에서 만들 수
+                있어요. 값은 이 컴퓨터의 <code className="font-mono">~/.burnguard/config.json</code>{" "}
+                에만 저장되고 화면에 다시 표시되지 않아요.
               </p>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Theme
+                테마
               </label>
               <div className="flex gap-2">
                 {(["light", "dark", "auto"] as const).map((t) => (
@@ -493,12 +503,12 @@ export default function SettingsModal() {
                     size="sm"
                     onClick={() => setSettings({ ...settings, theme: t })}
                   >
-                    {t}
+                    {THEME_LABELS[t]}
                   </Button>
                 ))}
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Dark theme arrives in Phase 2.
+                다크 테마는 2단계에서 제공될 예정이에요.
               </p>
             </div>
           </div>
@@ -506,10 +516,10 @@ export default function SettingsModal() {
 
         <DialogFooter className="pt-2 border-t border-border">
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
+            취소
           </Button>
           <Button variant="cta" onClick={save} disabled={saving || !settings}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? "저장하는 중…" : "저장"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -534,16 +544,16 @@ function PlaywrightStateDot({
 }
 
 function pwLabel(status: PlaywrightInstallStatus | null): string {
-  if (!status) return "Loading…";
+  if (!status) return "불러오는 중…";
   switch (status.state) {
     case "installing":
-      return "Installing Chromium…";
+      return "Chromium을 설치하는 중이에요…";
     case "success":
-      return "Chromium install completed.";
+      return "Chromium 설치를 마쳤어요.";
     case "error":
-      return "Last install failed.";
+      return "지난 설치가 실패했어요.";
     default:
-      return "Not installed (or status unknown).";
+      return "설치되어 있지 않아요(또는 상태를 알 수 없어요).";
   }
 }
 
@@ -569,15 +579,15 @@ function PyStateDot({ py }: { py: PythonSettings | null }) {
 }
 
 function pyLabel(py: PythonSettings | null): string {
-  if (!py) return "Loading…";
-  if (py.install.state === "installing") return "Installing pypdf…";
+  if (!py) return "불러오는 중…";
+  if (py.install.state === "installing") return "pypdf를 설치하는 중이에요…";
   if (!py.health.python.found) {
-    return "Python runtime not found — install Python 3.10+.";
+    return "Python을 찾지 못했어요 — Python 3.10 이상을 설치해 주세요.";
   }
   if (py.health.pypdf.found) {
     const ver = py.health.pypdf.version ? ` ${py.health.pypdf.version}` : "";
-    return `Ready — pypdf${ver} (${py.health.python.version ?? "Python"}).`;
+    return `사용할 수 있어요 — pypdf${ver} (${py.health.python.version ?? "Python"}).`;
   }
-  if (py.install.state === "error") return "Last pypdf install failed.";
-  return "pypdf not installed yet.";
+  if (py.install.state === "error") return "지난 pypdf 설치가 실패했어요.";
+  return "pypdf가 아직 설치되지 않았어요.";
 }

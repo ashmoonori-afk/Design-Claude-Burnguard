@@ -9,44 +9,44 @@ interface PreviewSection {
 
 const SECTIONS: PreviewSection[] = [
   {
-    group: "Brand",
+    group: "브랜드",
     items: [
-      { id: "brand-logos", title: "Brand Logos", desc: "Six official lockups" },
-      { id: "brand-icons", title: "Brand Icons", desc: "Lucide 1.5px stroke" },
+      { id: "brand-logos", title: "브랜드 로고", desc: "공식 로고 조합 6개" },
+      { id: "brand-icons", title: "브랜드 아이콘", desc: "Lucide 1.5px 스트로크" },
     ],
   },
   {
-    group: "Colors",
+    group: "색상",
     items: [
-      { id: "colors-brand", title: "Brand Colors" },
-      { id: "colors-neutrals", title: "Neutrals" },
-      { id: "colors-ramps", title: "Full Ramps" },
-      { id: "colors-semantic", title: "Semantic" },
-      { id: "colors-charts", title: "Chart Palette" },
+      { id: "colors-brand", title: "브랜드 색상" },
+      { id: "colors-neutrals", title: "중립 색상" },
+      { id: "colors-ramps", title: "전체 색상 단계" },
+      { id: "colors-semantic", title: "의미 색상" },
+      { id: "colors-charts", title: "차트 팔레트" },
     ],
   },
   {
-    group: "Typography",
+    group: "타이포그래피",
     items: [
-      { id: "type-display", title: "Display" },
-      { id: "type-headings", title: "Headings" },
-      { id: "type-body", title: "Body" },
+      { id: "type-display", title: "디스플레이" },
+      { id: "type-headings", title: "제목" },
+      { id: "type-body", title: "본문" },
     ],
   },
   {
-    group: "Foundations",
+    group: "기초",
     items: [
-      { id: "spacing", title: "Spacing" },
-      { id: "radii-shadows", title: "Radii & Shadows" },
+      { id: "spacing", title: "간격" },
+      { id: "radii-shadows", title: "모서리 반경과 그림자" },
     ],
   },
   {
-    group: "Components",
+    group: "컴포넌트",
     items: [
-      { id: "components-buttons", title: "Buttons" },
-      { id: "components-cards", title: "Cards" },
-      { id: "components-forms", title: "Forms" },
-      { id: "components-badges-table", title: "Badges & Table" },
+      { id: "components-buttons", title: "버튼" },
+      { id: "components-cards", title: "카드" },
+      { id: "components-forms", title: "폼" },
+      { id: "components-badges-table", title: "배지와 표" },
     ],
   },
 ];
@@ -95,7 +95,7 @@ export default function SystemPreviewGrid({
                       </div>
                     )}
                   </div>
-                  {grp.group === "Colors" && onEditColors ? (
+                  {grp.group === "색상" && onEditColors ? (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -103,7 +103,7 @@ export default function SystemPreviewGrid({
                       onClick={onEditColors}
                     >
                       <Pencil className="h-3 w-3" />
-                      Edit
+                      편집
                     </Button>
                   ) : null}
                 </div>
@@ -113,7 +113,7 @@ export default function SystemPreviewGrid({
         </section>
       ))}
       <p className="text-[11px] text-muted-foreground">
-        Preview content streams from{" "}
+        미리보기 콘텐츠는 다음 경로에서 제공돼요:{" "}
         <code className="font-mono">
           GET /api/design-systems/:id/files/preview/:name
         </code>

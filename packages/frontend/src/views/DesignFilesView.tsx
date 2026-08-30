@@ -21,11 +21,11 @@ export default function DesignFilesView({
   const [active, setActive] = useState<FileInfo | null>(null);
 
   return (
-    <div className="flex-1 flex min-h-0">
-      <div className="w-[280px] shrink-0 border-r border-border overflow-y-auto bg-background">
+    <div className="flex-1 flex min-h-0 flex-col sm:flex-row">
+      <div className="h-1/2 w-full shrink-0 overflow-y-auto border-b border-border bg-background sm:h-auto sm:w-[280px] sm:border-b-0 sm:border-r">
         <div className="px-3 pt-3 pb-2 flex items-center justify-between">
           <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Project files
+            프로젝트 파일
           </div>
         </div>
         <FileTree

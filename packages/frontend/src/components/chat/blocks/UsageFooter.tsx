@@ -5,15 +5,22 @@ export default function UsageFooter({
 }: {
   usage: SessionInfo["usage"];
 }) {
-  const fmt = (n: number) => n.toLocaleString();
+  const exact = (n: number) => n.toLocaleString();
+  const compact = (n: number) =>
+    n >= 1_000_000
+      ? `${(n / 1_000_000).toFixed(1)}M`
+      : n >= 10_000
+        ? `${Math.round(n / 1_000)}k`
+        : exact(n);
   return (
     <div
       data-qa="usage-footer"
+      title={`입력 ${exact(usage.input)} · 출력 ${exact(usage.output)} · 캐시 ${exact(usage.cached)} 토큰`}
       className="sticky bottom-0 -mx-3 -mb-4 border-t border-border bg-background/95 backdrop-blur px-3 py-1.5 flex items-center gap-3 text-[10px] text-muted-foreground font-mono"
     >
-      <span>in {fmt(usage.input)}</span>
-      <span>out {fmt(usage.output)}</span>
-      <span>cached {fmt(usage.cached)}</span>
+      <span>입력 {compact(usage.input)}</span>
+      <span>출력 {compact(usage.output)}</span>
+      <span>캐시 {compact(usage.cached)}</span>
     </div>
   );
 }

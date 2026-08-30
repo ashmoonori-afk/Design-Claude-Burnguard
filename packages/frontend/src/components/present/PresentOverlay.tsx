@@ -72,11 +72,11 @@ export default function PresentOverlay({
       ref={rootRef}
       className="fixed inset-0 z-[9999] bg-black"
       role="dialog"
-      aria-label="Presentation"
+      aria-label="프레젠테이션"
     >
       <iframe
         key={src}
-        title="Presentation"
+        title="프레젠테이션"
         src={withPresentFlag(src)}
         sandbox="allow-scripts"
         className="absolute inset-0 h-full w-full border-0 bg-black"
@@ -85,9 +85,9 @@ export default function PresentOverlay({
         type="button"
         onClick={onClose}
         className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-white backdrop-blur transition-colors hover:bg-white/20"
-        title="Exit presentation (Esc)"
+        title="프레젠테이션 종료 (Esc)"
       >
-        <X className="h-3 w-3" /> Exit
+        <X className="h-3 w-3" /> 종료
       </button>
       <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-white/10 px-2.5 py-1 font-mono text-[11px] text-white backdrop-blur">
         {formatElapsed(elapsedMs)}
