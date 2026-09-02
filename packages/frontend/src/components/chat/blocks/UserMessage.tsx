@@ -39,7 +39,7 @@ export default function UserMessage({
           title="이 턴 이전 상태로 되돌리기"
           className={cn(
             "absolute -left-6 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground opacity-0 transition-opacity",
-            "group-hover:opacity-100 hover:text-foreground",
+            "group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-foreground max-[900px]:opacity-100",
             reverting && "opacity-100 animate-pulse",
           )}
         >

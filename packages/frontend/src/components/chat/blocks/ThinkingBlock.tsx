@@ -15,7 +15,7 @@ export default function ThinkingBlock({ text }: { text: string }) {
           <ChevronRight className="h-3 w-3" />
         )}
         <Sparkles className="h-3 w-3" />
-        Thinking
+        생각 중
       </button>
       {open && (
         <div className="mt-1 pl-4 border-l border-border italic whitespace-pre-wrap">

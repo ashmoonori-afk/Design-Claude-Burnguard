@@ -50,11 +50,13 @@ export default function DrawPanel({
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
           도구
         </div>
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="그리기 도구">
           {TOOLS.map((t) => (
             <button
               key={t.id}
               type="button"
+              role="radio"
+              aria-checked={tool === t.id}
               onClick={() => onChangeTool(t.id)}
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded border px-2 py-1.5 text-[10px] transition-colors",
@@ -74,13 +76,16 @@ export default function DrawPanel({
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
           색상
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="색상">
           {COLORS.map((c) => (
             <button
               key={c}
               type="button"
+              role="radio"
+              aria-checked={color === c}
               onClick={() => onChangeColor(c)}
               title={c}
+              aria-label={`색상 ${c}`}
               className={cn(
                 "h-6 w-6 rounded-full border-2 transition-transform",
                 color === c ? "border-foreground scale-110" : "border-transparent",
@@ -95,12 +100,15 @@ export default function DrawPanel({
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
           선 굵기
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" role="radiogroup" aria-label="선 굵기">
           {WIDTHS.map((w) => (
             <button
               key={w}
               type="button"
+              role="radio"
+              aria-checked={strokeWidth === w}
               onClick={() => onChangeWidth(w)}
+              aria-label={`선 굵기 ${w}px`}
               className={cn(
                 "flex h-7 w-10 items-center justify-center rounded border text-[10px] transition-colors",
                 strokeWidth === w
