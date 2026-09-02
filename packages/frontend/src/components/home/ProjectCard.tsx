@@ -68,7 +68,7 @@ export default function ProjectCard(
       </Link>
 
       {props.onDelete && (
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button

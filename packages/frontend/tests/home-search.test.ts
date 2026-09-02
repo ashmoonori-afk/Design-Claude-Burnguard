@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { ProjectSummary } from "@bg/shared";
 import type { CardViewModel } from "../src/components/home/mappers";
-import { filterHomeCards } from "../src/components/home/mappers";
+import { filterHomeCards, projectToCard } from "../src/components/home/mappers";
 
 const cards: readonly CardViewModel[] = [
   {
@@ -33,5 +34,50 @@ describe("filterHomeCards", () => {
 
   test("Given an empty query When filtering Then every card remains available", () => {
     expect(filterHomeCards(cards, " \n\t ")).toEqual(cards);
+  });
+});
+
+function projectSummary(overrides: Partial<ProjectSummary>): ProjectSummary {
+  return {
+    id: "p1",
+    name: "Untitled",
+    type: "prototype",
+    design_system_id: null,
+    design_system_name: null,
+    thumbnail_path: null,
+    updated_at: 0,
+    archived_at: null,
+    ...overrides,
+  };
+}
+
+describe("projectToCard", () => {
+  test("Given a regular project When mapped Then it never carries the template badge", () => {
+    const card = projectToCard(projectSummary({ type: "slide_deck" }));
+    expect(card.isTemplate).toBeUndefined();
+  });
+
+  test("Given a project created from a template When mapped Then it does not carry the template badge either", () => {
+    const card = projectToCard(projectSummary({ type: "from_template" }));
+    expect(card.isTemplate).toBeUndefined();
+  });
+
+  test.each([
+    ["prototype", "프로토타입"],
+    ["slide_deck", "슬라이드 덱"],
+    ["graphic", "그래픽"],
+    ["other", "기타"],
+  ] as const)(
+    "Given a %s project When mapped Then its subtitle shows the real type label",
+    (type, label) => {
+      const card = projectToCard(projectSummary({ type }));
+      expect(card.subtitle.startsWith(label)).toBe(true);
+    },
+  );
+
+  test("Given a project created from a template When mapped Then its subtitle falls back to 기타 instead of 템플릿", () => {
+    const card = projectToCard(projectSummary({ type: "from_template" }));
+    expect(card.subtitle.startsWith("기타")).toBe(true);
+    expect(card.subtitle).not.toContain("템플릿");
   });
 });

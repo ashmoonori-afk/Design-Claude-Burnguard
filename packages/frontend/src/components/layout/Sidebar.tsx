@@ -93,7 +93,7 @@ export default function Sidebar() {
         </div>
       </header>
 
-      <nav aria-label="새 프로젝트 유형" className="flex min-h-11 gap-0.5 overflow-x-auto border-b border-border px-4 [scrollbar-width:thin]">
+      <nav aria-label="새 프로젝트 유형" className="flex min-h-11 flex-wrap gap-0.5 border-b border-border px-4">
         {TYPES.map((t) => (
           <button
             key={t.id}
@@ -101,7 +101,7 @@ export default function Sidebar() {
             aria-pressed={activeType === t.id}
             onClick={() => setActiveType(t.id)}
             className={[
-              "min-h-11 shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              "min-h-11 shrink-0 whitespace-nowrap px-2.5 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
               activeType === t.id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-foreground/70 hover:text-foreground",
@@ -117,6 +117,9 @@ export default function Sidebar() {
           type={activeType}
           designSystems={systems}
           defaultBackend={settings.default_backend}
+          systemsLoading={systemsQuery.isPending}
+          systemsError={systemsQuery.error}
+          onRetrySystems={() => void systemsQuery.refetch()}
           onCreated={(project) => navigate(`/projects/${project.id}`)}
         />
       </div>

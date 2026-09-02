@@ -27,6 +27,7 @@ import ProjectCard from "@/components/home/ProjectCard";
 import DeleteDesignSystemDialog from "@/components/home/DeleteDesignSystemDialog";
 import DeleteProjectDialog from "@/components/home/DeleteProjectDialog";
 import CliMissingModal from "@/components/errors/CliMissingModal";
+import { apiErrorCopy } from "@/lib/error-copy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -123,7 +124,7 @@ export default function HomeView() {
     onError: (err) => {
       pushToast({
         title: "프로젝트를 삭제하지 못했어요",
-        body: err instanceof Error ? err.message : String(err),
+        body: apiErrorCopy(err),
         tone: "error",
       });
     },
@@ -138,7 +139,7 @@ export default function HomeView() {
     onError: (err) => {
       pushToast({
         title: "예제를 복원하지 못했어요",
-        body: err instanceof Error ? err.message : String(err),
+        body: apiErrorCopy(err),
         tone: "error",
       });
     },
@@ -153,26 +154,24 @@ export default function HomeView() {
       setDeleteSystemBlocker(null);
     },
     onError: (err) => {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.code === "is_template") {
+        setDeleteSystemBlocker({ reason: "is_template" });
+        return;
+      }
+      if (err instanceof ApiError && err.code === "has_active_projects") {
         const details = err.details as
-          | { reason?: string; project_refs?: Array<{ id: string; name: string }> }
+          | { project_refs?: Array<{ id: string; name: string }> }
           | null
           | undefined;
-        if (details?.reason === "is_template") {
-          setDeleteSystemBlocker({ reason: "is_template" });
-          return;
-        }
-        if (details?.reason === "has_active_projects") {
-          setDeleteSystemBlocker({
-            reason: "has_active_projects",
-            projects: details.project_refs ?? [],
-          });
-          return;
-        }
+        setDeleteSystemBlocker({
+          reason: "has_active_projects",
+          projects: details?.project_refs ?? [],
+        });
+        return;
       }
       pushToast({
         title: "디자인 시스템을 삭제하지 못했어요",
-        body: err instanceof Error ? err.message : String(err),
+        body: apiErrorCopy(err),
         tone: "error",
       });
     },
@@ -182,7 +181,9 @@ export default function HomeView() {
     mutationFn: async () => {
       if (systemImportMode === "upload") {
         if (!systemUploadFile) {
-          throw new Error("업로드할 .pptx 또는 .pdf 파일을 선택해 주세요.");
+          throw Object.assign(new Error("Upload file is required"), {
+            code: "upload_file_required",
+          });
         }
         return await uploadDesignSystem(systemUploadFile, {
           name: systemDraftName.trim() || undefined,
@@ -215,10 +216,7 @@ export default function HomeView() {
       navigate(`/systems/${created.system.id}`);
     },
     onError: (err) => {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "디자인 시스템을 가져오지 못했어요. 주소나 파일을 확인한 뒤 다시 시도해 주세요.";
+      const message = apiErrorCopy(err);
       setSystemImportError(message);
       pushToast({
         title: "디자인 시스템을 가져오지 못했어요",
@@ -319,7 +317,7 @@ export default function HomeView() {
                 isLoading={recentQuery.isPending}
                 error={recentQuery.error}
                 emptyText="최근 프로젝트가 아직 없어요."
-                emptyHint="프로젝트 종류를 고르고 이름을 입력하면 여기에 바로 나타나요."
+                emptyHint="프로젝트 종류를 고르고 이름을 입력하면 최근 작업한 프로젝트가 최대 12개까지 여기에 나타나요."
                 onRetry={() => void recentQuery.refetch()}
                 onClearQuery={clearProjectQuery}
                 onStartProject={startProject}
@@ -335,7 +333,7 @@ export default function HomeView() {
                 isLoading={mineQuery.isPending}
                 error={mineQuery.error}
                 emptyText="내 프로젝트가 아직 없어요."
-                emptyHint="프로젝트 종류를 고르고 이름을 입력하면 만든 프로젝트가 모두 여기에 모여요."
+                emptyHint="프로젝트 종류를 고르고 이름을 입력하면 예제를 제외한 내 프로젝트가 모두 여기에 모여요."
                 onRetry={() => void mineQuery.refetch()}
                 onClearQuery={clearProjectQuery}
                 onStartProject={startProject}
@@ -379,6 +377,9 @@ export default function HomeView() {
             <TabsContent value="systems">
               <SystemsSection
                 cards={systemCards}
+                isLoading={systemsQuery.isPending}
+                error={systemsQuery.error}
+                onRetry={() => void systemsQuery.refetch()}
                 importOpen={systemImportOpen}
                 importMode={systemImportMode}
                 sourceUrl={systemSourceUrl}
@@ -450,6 +451,9 @@ export default function HomeView() {
 
 function SystemsSection({
   cards,
+  isLoading,
+  error,
+  onRetry,
   importOpen,
   importMode,
   sourceUrl,
@@ -468,6 +472,9 @@ function SystemsSection({
   onSystemDelete,
 }: {
   cards: CardViewModel[];
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void;
   importOpen: boolean;
   importMode: SystemImportMode;
   sourceUrl: string;
@@ -535,14 +542,53 @@ function SystemsSection({
           </div>
         </button>
 
-        {cards.map((card) => (
-          <ProjectCard
-            key={card.id}
-            {...card}
-            onDelete={() => onSystemDelete(card)}
-          />
-        ))}
+        {isLoading || error !== null
+          ? null
+          : cards.map((card) => (
+              <ProjectCard
+                key={card.id}
+                {...card}
+                onDelete={() => onSystemDelete(card)}
+              />
+            ))}
       </CardGrid>
+
+      {isLoading ? (
+        <div
+          aria-live="polite"
+          className="rounded-xl border border-dashed border-border bg-card/50 p-16 text-center"
+        >
+          <p className="text-sm font-medium text-foreground">
+            디자인 시스템을 불러오는 중이에요.
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            잠시만 기다려 주세요.
+          </p>
+        </div>
+      ) : error !== null ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-10 text-center"
+        >
+          <p className="text-sm font-medium text-foreground">
+            디자인 시스템을 불러오지 못했어요.
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            로컬 서버가 켜져 있는지 확인한 뒤 다시 시도해 주세요.
+          </p>
+          <Button className="mt-4" variant="outline" onClick={onRetry}>
+            다시 시도
+          </Button>
+        </div>
+      ) : cards.length === 0 ? (
+        <div
+          aria-live="polite"
+          className="rounded-xl border border-dashed border-border bg-card/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
+        >
+          아직 만든 디자인 시스템이 없어요. 위 ‘가져오기’ 타일을 눌러 새로
+          만들어 보세요.
+        </div>
+      ) : null}
 
       {importOpen ? (
         <div className="rounded-xl border border-border bg-card p-5">
@@ -587,10 +633,14 @@ function SystemsSection({
             {importMode === "url" ? (
               <>
                 <div className="md:col-span-2">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    htmlFor="system-source-url"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
                     원본 URL
                   </label>
                   <Input
+                    id="system-source-url"
                     value={sourceUrl}
                     onChange={(e) => onSourceUrlChange(e.target.value)}
                     placeholder="https://github.com/acme/design-system"
@@ -600,10 +650,14 @@ function SystemsSection({
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    htmlFor="system-source-type"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
                     원본 종류
                   </label>
                   <select
+                    id="system-source-type"
                     value={sourceType}
                     onChange={(e) =>
                       onSourceTypeChange(
@@ -633,10 +687,14 @@ function SystemsSection({
             ) : (
               <>
                 <div className="md:col-span-2">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    htmlFor="system-upload-file"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
                     업로드할 파일
                   </label>
                   <input
+                    id="system-upload-file"
                     type="file"
                     accept=".pptx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"
                     disabled={isPending}
@@ -677,10 +735,14 @@ function SystemsSection({
             )}
 
             <div className="md:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                htmlFor="system-draft-name"
+                className="text-xs font-medium text-muted-foreground"
+              >
                 초안 이름
               </label>
               <Input
+                id="system-draft-name"
                 value={draftName}
                 onChange={(e) => onDraftNameChange(e.target.value)}
                 placeholder="비워 두면 원본 이름을 그대로 써요"

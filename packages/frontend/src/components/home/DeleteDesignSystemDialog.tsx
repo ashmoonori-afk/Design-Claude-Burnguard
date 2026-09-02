@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -54,7 +55,7 @@ export default function DeleteDesignSystemDialog({
             {hasBlocker
               ? blocker?.reason === "is_template"
                 ? "기본으로 제공되는 템플릿 디자인 시스템이라 삭제할 수 없어요."
-                : "이 디자인 시스템을 쓰는 프로젝트가 아직 있어요. 아래 프로젝트에서 다른 디자인 시스템을 고르거나 프로젝트를 보관 처리한 뒤 다시 시도해 주세요."
+                : "이 디자인 시스템을 쓰는 프로젝트가 아직 있어요. 아래 프로젝트를 먼저 삭제하거나 이 디자인 시스템을 그대로 두세요."
               : "디자인 시스템 항목과 모든 미리보기 카드, ~/.burnguard/data/systems 아래 표준 폴더가 영구 삭제돼요. 되돌릴 수 없어요."}
           </DialogDescription>
         </DialogHeader>
@@ -64,7 +65,12 @@ export default function DeleteDesignSystemDialog({
           <ul className="max-h-40 overflow-y-auto rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
             {blocker.projects.map((p) => (
               <li key={p.id} className="py-0.5">
-                {p.name}
+                <Link
+                  to={`/projects/${p.id}`}
+                  className="text-accent underline-offset-2 hover:underline"
+                >
+                  {p.name}
+                </Link>
               </li>
             ))}
           </ul>
