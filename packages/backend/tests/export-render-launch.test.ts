@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Browser } from "playwright-core";
+import { resetChromiumCapability, setChromiumCapabilityForTesting } from "../src/services/chromium-capability";
 import { launchChromium, RenderSessionError, type ChromiumLauncher } from "../src/services/export-render-session";
 
 const previousTimeout = process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS;
 
-beforeEach(() => { process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS = "200"; });
-afterEach(() => { if (previousTimeout === undefined) delete process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS; else process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS = previousTimeout; });
+// These cases drive an injected launcher, so the child-process capability
+// probe is answered directly instead of spawning a browser on every run.
+beforeEach(() => { process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS = "200"; setChromiumCapabilityForTesting(true); });
+afterEach(() => { resetChromiumCapability(); if (previousTimeout === undefined) delete process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS; else process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS = previousTimeout; });
 
 function fakeBrowser(onClose: () => void = () => undefined): Browser { return { close: async (): Promise<void> => { onClose(); } } as unknown as Browser; }
 

@@ -9,6 +9,10 @@ import { getSqlite } from "../src/db/sqlite-client";
 import { projectsDir } from "../src/lib/paths";
 import { homeRoutes } from "../src/routes/home";
 import { classifyApiRoute } from "../src/server";
+import {
+  resetChromiumCapability,
+  setChromiumCapabilityForTesting,
+} from "../src/services/chromium-capability";
 import { parsePng } from "../src/services/export-png-validation";
 import {
   loadProjectThumbnail,
@@ -101,9 +105,14 @@ function request(route: string, headers?: Record<string, string>): Promise<Respo
 beforeAll(async () => {
   await runMigrations();
   await mkdir(projectsDir, { recursive: true });
+  // These cases inject their own renderer and never touch a real browser, so
+  // the launch-capability gate is answered directly instead of spawning the
+  // probe child on every run.
+  setChromiumCapabilityForTesting(true);
 });
 
 afterAll(async () => {
+  resetChromiumCapability();
   const db = getSqlite();
   for (const id of projectIds.splice(0)) db.prepare("DELETE FROM projects WHERE id=?").run(id);
   for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
@@ -212,6 +221,47 @@ describe("project thumbnail generation and cache", () => {
     ]);
     expect(outputPaths.length).toBe(1);
     expect((await cachedFiles(project.dirPath)).length).toBe(1);
+  });
+
+  test("Given a render slower than the response deadline When requested Then the card answers immediately and the cache is filled in the background", async () => {
+    const previousDeadline = process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS;
+    process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS = "40";
+    try {
+      const project = await createProject({ digest: digestA });
+      let releaseRender: (() => void) | null = null;
+      const renderGate = new Promise<void>((resolve) => {
+        releaseRender = resolve;
+      });
+      let renders = 0;
+      const renderer: ThumbnailRenderer = async (request) => {
+        renders += 1;
+        await renderGate;
+        await writeFile(request.outputPath, pngFixture(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
+      };
+
+      // A cold miss must not hold the connection while Chromium starts: Home
+      // asks for one thumbnail per card and would otherwise starve the
+      // project requests queued behind them.
+      const outcome = await loadProjectThumbnail(project.id, renderer);
+      expect(outcome).toEqual({ kind: "unavailable", code: "thumbnail_unavailable" });
+      expect(renders).toBe(1);
+
+      releaseRender?.();
+      // The abandoned render keeps going and fills the cache, so the next
+      // request serves it without rendering again.
+      delete process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS;
+      let afterRender = await loadProjectThumbnail(project.id, renderer);
+      for (let attempt = 0; attempt < 20 && afterRender.kind !== "ready"; attempt += 1) {
+        await settle();
+        afterRender = await loadProjectThumbnail(project.id, renderer);
+      }
+
+      expect(afterRender.kind).toBe("ready");
+      expect(renders).toBe(1);
+    } finally {
+      if (previousDeadline === undefined) delete process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS;
+      else process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS = previousDeadline;
+    }
   });
 
   test("Given concurrent cold-cache requests for different projects When both render Then their temporary files cannot collide", async () => {

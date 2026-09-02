@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { getProjectDetail } from "../db/project-read-repository";
+import { isChromiumLaunchable } from "./chromium-capability";
 import { projectsDir, resolveManagedPath } from "../lib/paths";
 import { PathBoundaryError, resolveWithin } from "../security/path-boundary";
 import { parsePng, PngValidationError } from "./export-png-validation";
@@ -22,6 +23,19 @@ const MAX_CONCURRENT_RENDERS = 2;
 
 /** Once Chromium cannot launch at all, every remaining card would repeat the same slow failure. */
 const CHROMIUM_UNAVAILABLE_COOLDOWN_MS = 60_000;
+
+/**
+ * How long a cold cache miss may hold its HTTP response open.
+ *
+ * Home requests one thumbnail per card, and browsers allow only a handful of
+ * concurrent connections per host. A slow render therefore does not merely
+ * delay one image: it fills the connection pool and starves the project,
+ * session and artifact requests behind it, which is what left the project
+ * view stuck on "프로젝트를 불러오는 중..." forever. Past this deadline the
+ * request answers with the card's fallback while the render continues in the
+ * background and lands in the cache for the next load.
+ */
+const RENDER_RESPONSE_DEADLINE_MS = 1_500;
 
 const inFlightRenders = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
 const waitingRenders: Array<() => void> = [];
@@ -64,10 +78,38 @@ export function projectThumbnailUrl(project: ThumbnailIdentitySource): string | 
   return `/api/projects/${encodeURIComponent(project.id)}/thumbnail?v=${identity}`;
 }
 
+/**
+ * Answers within the response deadline no matter what the render is doing.
+ * The work behind an expired wait is never cancelled: it keeps its slot,
+ * finishes into the cache and serves the next request.
+ */
 export async function loadProjectThumbnail(
   projectId: string,
   render: ThumbnailRenderer = renderThumbnailWithChromium,
   temporaryId: () => string = randomUUID,
+): Promise<ThumbnailOutcome> {
+  const work = loadProjectThumbnailUncapped(projectId, render, temporaryId);
+  const deadlineMs = renderResponseDeadlineMs();
+  if (deadlineMs <= 0) {
+    void work.catch(() => undefined);
+    return { kind: "unavailable", code: "thumbnail_unavailable" };
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<ThumbnailOutcome>((resolve) => {
+    timer = setTimeout(() => resolve({ kind: "unavailable", code: "thumbnail_unavailable" }), deadlineMs);
+  });
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    void work.catch(() => undefined);
+  }
+}
+
+async function loadProjectThumbnailUncapped(
+  projectId: string,
+  render: ThumbnailRenderer,
+  temporaryId: () => string,
 ): Promise<ThumbnailOutcome> {
   const project = await getProjectDetail(projectId);
   if (project === null) return { kind: "not_found" };
@@ -92,6 +134,11 @@ export async function loadProjectThumbnail(
 
   if (Date.now() < chromiumUnavailableUntil) return { kind: "unavailable", code: "thumbnail_unavailable" };
 
+  // Never start an in-process launch before the child-process probe says a
+  // launch actually completes here: on a host where it does not, the launch
+  // blocks the event loop and takes the whole backend down with it.
+  if (!(await isChromiumLaunchable())) return { kind: "unavailable", code: "thumbnail_unavailable" };
+
   const rendered = await renderThumbnailOnce(cachePath, {
     request: {
       stagedDir: projectDir,
@@ -105,6 +152,11 @@ export async function loadProjectThumbnail(
   });
   if (rendered === null) return { kind: "unavailable", code: "thumbnail_unavailable" };
   return { kind: "ready", bytes: rendered, etag: `"${identity}"` };
+}
+
+function renderResponseDeadlineMs(): number {
+  const override = Number(process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS);
+  return Number.isFinite(override) && override >= 0 ? override : RENDER_RESPONSE_DEADLINE_MS;
 }
 
 /** Coalesces concurrent misses on one cache entry so a card that is already rendering is never rendered twice. */

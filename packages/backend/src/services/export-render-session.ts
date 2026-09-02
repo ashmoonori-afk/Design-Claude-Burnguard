@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { resolveWithin } from "../security/path-boundary";
+import { isChromiumLaunchable } from "./chromium-capability";
 import { registerExportBrowser } from "./export-browser-registry";
 
 export type RenderViewport = { readonly width: number; readonly height: number; readonly dpr: 1 | 2 };
@@ -46,6 +47,13 @@ type LaunchOutcome = { readonly kind: "browser"; readonly browser: Browser } | {
 const LAUNCH_ATTEMPTS: readonly ChromiumLaunchAttempt[] = [{ headless: true }, { headless: true, channel: "chrome" }, { headless: true, channel: "msedge" }];
 
 export async function launchChromium(signal: AbortSignal, launch: ChromiumLauncher = (options) => chromium.launch(options)): Promise<Browser> {
+  // A launch that never completes its handshake blocks the Bun event loop, so
+  // the in-process attempt below would freeze every other request and even the
+  // timer meant to cap it. The child-process probe answers that question
+  // without touching this loop; when it says no, fail immediately.
+  if (!(await isChromiumLaunchable())) {
+    throw new RenderSessionError("chromium_launch_timeout", "chromium_launch_timeout: Chromium could not be launched on this host");
+  }
   const timeoutMs = chromiumLaunchTimeoutMs(); const errors: string[] = []; const tried: string[] = []; let timedOut = false;
   for (const options of LAUNCH_ATTEMPTS) {
     if (signal.aborted) throw new RenderSessionError("render_aborted", "Render was cancelled");
