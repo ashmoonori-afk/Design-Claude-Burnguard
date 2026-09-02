@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { fileURLToPath } from "node:url";
 import type { ResearchRequestV1, ResearchResultV1, ResearchRule } from "@bg/shared";
 import { runMigrationsFrom } from "../src/db/migrate";
 import { evidenceSetDigest } from "../src/db/research-repository";
@@ -14,7 +15,7 @@ let db: Database;
 beforeEach(async () => {
   db = new Database(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  await runMigrationsFrom(db, new URL("../src/db/migrations", import.meta.url).pathname);
+  await runMigrationsFrom(db, fileURLToPath(new URL("../src/db/migrations", import.meta.url)));
 });
 afterEach(() => db.close());
 

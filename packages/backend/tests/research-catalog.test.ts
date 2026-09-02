@@ -44,7 +44,10 @@ function texts(value: unknown): readonly string[] {
 async function catalog(filename: string): Promise<JsonRecord> {
   const raw = await readFile(new URL(filename, DATA_ROOT), "utf8");
   const value: unknown = JSON.parse(raw);
-  expect(raw).toBe(`${JSON.stringify(value, null, 2)}\n`);
+  // The assertion is about canonical JSON formatting, not about which line
+  // ending the working copy happens to carry: with core.autocrlf=true these
+  // files are checked out CRLF on Windows.
+  expect(raw.replace(/\r\n/g, "\n")).toBe(`${JSON.stringify(value, null, 2)}\n`);
   expect(record(value)["schema_version"]).toBe(1);
   return record(value);
 }

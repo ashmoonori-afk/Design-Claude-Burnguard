@@ -23,6 +23,7 @@ import { analyzeLocalTree } from "../src/services/extraction-local-tree";
 import { listFilesRecursive } from "../src/services/extraction-path";
 import { readUploadManifest } from "../src/services/extraction-upload";
 import { classifyExtractionRecovery } from "../src/services/extraction-recovery-state";
+import { canCreateSymlink } from "./helpers/platform";
 
 const roots: string[] = [];
 
@@ -121,7 +122,7 @@ describe("seeded extraction restart reconciliation", () => {
     // Given
     const home = await root();
     const child = Bun.spawn([process.execPath, path.join(import.meta.dir, "fixtures/extraction-recovery-probe.ts")], {
-      env: { ...process.env, HOME: home }, stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, HOME: home, USERPROFILE: home }, stdout: "pipe", stderr: "pipe",
     });
     const exactExit = child.exited;
     const [stdout, stderr, exitCode] = await Promise.all([
@@ -129,10 +130,13 @@ describe("seeded extraction restart reconciliation", () => {
     ]);
 
     // When
+    // Assert the exit code before parsing: a crashed probe writes nothing to
+    // stdout, and `JSON.parse("")` would hide the child's stderr behind an
+    // "Unexpected EOF" syntax error.
+    expect(exitCode, stderr).toBe(0);
     const result: unknown = JSON.parse(stdout);
 
     // Then
-    expect(exitCode, stderr).toBe(0);
     expect(result).toMatchObject({
       orphan_row_removed: true,
       orphan_staging_removed: true,
@@ -297,7 +301,7 @@ describe("safe extraction publication", () => {
     expect(validate).toThrow(ExtractionSafetyError);
   });
 
-  test("Given a symlink asset escape When bundle is validated Then publication is rejected", async () => {
+  test.skipIf(!canCreateSymlink())("Given a symlink asset escape When bundle is validated Then publication is rejected", async () => {
     // Given
     const systemsRoot = await root();
     const outside = await root();

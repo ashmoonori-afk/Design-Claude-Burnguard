@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { fileURLToPath } from "node:url";
 import type { ResearchRequestV1, ResearchResultV1 } from "@bg/shared";
 import { runMigrationsFrom } from "../src/db/migrate";
 import { ResearchConflictError, ResearchCorruptionError, beginResearchFinalization, claimResearchSource, commitResearchResult, completeResearchSource, createResearchRun, evidenceSetDigest, failResearchSource, getResearchRun, listResearchSources, requestResearchCancellation, startResearchRun } from "../src/db/research-repository";
@@ -21,7 +22,7 @@ let nextId: () => string;
 beforeEach(async () => {
   db = new Database(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  await runMigrationsFrom(db, new URL("../src/db/migrations", import.meta.url).pathname);
+  await runMigrationsFrom(db, fileURLToPath(new URL("../src/db/migrations", import.meta.url)));
   const ids = ["run-1", "source-1", "source-2", "source-3"];
   nextId = () => ids.shift() ?? "unused";
 });

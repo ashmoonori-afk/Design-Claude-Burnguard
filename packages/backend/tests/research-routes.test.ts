@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ResearchDependencies } from "../src/services/research-orchestrator";
 import { runMigrationsFrom } from "../src/db/migrate";
 import { getResearchRun } from "../src/db/research-repository";
@@ -14,7 +15,7 @@ import { createProductionResearchDependencies } from "../src/routes/research";
 
 const fixtureRequest = { schema_version: 1, purposes: ["prototype.dashboard", "prototype.landing"], sources: [{ kind: "fixture", locator: "fixture-a" }, { kind: "fixture", locator: "fixture-b" }], limits: { concurrency: 2, per_source_timeout_ms: 1_000, max_sources: 8, max_bytes_per_source: 1_024 }, orchestrator_version: "research-v1", mode: "fixture", fixture_id: "mass-research-v1" } as const;
 let db: Database; let evidenceRoot = "";
-beforeEach(async () => { db = new Database(":memory:"); db.exec("PRAGMA foreign_keys = ON"); await runMigrationsFrom(db, new URL("../src/db/migrations", import.meta.url).pathname); evidenceRoot = await mkdtemp(path.join(tmpdir(), "burnguard-research-routes-")); });
+beforeEach(async () => { db = new Database(":memory:"); db.exec("PRAGMA foreign_keys = ON"); await runMigrationsFrom(db, fileURLToPath(new URL("../src/db/migrations", import.meta.url))); evidenceRoot = await mkdtemp(path.join(tmpdir(), "burnguard-research-routes-")); });
 afterEach(async () => { db.close(); await rm(evidenceRoot, { recursive: true, force: true }); });
 
 describe("research API", () => {
@@ -82,5 +83,7 @@ describe("mass research CLI", () => {
     const receipts = []; for (const [index, args] of scenarios.entries()) { const evidence = path.join(evidenceRoot, `case-${index}`); const child = Bun.spawn(["bun", "run", "scripts/qa/mass-research-dry-run.ts", ...args, "--evidence-dir", evidence], { cwd: root, stdout: "pipe", stderr: "pipe" }); expect(await child.exited, await new Response(child.stderr).text()).toBe(0); receipts.push(JSON.parse(await readFile(path.join(evidence, "receipt.json"), "utf8"))); }
     // Then
     expect(receipts[0]).toMatchObject({ ok: true, bounded_concurrency: true, cleanup: { complete: true } }); expect(receipts[0].digest).toMatch(/^[0-9a-f]{64}$/); expect(receipts[0].common_rules.length).toBeGreaterThan(0); expect(receipts[0].purpose_rules.length).toBeGreaterThan(0); expect(receipts[1]).toMatchObject({ ok: true, cleanup: { complete: true } }); expect(receipts[1].cases.every((item: { readonly passed: boolean }) => item.passed)).toBe(true);
-  });
+    // Spawns the QA runner over every fixture; the default 5 s budget is too
+    // tight for that much Windows file IO, and 30 s still fails a real hang.
+  }, 30_000);
 });

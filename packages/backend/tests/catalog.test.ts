@@ -8,6 +8,7 @@ import { systemsDir } from "../src/lib/paths";
 import { classifyApiRoute, createApp } from "../src/server";
 import { catalogPaths } from "../src/services/catalog-files";
 import { reconcileCatalogState } from "../src/services/catalog-lifecycle";
+import { canCreateSymlink } from "./helpers/platform";
 
 const app = createApp();
 const ids: string[] = [];
@@ -296,7 +297,11 @@ describe("catalog lineage and lifecycle", () => {
   });
 
   test("Given any canonical tree mismatch When duplicate starts Then no child state or staging is created", async () => {
+    const symlinkCapable = canCreateSymlink();
     for (const mutation of ["bytes", "extra", "missing", "symlink", "manifest-omission", "legacy-manifest"] as const) {
+      // Windows refuses unprivileged symlink() with EPERM (Developer Mode / elevation
+      // required); skip only this one mutation case there, everything else still runs.
+      if (mutation === "symlink" && !symlinkCapable) continue;
       const systemId = await seedSystem(`tree-${mutation}`, { receipt: true });
       const child = id(`tree-${mutation}-child`);
       const dir = path.join(systemsDir, systemId);

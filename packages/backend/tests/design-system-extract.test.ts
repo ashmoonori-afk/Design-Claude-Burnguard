@@ -69,7 +69,11 @@ describe("bounded extraction acquisition", () => {
     budget.dispose();
   });
 
-  test("Given a TERM-resistant owned child When its signal aborts Then KILL is reaped and an unrelated sentinel survives", async () => {
+  // Windows has no catchable terminate signal, so a TERM-resistant child
+  // cannot exist there: the process dies on the first request with code 143
+  // and the escalation to KILL this asserts never happens. The behaviour
+  // under test is POSIX-only, so skip rather than weaken the assertion.
+  test.skipIf(process.platform === "win32")("Given a TERM-resistant owned child When its signal aborts Then KILL is reaped and an unrelated sentinel survives", async () => {
     // Given
     const child = Bun.spawn([process.execPath, "-e", "process.on('SIGTERM',()=>{});console.log('READY');await new Promise(()=>{})"], { stdout: "pipe", stderr: "ignore" });
     const sentinel = Bun.spawn([process.execPath, "-e", "process.on('SIGTERM',()=>process.exit(0));console.log('READY');await new Promise(()=>{})"], { stdout: "pipe", stderr: "ignore" });
