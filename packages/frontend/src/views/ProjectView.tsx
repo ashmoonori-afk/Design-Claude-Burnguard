@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  ArtifactSummary,
   Comment,
   DesignAuditFinding,
   DesignAuditResult,
@@ -17,7 +18,6 @@ import type {
   FileInfo,
   NormalizedEvent,
   PatchFileRequest,
-  PatchFileResponse,
   ProjectDetail,
   SessionInfo,
 } from "@bg/shared";
@@ -30,7 +30,8 @@ import {
   listProjectFiles,
   refreshArtifacts,
 } from "@/api/project";
-import { apiFetch, ApiError } from "@/api/client";
+import { ApiError } from "@/api/client";
+import { isStaleIdentityError, readFileIdentity } from "@/lib/artifact-identity";
 import { getProjectDesignAudit, retryProjectDesignAudit } from "@/api/design-audit";
 import { restoreCheckpoint } from "@/api/checkpoints";
 import { getFileUndoInfo, patchProjectFile, undoLastFilePatch } from "@/api/files";
@@ -173,6 +174,7 @@ export default function ProjectView() {
   const seenEventIdsRef = useRef(new Set<string>());
   const latestEventTsRef = useRef<number | undefined>(undefined);
   const activeTabIdRef = useRef(activeTabId);
+  const openFileTabsRef = useRef<ArtifactTab[]>(openFileTabs);
   const sendPendingTimeoutRef = useRef<number | null>(null);
   const turnTouchedFilesRef = useRef(false);
 
@@ -209,6 +211,17 @@ export default function ProjectView() {
     refetchOnWindowFocus: false,
   });
   const invalidateDesignAudit = useCallback(() => queryClient.invalidateQueries({ queryKey: designAuditQueryKey }), [designAuditQueryKey, queryClient]);
+  // Every artifact write carries the revision/digest the user was looking at.
+  // A stale rejection means someone else moved the canvas: refetch identity
+  // and ask for one retry instead of showing the raw backend message.
+  const handleWriteError = useCallback((title: string, error: unknown) => {
+    if (isStaleIdentityError(error)) {
+      void queryClient.invalidateQueries({ queryKey: ["project", id, "artifacts"] });
+      pushToast({ title: "캔버스가 바뀌어서 다시 불러왔어요. 한 번 더 시도해 주세요", tone: "error" });
+      return;
+    }
+    pushToast({ title, body: error instanceof Error ? error.message : String(error), tone: "error" });
+  }, [id, pushToast, queryClient]);
   const replayQuery = useQuery({
     queryKey: ["session", sessionQuery.data?.id, "events"],
     queryFn: () => listSessionEvents(sessionQuery.data!.id),
@@ -343,7 +356,14 @@ export default function ProjectView() {
       y_pct: number;
       node_selector: string;
       slide_index: number | null;
-    }) => createProjectComment(id!, input),
+    }) => {
+      const artifact = requireLoadedArtifacts(artifactsQuery.data);
+      return createProjectComment(id!, {
+        ...input,
+        artifact_revision: artifact.current_revision,
+        artifact_digest: artifact.current_digest,
+      });
+    },
     onSuccess: (created) => {
       queryClient.setQueryData<Comment[]>(
         ["project", id, "comments"],
@@ -351,13 +371,7 @@ export default function ProjectView() {
       );
       setFocusedCommentId(created.id);
     },
-    onError: (error) => {
-      pushToast({
-        title: "코멘트를 만들지 못했어요",
-        body: error instanceof Error ? error.message : String(error),
-        tone: "error",
-      });
-    },
+    onError: (error) => handleWriteError("코멘트를 만들지 못했어요", error),
   });
 
   const updateCommentMutation = useMutation({
@@ -409,21 +423,20 @@ export default function ProjectView() {
   });
 
   const tweaksMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       relPath,
       patch,
     }: {
       relPath: string;
       patch: PatchFileRequest;
+      history?: TweaksHistoryIntent;
     }) =>
-      apiFetch<PatchFileResponse>(
-        `/api/projects/${id}/fs/${encodeRelPath(relPath)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(patch),
-        },
-      ),
+      patchProjectFile(id!, relPath, {
+        ...(await readFileIdentity(id!, relPath, patch.node_bg_id)),
+        ...patch,
+      }),
     onSuccess: (_data, variables) => {
+      applyTweaksHistory(variables.history, tweaksUndoRef, tweaksRedoRef);
       const bgId = variables.patch.node_bg_id;
       setTweaksTarget((current) =>
         current && current.bg_id === bgId && variables.patch.styles
@@ -438,30 +451,21 @@ export default function ProjectView() {
       void invalidateDesignAudit();
       setRefreshTick((value) => value + 1);
     },
-    onError: (error) => {
-      pushToast({
-        title: "스타일을 적용하지 못했어요",
-        body: error instanceof Error ? error.message : String(error),
-        tone: "error",
-      });
-    },
+    onError: (error) => handleWriteError("스타일을 적용하지 못했어요", error),
   });
 
   const patchFileMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       relPath,
       patch,
     }: {
       relPath: string;
       patch: PatchFileRequest;
     }) =>
-      apiFetch<PatchFileResponse>(
-        `/api/projects/${id}/fs/${encodeRelPath(relPath)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(patch),
-        },
-      ),
+      patchProjectFile(id!, relPath, {
+        ...(await readFileIdentity(id!, relPath, patch.node_bg_id)),
+        ...patch,
+      }),
     onSuccess: async (_updated, variables) => {
       setEditTarget((current) =>
         current && current.bg_id === variables.patch.node_bg_id
@@ -478,13 +482,7 @@ export default function ProjectView() {
       ]);
       setRefreshTick((value) => value + 1);
     },
-    onError: (error) => {
-      pushToast({
-        title: "편집을 저장하지 못했어요",
-        body: error instanceof Error ? error.message : String(error),
-        tone: "error",
-      });
-    },
+    onError: (error) => handleWriteError("편집을 저장하지 못했어요", error),
   });
 
   useEffect(() => {
@@ -499,6 +497,10 @@ export default function ProjectView() {
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
+
+  useEffect(() => {
+    openFileTabsRef.current = openFileTabs;
+  }, [openFileTabs]);
 
   useEffect(() => {
     clearSendPending(sendPendingTimeoutRef, setSendPending);
@@ -534,7 +536,13 @@ export default function ProjectView() {
   }, [activeTabId]);
 
   const restoreMutation = useMutation({
-    mutationFn: (turnId: string) => restoreCheckpoint(id!, turnId),
+    mutationFn: (turnId: string) => {
+      const artifact = requireLoadedArtifacts(artifactsQuery.data);
+      return restoreCheckpoint(id!, turnId, {
+        expected_revision: artifact.current_revision,
+        expected_artifact_digest: artifact.current_digest,
+      });
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", id, "files"] }),
@@ -544,30 +552,27 @@ export default function ProjectView() {
       setRefreshTick((value) => value + 1);
       pushToast({ title: "이전 턴으로 되돌렸어요", tone: "info" });
     },
-    onError: (error) => {
-      pushToast({
-        title: "턴을 되돌리지 못했어요",
-        body: error instanceof Error ? error.message : String(error),
-        tone: "error",
-      });
-    },
+    onError: (error) => handleWriteError("턴을 되돌리지 못했어요", error),
   });
 
   const putDrawsMutation = useMutation({
     mutationFn: ({
       relPath,
       svg,
+      viewport,
     }: {
       relPath: string;
       svg: string;
-    }) => putProjectDraws(id!, relPath, svg),
-    onError: (err) => {
-      pushToast({
-        title: "그리기를 저장하지 못했어요",
-        body: err instanceof Error ? err.message : String(err),
-        tone: "error",
+      viewport: string;
+    }) => {
+      const artifact = requireLoadedArtifacts(artifactsQuery.data);
+      return putProjectDraws(id!, relPath, svg, {
+        revision: artifact.current_revision,
+        digest: artifact.current_digest,
+        viewport,
       });
     },
+    onError: (err) => handleWriteError("그리기를 저장하지 못했어요", err),
   });
 
   // Load saved draws for the current file tab. Computed inline from
@@ -659,21 +664,25 @@ export default function ProjectView() {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod || e.key.toLowerCase() !== "z") return;
       e.preventDefault();
+      // Peek, don't pop: the frame only moves between the stacks once the
+      // server has accepted the inverse patch (see applyTweaksHistory). That
+      // makes a second keypress mid-flight read the same frame, so ignore it.
+      if (tweaksMutation.isPending) return;
       if (e.shiftKey) {
-        const frame = tweaksRedoRef.current.pop();
+        const frame = tweaksRedoRef.current.at(-1);
         if (!frame) return;
-        tweaksUndoRef.current.push(frame);
         tweaksMutation.mutate({
           relPath: frame.relPath,
           patch: { node_bg_id: frame.bg_id, styles: frame.forward },
+          history: { kind: "redo" },
         });
       } else {
-        const frame = tweaksUndoRef.current.pop();
+        const frame = tweaksUndoRef.current.at(-1);
         if (!frame) return;
-        tweaksRedoRef.current.push(frame);
         tweaksMutation.mutate({
           relPath: frame.relPath,
           patch: { node_bg_id: frame.bg_id, styles: frame.inverse },
+          history: { kind: "undo" },
         });
       }
     };
@@ -748,6 +757,27 @@ export default function ProjectView() {
           void queryClient.invalidateQueries({
             queryKey: ["project", id, "files"],
           });
+        }
+
+        // A CLI turn never emits file.changed — the backend collapses it into
+        // one committed artifact.operation, which is what refreshes the
+        // canvas and the file tabs after a turn (T2).
+        if (event.type === "artifact.operation" && event.outcome === "committed") {
+          turnTouchedFilesRef.current = true;
+          if (id) {
+            openChangedFilesAsTabs(
+              event.changedPaths,
+              openFileTabsRef.current.length > 0,
+              setOpenFileTabs,
+              setActiveTabId,
+            );
+            if (event.changedPaths.includes(activeTabIdRef.current)) {
+              setRefreshTick((value) => value + 1);
+            }
+            void queryClient.invalidateQueries({
+              queryKey: ["project", id, "files"],
+            });
+          }
         }
 
         // No sessionQuery invalidation on usage.delta — applyEventToSession
@@ -1191,12 +1221,14 @@ export default function ProjectView() {
                 const rect = document
                   .querySelector("iframe")
                   ?.getBoundingClientRect();
-                const svg = serializeDraws(
-                  rect?.width ?? 1280,
-                  rect?.height ?? 720,
-                  shapes,
-                );
-                putDrawsMutation.mutate({ relPath: activeRelPath, svg });
+                const width = rect?.width ?? 1280;
+                const height = rect?.height ?? 720;
+                const svg = serializeDraws(width, height, shapes);
+                putDrawsMutation.mutate({
+                  relPath: activeRelPath,
+                  svg,
+                  viewport: `${Math.round(width)}x${Math.round(height)}`,
+                });
               }}
             />
             <ModePanel
@@ -1266,18 +1298,15 @@ export default function ProjectView() {
               onApplyTweak={(patch) => {
                 if (!activeRelPath || !tweaksTarget) return;
                 setTweakReview(buildTweakChangePreview(tweaksTarget, patch));
-                const frame = buildTweaksUndoFrame(
-                  tweaksTarget,
-                  activeRelPath,
-                  patch,
-                );
-                tweaksUndoRef.current.push(frame);
-                tweaksRedoRef.current = [];
                 tweaksMutation.mutate({
                   relPath: activeRelPath,
                   patch: {
                     node_bg_id: tweaksTarget.bg_id,
                     styles: patch,
+                  },
+                  history: {
+                    kind: "apply",
+                    frame: buildTweaksUndoFrame(tweaksTarget, activeRelPath, patch),
                   },
                 });
               }}
@@ -1287,18 +1316,19 @@ export default function ProjectView() {
                 if (keys.length === 0) return;
                 const patch: Record<string, null> = {};
                 for (const k of keys) patch[k] = null;
-                const frame = buildTweaksUndoFrame(
-                  tweaksTarget,
-                  activeRelPath,
-                  patch as Partial<Record<TweaksStyleKey, string | null>>,
-                );
-                tweaksUndoRef.current.push(frame);
-                tweaksRedoRef.current = [];
                 tweaksMutation.mutate({
                   relPath: activeRelPath,
                   patch: {
                     node_bg_id: tweaksTarget.bg_id,
                     styles: patch,
+                  },
+                  history: {
+                    kind: "apply",
+                    frame: buildTweaksUndoFrame(
+                      tweaksTarget,
+                      activeRelPath,
+                      patch as Partial<Record<TweaksStyleKey, string | null>>,
+                    ),
                   },
                 });
               }}
@@ -1471,11 +1501,44 @@ function openFileAsTab(
   setActiveTabId(relPath);
 }
 
-function encodeRelPath(relPath: string) {
-  return relPath
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
+/**
+ * Turn-completion tab sync. A finished turn arrives as one
+ * `artifact.operation` event listing every changed path, so open the HTML
+ * ones as tabs but leave the user's active tab alone unless nothing is open.
+ */
+function openChangedFilesAsTabs(
+  relPaths: readonly string[],
+  hasOpenFileTab: boolean,
+  setOpenFileTabs: Dispatch<SetStateAction<ArtifactTab[]>>,
+  setActiveTabId: Dispatch<SetStateAction<string>>,
+) {
+  const paths = relPaths.filter((relPath) => /\.html?$/i.test(relPath));
+  if (paths.length === 0) return;
+  setOpenFileTabs((current) => {
+    const next = current.slice();
+    for (const relPath of paths) {
+      if (next.some((tab) => tab.relPath === relPath)) continue;
+      next.push({
+        id: relPath,
+        title: relPath.split("/").pop() ?? relPath,
+        kind: "file",
+        relPath,
+        closeable: true,
+      });
+    }
+    return next.length === current.length ? current : next;
+  });
+  if (!hasOpenFileTab) setActiveTabId(paths[0]!);
+}
+
+/** Guard for writes that must carry the canvas identity the user saw. */
+function requireLoadedArtifacts(
+  artifacts: ArtifactSummary | undefined,
+): ArtifactSummary {
+  if (!artifacts) {
+    throw new Error("캔버스 정보를 아직 불러오지 못했어요. 잠시 후 다시 시도해 주세요");
+  }
+  return artifacts;
 }
 
 /**
@@ -1488,6 +1551,33 @@ interface TweaksUndoFrame {
   relPath: string;
   forward: Partial<Record<TweaksStyleKey, string | null>>;
   inverse: Partial<Record<TweaksStyleKey, string | null>>;
+}
+
+type TweaksHistoryIntent =
+  | { readonly kind: "apply"; readonly frame: TweaksUndoFrame }
+  | { readonly kind: "undo" }
+  | { readonly kind: "redo" };
+
+/**
+ * Moves the undo/redo stacks only after the server accepted the patch — a
+ * rejected PATCH must not leave a frame describing a change that never
+ * landed.
+ */
+function applyTweaksHistory(
+  intent: TweaksHistoryIntent | undefined,
+  undoStack: MutableRefObject<TweaksUndoFrame[]>,
+  redoStack: MutableRefObject<TweaksUndoFrame[]>,
+) {
+  if (intent === undefined) return;
+  if (intent.kind === "apply") {
+    undoStack.current.push(intent.frame);
+    redoStack.current = [];
+    return;
+  }
+  const from = intent.kind === "undo" ? undoStack : redoStack;
+  const to = intent.kind === "undo" ? redoStack : undoStack;
+  const frame = from.current.pop();
+  if (frame !== undefined) to.current.push(frame);
 }
 
 function buildTweaksUndoFrame(
