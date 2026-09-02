@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import type {
   BackendId,
   CreateProjectRequest,
@@ -16,6 +15,7 @@ import ProjectBriefFields, {
   ToggleRow,
 } from "@/components/home/ProjectBriefFields";
 import { GraphicCanvasFields } from "@/components/home/GraphicCanvasFields";
+import { apiErrorCopy } from "@/lib/error-copy";
 import {
   INITIAL_BRIEF_FORM,
   PROBLEM_MESSAGE,
@@ -42,14 +42,19 @@ export default function NewProjectPanel({
   type,
   designSystems,
   defaultBackend,
+  systemsLoading,
+  systemsError,
+  onRetrySystems,
   onCreated,
 }: {
   type: ProjectType;
   designSystems: DesignSystemSummary[];
   defaultBackend: BackendId;
+  systemsLoading: boolean;
+  systemsError: Error | null;
+  onRetrySystems: () => void;
   onCreated: (project: CreateProjectResponse) => void;
 }) {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pushToast = useUIStore((s) => s.pushToast);
   const [form, setForm] = useState<BriefForm>(INITIAL_BRIEF_FORM);
@@ -72,14 +77,12 @@ export default function NewProjectPanel({
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       onCreated(created);
-      navigate(`/projects/${created.id}`);
       setForm(INITIAL_BRIEF_FORM);
       setPickedSystemId(null);
       setError(null);
     },
     onError: (err) => {
-      const message =
-        err instanceof Error ? err.message : "프로젝트를 만들지 못했어요.";
+      const message = apiErrorCopy(err);
       setError(message);
       pushToast({
         title: "프로젝트를 만들지 못했어요",
@@ -124,31 +127,57 @@ export default function NewProjectPanel({
           <select
             id="design-system"
             value={designSystemId ?? ""}
-            disabled={disabled || selectable.length === 0}
+            disabled={
+              disabled ||
+              systemsLoading ||
+              systemsError !== null ||
+              selectable.length === 0
+            }
             onChange={(e) => setPickedSystemId(e.target.value || null)}
             className={PROJECT_CONTROL_CLASS}
           >
             <option value="">
-              {selectable.length === 0
-                ? isTemplate
-                  ? "사용할 수 있는 템플릿이 없어요"
-                  : "사용할 수 있는 디자인 시스템이 없어요"
-                : isTemplate
-                  ? "템플릿을 선택하세요"
-                  : "디자인 시스템 없이 시작"}
+              {systemsLoading
+                ? "불러오는 중..."
+                : systemsError
+                  ? "불러오지 못했어요"
+                  : selectable.length === 0
+                    ? isTemplate
+                      ? "사용할 수 있는 템플릿이 없어요"
+                      : "사용할 수 있는 디자인 시스템이 없어요"
+                    : isTemplate
+                      ? "템플릿을 선택하세요"
+                      : "디자인 시스템 없이 시작"}
             </option>
-            {selectable.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
+            {systemsLoading || systemsError
+              ? null
+              : selectable.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
           </select>
+          {systemsError ? (
+            <button
+              type="button"
+              onClick={onRetrySystems}
+              className="text-[11px] font-medium text-accent underline underline-offset-2 hover:no-underline"
+            >
+              다시 시도
+            </button>
+          ) : null}
         </div>
 
         <p className="text-[11px] leading-relaxed text-foreground/80">
-          {isTemplate
-            ? "게시된 디자인 시스템을 템플릿으로 사용할 수 있어요."
-            : "게시된 디자인 시스템만 목록에 나와요. 없이도 시작할 수 있어요."}
+          {systemsLoading
+            ? "디자인 시스템을 불러오는 중이에요."
+            : systemsError
+              ? "디자인 시스템을 불러오지 못했어요. 로컬 서버가 켜져 있는지 확인해 주세요."
+              : selectable.length === 0
+                ? `${isTemplate ? "게시된 템플릿이 아직 없어요" : "게시된 디자인 시스템이 아직 없어요"}. 메인 화면 위쪽의 '디자인 시스템' 탭에서 먼저 만들어 보세요.`
+                : isTemplate
+                  ? "게시된 디자인 시스템을 템플릿으로 사용할 수 있어요."
+                  : "게시된 디자인 시스템만 목록에 나와요. 없이도 시작할 수 있어요."}
         </p>
 
         {isGraphic && (

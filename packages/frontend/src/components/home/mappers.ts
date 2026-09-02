@@ -54,12 +54,23 @@ export function projectToCard(p: ProjectSummary): CardViewModel {
   return {
     id: p.id,
     name,
-    subtitle: `${projectTypeLabel(p.type)} · ${formatRelativeDay(p.updated_at)}`,
+    subtitle: `${projectTypeDisplayLabel(p.type)} · ${formatRelativeDay(p.updated_at)}`,
     href: `/projects/${p.id}`,
     tintClass: PROJECT_TINTS[p.type] ?? "bg-stone-100",
     thumbnail: p.thumbnail_path,
-    isTemplate: p.type === "from_template",
   };
+}
+
+/**
+ * The "템플릿" badge and label belong to design-system cards
+ * (`is_template`), not to projects — a project merely created from a
+ * template still renders under one of the four real project types, so
+ * `from_template` (which the render pipeline itself treats like
+ * `other`, see services/exports.ts) falls back to "기타" here instead
+ * of leaking the shared "템플릿" label onto a project card.
+ */
+function projectTypeDisplayLabel(type: string): string {
+  return type === "from_template" ? "기타" : projectTypeLabel(type);
 }
 
 export function systemToCard(s: DesignSystemSummary, index = 0): CardViewModel {

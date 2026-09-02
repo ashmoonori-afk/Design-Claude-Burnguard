@@ -31,10 +31,20 @@ export async function listHomeProjects(
     .orderBy(desc(projectsTable.updatedAt));
 
   const filtered =
-    tab === "examples" ? rows.filter(isExampleProject) : rows;
+    tab === "examples"
+      ? rows.filter(isExampleProject)
+      : tab === "mine"
+        ? rows.filter((row) => !isExampleProject(row))
+        : rows;
+
+  // "recent" is a fixed-size activity glance, not a paginated listing —
+  // it always tops out at the 12 most recently updated rows so its
+  // meaning stays distinct from "mine" (every non-example project the
+  // user owns) regardless of the caller's requested page size.
+  const effectiveLimit = tab === "recent" ? Math.min(limit, 12) : limit;
 
   return {
-    items: filtered.slice(offset, offset + limit).map(
+    items: filtered.slice(offset, offset + effectiveLimit).map(
       ({ current_revision, current_digest, ...summary }) => ({
         ...summary,
         thumbnail_path: projectThumbnailUrl({
