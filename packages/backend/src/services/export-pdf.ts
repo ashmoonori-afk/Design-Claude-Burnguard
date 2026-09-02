@@ -7,7 +7,7 @@ import { validatePdf, type PdfValidation } from "./export-pdf-validation";
 
 export class PdfExportError extends Error {
   readonly name = "PdfExportError";
-  constructor(readonly code: "chromium_not_installed" | "deck_not_ready" | "render_failed", message: string) { super(message); }
+  constructor(readonly code: "chromium_not_installed" | "chromium_launch_timeout" | "deck_not_ready" | "render_failed", message: string) { super(message); }
 }
 
 export async function renderDeckToPdf(input: {

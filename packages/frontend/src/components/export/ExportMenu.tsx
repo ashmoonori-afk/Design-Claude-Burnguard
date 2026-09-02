@@ -30,6 +30,8 @@ import ExportStatusList from "./ExportStatusList";
 import {
   buildExportMenuModel,
   buildExportRetryRequest,
+  classifyChromiumFailure,
+  CHROMIUM_FAILURE_MESSAGE,
 } from "./export-options";
 
 const OPTION_ICON: Record<ExportFormat, LucideIcon> = {
@@ -113,14 +115,14 @@ export default function ExportMenu({ projectId, projectType, projectOptionsJson,
       const previous = lastStatusRef.current.get(job.id);
       lastStatusRef.current.set(job.id, job.status);
       if (job.status === "failed" && previous !== "failed") {
-        const looksLikeChromium = job.error_message?.toLowerCase().includes("chromium");
+        const chromiumFailure = classifyChromiumFailure(job.error_message);
         const auditFailed = isDesignAuditExportFailure(job);
         pushToast({
           title: `내보내기에 실패했어요 (${formatLabel(job.format)})`,
           body: auditFailed
             ? "내보내기 전 품질 점검에서 고쳐야 할 문제가 발견됐어요."
-            : looksLikeChromium
-              ? 'Chromium이 설치되어 있지 않아요. 설정 → "내보내기용 Chromium" → 설치를 실행한 뒤 다시 내보내 주세요.'
+            : chromiumFailure !== null
+              ? CHROMIUM_FAILURE_MESSAGE[chromiumFailure]
               : (job.error_message ?? "알 수 없는 오류예요."),
           tone: "error",
         });

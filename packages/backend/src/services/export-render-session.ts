@@ -10,7 +10,7 @@ export type RenderPhase = "browser_ready" | "navigated" | "content_ready";
 
 export class RenderSessionError extends Error {
   readonly name = "RenderSessionError";
-  constructor(readonly code: "chromium_not_installed" | "render_failed" | "deck_not_ready" | "render_aborted", message: string, readonly findings: readonly RenderFinding[] = []) { super(message); }
+  constructor(readonly code: "chromium_not_installed" | "chromium_launch_timeout" | "render_failed" | "deck_not_ready" | "render_aborted", message: string, readonly findings: readonly RenderFinding[] = []) { super(message); }
 }
 
 export async function openRenderSession(input: { readonly stagedDir: string; readonly entrypoint: string; readonly viewport: RenderViewport; readonly deck: boolean; readonly signal: AbortSignal; readonly strict?: boolean; readonly onPhase?: (phase: RenderPhase) => void }): Promise<RenderSession> {
@@ -38,9 +38,39 @@ export async function openRenderSession(input: { readonly stagedDir: string; rea
   }
 }
 
-async function launchChromium(signal: AbortSignal): Promise<Browser> {
-  const errors: string[] = [];
-  for (const options of [{ headless: true }, { headless: true, channel: "chrome" }, { headless: true, channel: "msedge" }] as const) { if (signal.aborted) throw new RenderSessionError("render_aborted", "Render was cancelled"); try { return await chromium.launch(options); } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); } }
-  throw new RenderSessionError("chromium_not_installed", errors.join("\n"));
+/** Some hosts (Bun on Windows) start Chromium but never complete the Playwright handshake, so every attempt is capped. */
+export const CHROMIUM_LAUNCH_TIMEOUT_MS = 20_000;
+type ChromiumLaunchAttempt = { readonly headless: true; readonly channel?: string };
+export type ChromiumLauncher = (options: ChromiumLaunchAttempt) => Promise<Browser>;
+type LaunchOutcome = { readonly kind: "browser"; readonly browser: Browser } | { readonly kind: "failed"; readonly error: unknown } | { readonly kind: "timeout" } | { readonly kind: "aborted" };
+const LAUNCH_ATTEMPTS: readonly ChromiumLaunchAttempt[] = [{ headless: true }, { headless: true, channel: "chrome" }, { headless: true, channel: "msedge" }];
+
+export async function launchChromium(signal: AbortSignal, launch: ChromiumLauncher = (options) => chromium.launch(options)): Promise<Browser> {
+  const timeoutMs = chromiumLaunchTimeoutMs(); const errors: string[] = []; const tried: string[] = []; let timedOut = false;
+  for (const options of LAUNCH_ATTEMPTS) {
+    if (signal.aborted) throw new RenderSessionError("render_aborted", "Render was cancelled");
+    const channel = options.channel ?? "bundled"; tried.push(channel); const attempt = launch(options); const outcome = await settleLaunch(attempt, timeoutMs, signal);
+    if (outcome.kind === "browser") return outcome.browser;
+    // A timed out or aborted attempt can still connect later: close whatever process it ends up owning.
+    if (outcome.kind !== "failed") void attempt.then((browser) => { void browser.close().catch(() => undefined); }, () => undefined);
+    if (outcome.kind === "aborted") throw new RenderSessionError("render_aborted", "Render was cancelled");
+    if (outcome.kind === "timeout") { timedOut = true; errors.push(`${channel}: no Chromium connection within ${timeoutMs}ms`); } else errors.push(`${channel}: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`);
+  }
+  const detail = `tried channels: ${tried.join(", ")}\n${errors.join("\n")}`;
+  if (timedOut) throw new RenderSessionError("chromium_launch_timeout", `chromium_launch_timeout: Chromium did not finish launching\n${detail}`);
+  throw new RenderSessionError("chromium_not_installed", `chromium_not_installed: Chromium could not be launched\n${detail}`);
+}
+
+function chromiumLaunchTimeoutMs(): number { const override = Number(process.env.BG_CHROMIUM_LAUNCH_TIMEOUT_MS); return Number.isFinite(override) && override > 0 ? override : CHROMIUM_LAUNCH_TIMEOUT_MS; }
+
+/** Resolves on the first of launch, timeout or abort, and never leaves a timer or listener behind. */
+function settleLaunch(attempt: Promise<Browser>, timeoutMs: number, signal: AbortSignal): Promise<LaunchOutcome> {
+  return new Promise<LaunchOutcome>((resolve) => {
+    let settled = false; let timer: ReturnType<typeof setTimeout> | null = null;
+    const onAbort = (): void => { finish({ kind: "aborted" }); };
+    const finish = (outcome: LaunchOutcome): void => { if (settled) return; settled = true; if (timer !== null) clearTimeout(timer); signal.removeEventListener("abort", onAbort); resolve(outcome); };
+    timer = setTimeout(() => { finish({ kind: "timeout" }); }, timeoutMs); signal.addEventListener("abort", onAbort, { once: true });
+    attempt.then((browser) => { finish({ kind: "browser", browser }); }, (error: unknown) => { finish({ kind: "failed", error }); });
+  });
 }
 function sanitizeUrl(url: URL): string { return `${url.protocol}//${url.host}${url.pathname}`; }

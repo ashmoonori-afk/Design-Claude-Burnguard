@@ -38,6 +38,7 @@ export async function copyProjectIntoBundle(
 export class HandoffExportError extends Error {
   readonly code:
     | "chromium_not_installed"
+    | "chromium_launch_timeout"
     | "artifact_not_ready"
     | "render_failed";
 
