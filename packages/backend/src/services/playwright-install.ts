@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import type { PlaywrightInstallStatus } from "@bg/shared";
 
 const MAX_TAIL = 120;
@@ -13,8 +14,38 @@ let status: PlaywrightInstallStatus = {
 
 let runningProc: ReturnType<typeof Bun.spawn> | null = null;
 
+/**
+ * A restart resets the in-memory install state to `idle`, which the Settings
+ * card reads as "not installed" even when Chromium is on disk. The browser is
+ * probed off the request path — `getPlaywrightInstallStatus` is synchronous,
+ * and playwright-core is imported lazily so a probe failure costs nothing —
+ * and a present executable is reported as an already finished install.
+ */
+let chromiumOnDisk = false;
+let probe: Promise<void> | null = null;
+
+function probeChromiumOnDisk(): Promise<void> {
+  probe ??= (async () => {
+    try {
+      const { chromium } = await import("playwright-core");
+      chromiumOnDisk = (await stat(chromium.executablePath())).isFile();
+    } catch {
+      chromiumOnDisk = false;
+    } finally {
+      probe = null;
+    }
+  })();
+  return probe;
+}
+
+// Warmed at import: the Settings card is read once per open, so the answer has
+// to be ready before the first read rather than after it.
+void probeChromiumOnDisk();
+
 export function getPlaywrightInstallStatus(): PlaywrightInstallStatus {
-  return { ...status, tail: [...status.tail] };
+  if (status.state !== "idle") return { ...status, tail: [...status.tail] };
+  void probeChromiumOnDisk();
+  return { ...status, state: chromiumOnDisk ? "success" : "idle", tail: [...status.tail] };
 }
 
 /**

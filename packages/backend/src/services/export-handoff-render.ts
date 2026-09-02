@@ -22,7 +22,7 @@ export async function renderHandoffBundle(input: {
   const { openRenderSession, RenderSessionError } = await import("./export-render-session");
   let session;
   try { session = await openRenderSession({ stagedDir: bundleSourceDir, entrypoint: input.entrypoint, viewport: { width: 1280, height: 720, dpr: 1 }, deck: input.isDeck, signal: input.signal ?? new AbortController().signal }); }
-  catch (error) { if (error instanceof RenderSessionError) throw new HandoffExportError(error.code === "deck_not_ready" ? "artifact_not_ready" : error.code === "chromium_not_installed" ? "chromium_not_installed" : "render_failed", error.message); throw error; }
+  catch (error) { if (error instanceof RenderSessionError) throw new HandoffExportError(error.code === "deck_not_ready" ? "artifact_not_ready" : error.code === "chromium_not_installed" ? "chromium_not_installed" : error.code === "chromium_launch_timeout" ? "chromium_launch_timeout" : "render_failed", error.message); throw error; }
   try {
     const page = session.page;
     if (input.isDeck) await page.addStyleTag({ content: "[data-deck-nav],[data-deck-nav-style]{display:none!important}[data-slide]{display:block!important}" });

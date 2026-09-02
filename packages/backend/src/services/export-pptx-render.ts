@@ -14,7 +14,7 @@ export async function renderDeckToPptx(input: {
   const { openRenderSession, RenderSessionError } = await import("./export-render-session");
   let session;
   try { session = await openRenderSession({ stagedDir: input.stagedDir, entrypoint: input.entrypoint, viewport: { width: 1280, height: 720, dpr: 1 }, deck: true, signal }); }
-  catch (error) { if (error instanceof RenderSessionError) throw new PptxExportError(error.code === "deck_not_ready" ? "deck_not_ready" : error.code === "chromium_not_installed" ? "chromium_not_installed" : "render_failed", error.message); throw error; }
+  catch (error) { if (error instanceof RenderSessionError) throw new PptxExportError(error.code === "deck_not_ready" ? "deck_not_ready" : error.code === "chromium_not_installed" ? "chromium_not_installed" : error.code === "chromium_launch_timeout" ? "chromium_launch_timeout" : "render_failed", error.message); throw error; }
   try {
     const page = session.page; await page.addStyleTag({ content: PRINT_ALL_SLIDES_CSS });
     const value: unknown = await page.evaluate(`(${EXTRACT_SLIDES_FN})()`);

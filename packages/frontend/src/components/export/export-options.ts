@@ -21,6 +21,25 @@ export type ExportMenuModel =
       readonly message: string;
     };
 
+export type ChromiumFailure = "launch_timeout" | "not_installed";
+
+/**
+ * Export attempts report Chromium trouble as the render error message, which
+ * carries the backend error code. The bare "chromium" substring stays as the
+ * fallback for older messages that predate the codes.
+ */
+export function classifyChromiumFailure(errorMessage: string | null): ChromiumFailure | null {
+  if (errorMessage === null) return null;
+  if (errorMessage.includes("chromium_launch_timeout")) return "launch_timeout";
+  if (errorMessage.includes("chromium_not_installed")) return "not_installed";
+  return errorMessage.toLowerCase().includes("chromium") ? "not_installed" : null;
+}
+
+export const CHROMIUM_FAILURE_MESSAGE: Record<ChromiumFailure, string> = {
+  launch_timeout: "이 환경에서는 Chromium 렌더링을 완료하지 못했어요. HTML ZIP 내보내기는 계속 쓸 수 있어요.",
+  not_installed: 'Chromium이 설치되어 있지 않아요. 설정 → "내보내기용 Chromium" → 설치를 실행한 뒤 다시 내보내 주세요.',
+};
+
 export type ExportRetryRequest = {
   readonly format: ExportFormat;
   readonly options?: ExportOptions;

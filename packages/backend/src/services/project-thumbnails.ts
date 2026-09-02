@@ -17,6 +17,17 @@ const RENDERER_VERSION = 1;
 // them at the project root would change the artifact digest that keys them.
 const CACHE_SEGMENTS = [".meta", "thumbnails"] as const;
 
+/** Home opens with a full grid of cold cards: never launch more than this many Chromium renders at once. */
+const MAX_CONCURRENT_RENDERS = 2;
+
+/** Once Chromium cannot launch at all, every remaining card would repeat the same slow failure. */
+const CHROMIUM_UNAVAILABLE_COOLDOWN_MS = 60_000;
+
+const inFlightRenders = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
+const waitingRenders: Array<() => void> = [];
+let activeRenders = 0;
+let chromiumUnavailableUntil = 0;
+
 export type ThumbnailRenderRequest = {
   readonly stagedDir: string;
   readonly entrypoint: string;
@@ -79,7 +90,9 @@ export async function loadProjectThumbnail(
   const cached = await readThumbnailFile(cachePath);
   if (cached !== null) return { kind: "ready", bytes: cached, etag: `"${identity}"` };
 
-  const rendered = await renderThumbnailFile({
+  if (Date.now() < chromiumUnavailableUntil) return { kind: "unavailable", code: "thumbnail_unavailable" };
+
+  const rendered = await renderThumbnailOnce(cachePath, {
     request: {
       stagedDir: projectDir,
       entrypoint: project.entrypoint,
@@ -92,6 +105,32 @@ export async function loadProjectThumbnail(
   });
   if (rendered === null) return { kind: "unavailable", code: "thumbnail_unavailable" };
   return { kind: "ready", bytes: rendered, etag: `"${identity}"` };
+}
+
+/** Coalesces concurrent misses on one cache entry so a card that is already rendering is never rendered twice. */
+function renderThumbnailOnce(cacheKey: string, input: {
+  readonly request: ThumbnailRenderRequest;
+  readonly render: ThumbnailRenderer;
+  readonly temporaryId: () => string;
+}): Promise<Uint8Array<ArrayBuffer> | null> {
+  const existing = inFlightRenders.get(cacheKey);
+  if (existing !== undefined) return existing;
+  const pending = withRenderSlot(() => renderThumbnailFile(input)).finally(() => { inFlightRenders.delete(cacheKey); });
+  inFlightRenders.set(cacheKey, pending);
+  return pending;
+}
+
+/** Hands a freed slot straight to the next waiter so the cap can never be oversubscribed. */
+async function withRenderSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activeRenders >= MAX_CONCURRENT_RENDERS) await new Promise<void>((resolve) => { waitingRenders.push(resolve); });
+  else activeRenders += 1;
+  try {
+    return await run();
+  } finally {
+    const next = waitingRenders.shift();
+    if (next === undefined) activeRenders -= 1;
+    else next();
+  }
 }
 
 /** Renders into a sibling temporary file and publishes it with an atomic rename. */
@@ -110,11 +149,24 @@ async function renderThumbnailFile(input: {
     await rename(temporaryPath, cachePath);
     return bytes;
   } catch (error) {
-    if (error instanceof Error) return null;
+    if (error instanceof Error) {
+      if (isChromiumUnavailable(error)) chromiumUnavailableUntil = Date.now() + chromiumCooldownMs();
+      return null;
+    }
     throw error;
   } finally {
     await rm(temporaryPath, { force: true });
   }
+}
+
+/** Only a launch failure means "no Chromium here" — a per-project render failure must not silence the whole grid. */
+function isChromiumUnavailable(error: Error): boolean {
+  return "code" in error && (error.code === "chromium_launch_timeout" || error.code === "chromium_not_installed");
+}
+
+function chromiumCooldownMs(): number {
+  const override = Number(process.env.BG_THUMBNAIL_CHROMIUM_COOLDOWN_MS);
+  return Number.isFinite(override) && override > 0 ? override : CHROMIUM_UNAVAILABLE_COOLDOWN_MS;
 }
 
 /** Returns the PNG bytes only when the file exists and carries the exact expected image. */
