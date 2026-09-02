@@ -52,6 +52,10 @@ export default {
           DEFAULT: "rgb(var(--card) / <alpha-value>)",
           foreground: "rgb(var(--card-foreground) / <alpha-value>)",
         },
+        popover: {
+          DEFAULT: "rgb(var(--popover) / <alpha-value>)",
+          foreground: "rgb(var(--popover-foreground) / <alpha-value>)",
+        },
         // Raw brand palette — mirrors the CSS custom properties in
         // `src/index.css`. Use these (e.g. `text-brand-500`) when a
         // component explicitly wants a brand colour outside the
@@ -103,6 +107,11 @@ export default {
         "app-2": "0 2px 4px rgba(28, 43, 54, 0.08), 0 1px 2px rgba(28, 43, 54, 0.04)",
         "app-3": "0 6px 16px rgba(28, 43, 54, 0.10), 0 2px 4px rgba(28, 43, 54, 0.05)",
         "app-4": "0 16px 32px rgba(28, 43, 54, 0.14), 0 4px 8px rgba(28, 43, 54, 0.06)",
+      },
+      zIndex: {
+        dialog: "50",
+        toast: "60",
+        present: "100",
       },
     },
   },

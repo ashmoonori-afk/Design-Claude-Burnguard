@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { ApiErrorBody, ApiSuccess } from "@bg/shared";
 import { getSqlite } from "../db/sqlite-client";
-import { CatalogRepositoryError, getCatalogRow, getCatalogTags, updateCatalogMetadata } from "../db/catalog-repository";
+import { CatalogRepositoryError, getCatalogRow, getCatalogTags, getCatalogUsage, updateCatalogMetadata } from "../db/catalog-repository";
 import { systemsDir } from "../lib/paths";
 import { CatalogFileError, catalogPaths } from "../services/catalog-files";
 import { assertSafeName, resolveWithin } from "../security/path-boundary";
@@ -185,6 +185,11 @@ function catalogError(c: Context, error: unknown): Response {
   if (error instanceof CatalogLifecycleError) {
     if (error.code === "design_system_not_found") return c.json(fail(error.code, error.message), 404);
     if (error.code === "catalog_operation_failed") return c.json(fail(error.code, error.message), 500);
+    if (error.code === "has_active_projects") {
+      const id = c.req.param("id");
+      const projectRefs = id === undefined ? [] : getCatalogUsage(getSqlite(), id);
+      return c.json(fail(error.code, error.message, { project_refs: projectRefs }), 409);
+    }
     return c.json(fail(error.code, error.message), 409);
   }
   if (error instanceof CatalogFileError) {

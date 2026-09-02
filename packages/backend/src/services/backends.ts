@@ -1,9 +1,35 @@
 import type { BackendDetectionResult } from "@bg/shared";
 
-const CACHE_TTL_MS = 30_000;
+const VERSION_PROBE_TIMEOUT_MS = 5_000;
 
-let cachedAt = 0;
 let cachedValue: BackendDetectionResult | null = null;
+
+/**
+ * Runs `<binary> --version`. stdout and stderr are drained concurrently —
+ * reading them in sequence deadlocks whenever a CLI fills the stderr pipe
+ * buffer while we are still blocked on stdout. A CLI that never answers is
+ * abandoned after `VERSION_PROBE_TIMEOUT_MS`; the binary is on PATH either
+ * way, so the caller keeps `found: true` and just loses the version string.
+ */
+async function probeVersion(binaryPath: string): Promise<string | undefined> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => { timer = setTimeout(() => { controller.abort(); resolve(undefined); }, VERSION_PROBE_TIMEOUT_MS); });
+  try {
+    const proc = Bun.spawn({
+      cmd: [binaryPath, "--version"],
+      stdout: "pipe",
+      stderr: "pipe",
+      signal: controller.signal,
+    });
+    const read = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+      .then(([stdout, stderr]) => stdout.trim() || stderr.trim() || undefined)
+      .catch(() => undefined);
+    return await Promise.race([read, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 async function detectOne(id: "claude-code" | "codex", binaryNames: string[], installHint: string) {
   for (const name of binaryNames) {
@@ -11,18 +37,10 @@ async function detectOne(id: "claude-code" | "codex", binaryNames: string[], ins
     if (!binaryPath) continue;
 
     try {
-      const proc = Bun.spawn({
-        cmd: [binaryPath, "--version"],
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      const stdout = await new Response(proc.stdout).text();
-      const stderr = await new Response(proc.stderr).text();
-      const output = stdout.trim() || stderr.trim();
       return {
         id,
         found: true,
-        version: output || undefined,
+        version: await probeVersion(binaryPath),
         binary_path: binaryPath,
       } as const;
     } catch {
@@ -42,9 +60,13 @@ async function detectOne(id: "claude-code" | "codex", binaryNames: string[], ins
   } as const;
 }
 
-export async function detectBackends(force = false): Promise<BackendDetectionResult> {
-  const now = Date.now();
-  if (!force && cachedValue && now - cachedAt < CACHE_TTL_MS) {
+/**
+ * Cached for the lifetime of the process: every turn start asks for the
+ * detection result and each miss spawns two CLI subprocesses. Callers that
+ * need to observe a freshly installed CLI pass `{ force: true }`.
+ */
+export async function detectBackends(options: { force?: boolean } = {}): Promise<BackendDetectionResult> {
+  if (!options.force && cachedValue) {
     return cachedValue;
   }
 
@@ -54,6 +76,5 @@ export async function detectBackends(force = false): Promise<BackendDetectionRes
   ]);
 
   cachedValue = { backends };
-  cachedAt = now;
   return cachedValue;
 }

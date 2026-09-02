@@ -394,6 +394,59 @@ describe("parseStreamLine — result line", () => {
     expect(idle).toMatchObject({ stopReason: "error" });
   });
 
+  test("an is_error result surfaces the CLI text and a status.error before the idle", () => {
+    const ctx = freshCtx();
+    const events = parseStreamLine(
+      JSON.stringify({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "Invalid API key · Please run /login",
+      }),
+      ctx,
+    );
+    expect(events.map((e) => e.type)).toEqual([
+      "chat.delta",
+      "chat.message_end",
+      "status.error",
+      "status.idle",
+    ]);
+    expect(events[0]).toMatchObject({
+      turnId: ctx.turnId,
+      text: "Invalid API key · Please run /login",
+    });
+    expect(events[2]).toMatchObject({
+      code: "turn_failed",
+      message: "turn_failed",
+      recoverable: true,
+    });
+    expect(events[3]).toMatchObject({ stopReason: "error" });
+  });
+
+  test("an error result without a result field falls back to error then subtype text", () => {
+    const ctx = freshCtx();
+    const withError = parseStreamLine(
+      JSON.stringify({ type: "result", subtype: "error", error: "rate_limit_exceeded" }),
+      ctx,
+    );
+    expect(withError[0]).toMatchObject({ type: "chat.delta", text: "rate_limit_exceeded" });
+
+    const subtypeOnly = parseStreamLine(
+      JSON.stringify({ type: "result", subtype: "error_max_turns" }),
+      ctx,
+    );
+    expect(subtypeOnly[0]).toMatchObject({ type: "chat.delta", text: "error_max_turns" });
+  });
+
+  test("a successful result emits neither chat.delta nor status.error", () => {
+    const ctx = freshCtx();
+    const events = parseStreamLine(
+      JSON.stringify({ type: "result", subtype: "success", result: "done" }),
+      ctx,
+    );
+    expect(events.map((e) => e.type)).toEqual(["chat.message_end", "status.idle"]);
+  });
+
   test("non-numeric usage values fall back to 0", () => {
     const ctx = freshCtx();
     const events = parseStreamLine(

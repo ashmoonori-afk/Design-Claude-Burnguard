@@ -5,6 +5,7 @@ import {
   bootstrapApiAuthority,
 } from "../src/api/client";
 import { catalogDetailRows, getDesignSystem, updateDesignSystemWithConflictReload } from "../src/api/design-system-metadata";
+import { deleteProject } from "../src/api/home";
 
 const originalFetch = globalThis.fetch;
 
@@ -167,6 +168,22 @@ describe("API authority client", () => {
       ["/api/design-systems/system-id", "PATCH"],
       ["/api/design-systems/system-id", "GET"],
     ]);
+  });
+
+  test("treats a 204 as an empty success and still sends the capability", async () => {
+    const calls: Array<{ input: string; init?: RequestInit }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ input: String(input), init });
+      if (String(input) === "/api/bootstrap") return Response.json({ ok: true, data: { capability: "launch-token" } });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    await bootstrapApiAuthority();
+    await expect(deleteProject("project-1")).resolves.toBeUndefined();
+
+    expect(calls[1]?.input).toBe("/api/projects/project-1");
+    expect(calls[1]?.init?.method).toBe("DELETE");
+    expect(new Headers(calls[1]?.init?.headers).get("x-burnguard-capability")).toBe("launch-token");
   });
 
   test("keeps the capability when callers supply additional headers", async () => {

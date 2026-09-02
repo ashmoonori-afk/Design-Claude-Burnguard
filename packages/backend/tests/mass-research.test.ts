@@ -43,8 +43,10 @@ describe("mass research acceptance", () => {
       active_resources: 0,
       temporary_files: 0,
     });
-  });
+  }, 30_000);
 
+  // The default 5 s test timeout is too tight for this many adversarial
+  // cases on Windows I/O; 30s gives headroom without masking a real regression.
   test("Given every adversarial fixture case When product modules execute Then all failures stay isolated and clean", async () => {
     const tracker = new QaResourceTracker();
     const results = await runAdversarialCases(FAILURE_CASES, tracker);
@@ -57,5 +59,5 @@ describe("mass research acceptance", () => {
       active_resources: 0,
       temporary_files: 0,
     });
-  });
+  }, 30_000);
 });

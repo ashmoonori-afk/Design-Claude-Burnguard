@@ -11,7 +11,7 @@ export default function ToolBadge({
   const Icon =
     state === "running" ? Loader2 : state === "finished" ? Check : AlertCircle;
   const label =
-    state === "running" ? "Running" : state === "finished" ? "Done" : "Error";
+    state === "running" ? "실행 중" : state === "finished" ? "완료" : "오류";
   return (
     <div
       className={cn(

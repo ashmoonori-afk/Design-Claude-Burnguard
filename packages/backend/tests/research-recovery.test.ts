@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import type { ResearchFindingV1, ResearchRequestV1, ResearchResultV1 } from "@bg/shared";
 import { runMigrationsFrom } from "../src/db/migrate";
 import { beginResearchFinalization, claimResearchSource, commitResearchResult, completeResearchSource, createResearchRun, getResearchRun, listResearchSources, startResearchRun } from "../src/db/research-repository";
@@ -16,7 +17,7 @@ let db: Database;
 let enqueued: string[];
 let synthesized: string[];
 
-beforeEach(async () => { db = new Database(":memory:"); db.exec("PRAGMA foreign_keys = ON"); await runMigrationsFrom(db, new URL("../src/db/migrations", import.meta.url).pathname); enqueued = []; synthesized = []; });
+beforeEach(async () => { db = new Database(":memory:"); db.exec("PRAGMA foreign_keys = ON"); await runMigrationsFrom(db, fileURLToPath(new URL("../src/db/migrations", import.meta.url))); enqueued = []; synthesized = []; });
 afterEach(() => db.close());
 
 function create(runId = "run-1", sourceIds: readonly string[] = ["source-1", "source-2"]): void { const ids = [runId, ...sourceIds]; createResearchRun(db, { requestKey: runId, request, orchestratorDigest: digest("a"), now: 10, newId: () => ids.shift() ?? "unused" }); }

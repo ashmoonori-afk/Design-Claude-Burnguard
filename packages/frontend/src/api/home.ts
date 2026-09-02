@@ -48,13 +48,9 @@ export async function patchSettings(
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const res = await fetch(`/api/projects/${id}`, {
-    method: "DELETE",
-    credentials: "same-origin",
-  });
-  if (!res.ok && res.status !== 204) {
-    throw new Error(`Failed to delete project ${id}: HTTP ${res.status}`);
-  }
+  // Must go through apiFetch: DELETE is capability-gated (403 without the
+  // launch capability header). A 204 comes back as undefined.
+  await apiFetch<void>(`/api/projects/${id}`, { method: "DELETE" });
 }
 
 export async function restoreSamples(): Promise<{ restored: boolean }> {

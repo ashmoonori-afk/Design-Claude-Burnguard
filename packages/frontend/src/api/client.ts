@@ -45,6 +45,23 @@ export async function bootstrapApiAuthority(): Promise<void> {
 }
 
 /**
+ * Raw authorized fetch. Attaches the launch capability and returns the
+ * untouched Response so callers can read headers (artifact identity) or a
+ * non-JSON body. Prefer `apiFetch` for envelope endpoints.
+ */
+export async function authorizedFetch(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  if (!launchCapability) {
+    throw new Error("BurnGuard API authority is not initialized.");
+  }
+  const headers = new Headers(init?.headers ?? {});
+  headers.set(BURNGUARD_CAPABILITY_HEADER, launchCapability);
+  return fetch(path, { ...init, credentials: "same-origin", headers });
+}
+
+/**
  * Thin typed wrapper over fetch that unwraps the shared API envelope and
  * throws a typed ApiError on either HTTP failure or `{error:...}` body.
  *
@@ -59,21 +76,21 @@ export async function apiFetch<T>(
   if (!(init?.body instanceof FormData) && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
-  if (!launchCapability) {
-    throw new Error("BurnGuard API authority is not initialized.");
+
+  const res = await authorizedFetch(path, { ...init, headers });
+
+  // 204 No Content (project delete) carries no envelope; an empty body on a
+  // successful response is a valid `void` result, not a network failure.
+  const raw = await res.text();
+  if (res.ok && raw.trim().length === 0) {
+    return undefined as T;
   }
-  headers.set(BURNGUARD_CAPABILITY_HEADER, launchCapability);
-
-  const res = await fetch(path, {
-    ...init,
-    credentials: "same-origin",
-    headers,
-  });
-
-  const body = (await res.json().catch(() => null)) as
-    | ApiSuccess<T>
-    | ApiErrorBody
-    | null;
+  let body: ApiSuccess<T> | ApiErrorBody | null = null;
+  try {
+    body = JSON.parse(raw) as ApiSuccess<T> | ApiErrorBody;
+  } catch {
+    body = null;
+  }
 
   if (!res.ok || !body || "error" in body) {
     const err =

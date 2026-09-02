@@ -9,6 +9,10 @@ import { getSqlite } from "../src/db/sqlite-client";
 import { projectsDir } from "../src/lib/paths";
 import { homeRoutes } from "../src/routes/home";
 import { classifyApiRoute } from "../src/server";
+import {
+  resetChromiumCapability,
+  setChromiumCapabilityForTesting,
+} from "../src/services/chromium-capability";
 import { parsePng } from "../src/services/export-png-validation";
 import {
   loadProjectThumbnail,
@@ -21,6 +25,7 @@ import {
 
 const digestA = "a".repeat(64);
 const digestB = "b".repeat(64);
+const digestC = "c".repeat(64);
 const PROJECT_TIMESTAMP = Number.MAX_SAFE_INTEGER;
 const projectIds: string[] = [];
 const tempDirs: string[] = [];
@@ -80,6 +85,11 @@ async function createProject(options: {
   return { id, dirPath };
 }
 
+/** Lets every queued load reach the renderer before a gated render is released. */
+function settle(): Promise<void> {
+  return new Promise<void>((resolve) => { setTimeout(resolve, 50); });
+}
+
 function cacheDir(dirPath: string): string {
   return path.join(dirPath, ".meta", "thumbnails");
 }
@@ -95,9 +105,14 @@ function request(route: string, headers?: Record<string, string>): Promise<Respo
 beforeAll(async () => {
   await runMigrations();
   await mkdir(projectsDir, { recursive: true });
+  // These cases inject their own renderer and never touch a real browser, so
+  // the launch-capability gate is answered directly instead of spawning the
+  // probe child on every run.
+  setChromiumCapabilityForTesting(true);
 });
 
 afterAll(async () => {
+  resetChromiumCapability();
   const db = getSqlite();
   for (const id of projectIds.splice(0)) db.prepare("DELETE FROM projects WHERE id=?").run(id);
   for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
@@ -176,8 +191,82 @@ describe("project thumbnail generation and cache", () => {
     expect(await cachedFiles(project.dirPath)).toEqual([`${projectThumbnailIdentity({ id: project.id, current_revision: 3, current_digest: digestA }) ?? ""}.png`]);
   });
 
-  test("Given concurrent cold-cache requests When both render Then their temporary files cannot collide", async () => {
+  test("Given concurrent cold-cache requests for one project When both miss Then a single render serves both", async () => {
     const project = await createProject({ digest: digestA });
+    const outputPaths: string[] = [];
+    let releaseRender: (() => void) | null = null;
+    const renderGate = new Promise<void>((resolve) => {
+      releaseRender = resolve;
+    });
+    const renderer: ThumbnailRenderer = async (request) => {
+      outputPaths.push(request.outputPath);
+      await renderGate;
+      await writeFile(
+        request.outputPath,
+        pngFixture(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT),
+      );
+    };
+
+    const both = Promise.all([
+      loadProjectThumbnail(project.id, renderer, () => "first"),
+      loadProjectThumbnail(project.id, renderer, () => "second"),
+    ]);
+    await settle();
+    releaseRender?.();
+    const outcomes = await both;
+
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual([
+      "ready",
+      "ready",
+    ]);
+    expect(outputPaths.length).toBe(1);
+    expect((await cachedFiles(project.dirPath)).length).toBe(1);
+  });
+
+  test("Given a render slower than the response deadline When requested Then the card answers immediately and the cache is filled in the background", async () => {
+    const previousDeadline = process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS;
+    process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS = "40";
+    try {
+      const project = await createProject({ digest: digestA });
+      let releaseRender: (() => void) | null = null;
+      const renderGate = new Promise<void>((resolve) => {
+        releaseRender = resolve;
+      });
+      let renders = 0;
+      const renderer: ThumbnailRenderer = async (request) => {
+        renders += 1;
+        await renderGate;
+        await writeFile(request.outputPath, pngFixture(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
+      };
+
+      // A cold miss must not hold the connection while Chromium starts: Home
+      // asks for one thumbnail per card and would otherwise starve the
+      // project requests queued behind them.
+      const outcome = await loadProjectThumbnail(project.id, renderer);
+      expect(outcome).toEqual({ kind: "unavailable", code: "thumbnail_unavailable" });
+      expect(renders).toBe(1);
+
+      releaseRender?.();
+      // The abandoned render keeps going and fills the cache, so the next
+      // request serves it without rendering again.
+      delete process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS;
+      let afterRender = await loadProjectThumbnail(project.id, renderer);
+      for (let attempt = 0; attempt < 20 && afterRender.kind !== "ready"; attempt += 1) {
+        await settle();
+        afterRender = await loadProjectThumbnail(project.id, renderer);
+      }
+
+      expect(afterRender.kind).toBe("ready");
+      expect(renders).toBe(1);
+    } finally {
+      if (previousDeadline === undefined) delete process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS;
+      else process.env.BG_THUMBNAIL_RESPONSE_DEADLINE_MS = previousDeadline;
+    }
+  });
+
+  test("Given concurrent cold-cache requests for different projects When both render Then their temporary files cannot collide", async () => {
+    const first = await createProject({ digest: digestA });
+    const second = await createProject({ digest: digestB });
     const outputPaths: string[] = [];
     const temporaryIds = ["first", "second"];
     let releaseRender: (() => void) | null = null;
@@ -197,8 +286,8 @@ describe("project thumbnail generation and cache", () => {
     };
 
     const outcomes = await Promise.all([
-      loadProjectThumbnail(project.id, renderer, () => temporaryIds.shift() ?? "unexpected"),
-      loadProjectThumbnail(project.id, renderer, () => temporaryIds.shift() ?? "unexpected"),
+      loadProjectThumbnail(first.id, renderer, () => temporaryIds.shift() ?? "unexpected"),
+      loadProjectThumbnail(second.id, renderer, () => temporaryIds.shift() ?? "unexpected"),
     ]);
 
     expect(outcomes.map((outcome) => outcome.kind)).toEqual([
@@ -211,7 +300,64 @@ describe("project thumbnail generation and cache", () => {
         .map((outputPath) => path.basename(outputPath).split(".").at(-2))
         .sort(),
     ).toEqual(["first", "second"]);
-    expect((await cachedFiles(project.dirPath)).length).toBe(1);
+    expect((await cachedFiles(first.dirPath)).length).toBe(1);
+    expect((await cachedFiles(second.dirPath)).length).toBe(1);
+  });
+
+  test("Given more cold cards than the render cap When they load together Then no more than two render at once", async () => {
+    const projects = [
+      await createProject({ digest: digestA }),
+      await createProject({ digest: digestB }),
+      await createProject({ digest: digestC }),
+    ];
+    let inFlight = 0;
+    let peak = 0;
+    let releaseRender: (() => void) | null = null;
+    const renderGate = new Promise<void>((resolve) => {
+      releaseRender = resolve;
+    });
+    const renderer: ThumbnailRenderer = async (request) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await renderGate;
+      await writeFile(request.outputPath, pngFixture(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
+      inFlight -= 1;
+    };
+
+    const all = Promise.all(projects.map((project) => loadProjectThumbnail(project.id, renderer)));
+    await settle();
+    const peakWhileBlocked = peak;
+    releaseRender?.();
+    const outcomes = await all;
+
+    expect(peakWhileBlocked).toBe(2);
+    expect(peak).toBe(2);
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual(["ready", "ready", "ready"]);
+  });
+
+  test("Given Chromium failing to launch When another card is requested Then the cooldown answers without relaunching", async () => {
+    const previousCooldown = process.env.BG_THUMBNAIL_CHROMIUM_COOLDOWN_MS;
+    process.env.BG_THUMBNAIL_CHROMIUM_COOLDOWN_MS = "120";
+    try {
+      const failed = await createProject({ digest: digestA });
+      const other = await createProject({ digest: digestB });
+      const launchTimeout: ThumbnailRenderer = async () => {
+        throw Object.assign(new Error("chromium_launch_timeout: Chromium did not finish launching"), { code: "chromium_launch_timeout" });
+      };
+      const afterCooldown = recordingRenderer();
+
+      expect(await loadProjectThumbnail(failed.id, launchTimeout)).toEqual({ kind: "unavailable", code: "thumbnail_unavailable" });
+      expect(await loadProjectThumbnail(other.id, afterCooldown.renderer)).toEqual({ kind: "unavailable", code: "thumbnail_unavailable" });
+      expect(afterCooldown.requests.length).toBe(0);
+
+      await new Promise<void>((resolve) => { setTimeout(resolve, 200); });
+
+      expect((await loadProjectThumbnail(other.id, afterCooldown.renderer)).kind).toBe("ready");
+      expect(afterCooldown.requests.length).toBe(1);
+    } finally {
+      if (previousCooldown === undefined) delete process.env.BG_THUMBNAIL_CHROMIUM_COOLDOWN_MS;
+      else process.env.BG_THUMBNAIL_CHROMIUM_COOLDOWN_MS = previousCooldown;
+    }
   });
 
   test("Given a slide deck project When the thumbnail renders Then the deck flag and project entrypoint are used", async () => {

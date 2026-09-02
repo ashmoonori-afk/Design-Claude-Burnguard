@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildExportMenuModel,
   buildExportRetryRequest,
+  classifyChromiumFailure,
+  CHROMIUM_FAILURE_MESSAGE,
 } from "../src/components/export/export-options";
 
 describe("graphic export menu model", () => {
@@ -56,5 +58,23 @@ describe("graphic export menu model", () => {
     if (!model.ok) throw new TypeError("expected normal export model");
     expect(model.options.filter((option) => option.disabledReason === undefined).map((option) => option.format)).toEqual(["html_zip", "handoff"]);
     expect(model.options.filter((option) => option.disabledReason === "deck_only").map((option) => option.format)).toEqual(["pdf", "pdf", "pdf", "pptx", "pptx"]);
+  });
+});
+
+describe("chromium export failure copy", () => {
+  test("Given a launch timeout message When classified Then the HTML ZIP fallback is offered", () => {
+    expect(classifyChromiumFailure("chromium_launch_timeout: Chromium did not finish launching\ntried channels: bundled, chrome, msedge")).toBe("launch_timeout");
+    expect(CHROMIUM_FAILURE_MESSAGE.launch_timeout).toBe("이 환경에서는 Chromium 렌더링을 완료하지 못했어요. HTML ZIP 내보내기는 계속 쓸 수 있어요.");
+  });
+
+  test("Given a missing browser When classified Then the install guidance covers the code and the older message", () => {
+    expect(classifyChromiumFailure("chromium_not_installed: Chromium could not be launched")).toBe("not_installed");
+    expect(classifyChromiumFailure("Executable doesn't exist at ms-playwright/chromium-1200/chrome.exe")).toBe("not_installed");
+    expect(CHROMIUM_FAILURE_MESSAGE.not_installed).toContain("설정");
+  });
+
+  test("Given an unrelated failure When classified Then the raw message is left to the caller", () => {
+    expect(classifyChromiumFailure("Design audit found 3 must-fix findings")).toBeNull();
+    expect(classifyChromiumFailure(null)).toBeNull();
   });
 });
