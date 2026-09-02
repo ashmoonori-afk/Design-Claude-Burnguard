@@ -56,6 +56,13 @@ export async function runClaudeCode(options: RunnerOptions): Promise<RunnerResul
     ...ownedProcessSpawnOptions(),
   });
 
+  // Bun's `signal` option only kills the spawned root. On Windows that root
+  // is the `claude.cmd` wrapper, so the real CLI survives an interrupt and
+  // keeps writing into the project. Tear the whole owned tree down the
+  // moment the abort fires instead of waiting for the root to exit.
+  const onAbort = () => { void closeOwnedProcessTree(proc.pid).catch(() => {}); };
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+
   const readers = Promise.all([
     readLines(proc.stdout, options.onStdoutLine),
     options.onStderrLine
@@ -63,9 +70,14 @@ export async function runClaudeCode(options: RunnerOptions): Promise<RunnerResul
       : readLines(proc.stderr, () => {}),
   ]);
 
-  const exitCode = await proc.exited;
-  await closeOwnedProcessTree(proc.pid);
-  await readers;
+  let exitCode: number;
+  try {
+    exitCode = await proc.exited;
+    await closeOwnedProcessTree(proc.pid);
+    await readers;
+  } finally {
+    options.signal?.removeEventListener("abort", onAbort);
+  }
   // eslint-disable-next-line no-console
   console.log(`[claude-code] exit=${exitCode}`);
   return { exitCode };

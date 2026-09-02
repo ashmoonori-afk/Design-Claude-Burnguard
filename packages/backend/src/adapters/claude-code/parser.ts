@@ -153,16 +153,42 @@ export function parseStreamLine(
           cached: numberOr(usage.cache_read_input_tokens, 0),
         });
       }
+      const isError =
+        obj.is_error === true ||
+        obj.subtype === "error_max_turns" ||
+        obj.subtype === "error";
+      if (isError) {
+        // Expired logins, rate limits and max-turn stops all arrive as an
+        // `is_error` result and nothing else. Without surfacing the CLI's
+        // own text the turn would end as a silent idle with an empty
+        // answer. Mirrors the codex parser's "error" item mapping.
+        const detail = String(obj.result ?? obj.error ?? obj.subtype ?? "turn_failed");
+        if (detail.length > 0) {
+          out.push({
+            id: ulid(),
+            ts,
+            type: "chat.delta",
+            turnId: ctx.turnId,
+            text: detail,
+          });
+        }
+      }
       out.push({
         id: ulid(),
         ts,
         type: "chat.message_end",
         turnId: ctx.turnId,
       });
-      const isError =
-        obj.is_error === true ||
-        obj.subtype === "error_max_turns" ||
-        obj.subtype === "error";
+      if (isError) {
+        out.push({
+          id: ulid(),
+          ts,
+          type: "status.error",
+          code: "turn_failed",
+          message: "turn_failed",
+          recoverable: true,
+        });
+      }
       out.push({
         id: ulid(),
         ts,

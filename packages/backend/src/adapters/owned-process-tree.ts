@@ -1,3 +1,6 @@
+const CLEANUP_POLL_MS = 25;
+const CLEANUP_TIMEOUT_MS = 3_000;
+
 export function ownedProcessSpawnOptions(): { readonly detached: boolean } {
   return { detached: process.platform !== "win32" };
 }
@@ -5,7 +8,10 @@ export function ownedProcessSpawnOptions(): { readonly detached: boolean } {
 export async function closeOwnedProcessTree(processId: number): Promise<void> {
   if (process.platform === "win32") {
     const result = Bun.spawnSync(["taskkill", "/PID", String(processId), "/T", "/F"], { stdout: "ignore", stderr: "ignore" });
-    if (result.exitCode !== 0 && isProcessPresent(processId)) throw new Error("adapter_process_tree_cleanup_failed");
+    // A non-zero taskkill exit usually means the root already exited on its
+    // own, which is the normal path — only an actually surviving process is
+    // worth reporting, and never by throwing (see warnCleanupIncomplete).
+    if (result.exitCode !== 0 && isProcessPresent(processId)) warnCleanupIncomplete(processId);
     return;
   }
   try {
@@ -13,11 +19,25 @@ export async function closeOwnedProcessTree(processId: number): Promise<void> {
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
   }
-  for (let attempt = 0; attempt < 1024; attempt += 1) {
+  // Real elapsed time, not scheduler ticks: the previous setImmediate loop
+  // drained in a couple of milliseconds and reported failure long before a
+  // signalled process group had a chance to be reaped.
+  const deadline = Date.now() + CLEANUP_TIMEOUT_MS;
+  while (Date.now() < deadline) {
     if (!isProcessGroupPresent(processId)) return;
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setTimeout(resolve, CLEANUP_POLL_MS));
   }
-  throw new Error("adapter_process_tree_cleanup_failed");
+  if (isProcessGroupPresent(processId)) warnCleanupIncomplete(processId);
+}
+
+/**
+ * Cleanup runs on the success path of every turn as well as on abort. A
+ * straggler is worth a log line but must never turn a completed turn into
+ * a failed one, so this warns where the previous implementation threw.
+ */
+function warnCleanupIncomplete(processId: number): void {
+  // eslint-disable-next-line no-console
+  console.warn(`[adapter] owned process tree ${processId} did not fully exit`);
 }
 
 function isProcessPresent(processId: number): boolean {

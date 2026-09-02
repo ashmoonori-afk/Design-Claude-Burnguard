@@ -58,6 +58,12 @@ export async function runCodexTurn(
     ...ownedProcessSpawnOptions(),
   });
 
+  // Same reason as the Claude Code adapter: `signal` kills the spawned root
+  // only, which on Windows is the `codex.cmd` wrapper. Close the owned tree
+  // as soon as the abort fires so the CLI cannot outlive the interrupt.
+  const onAbort = () => { void closeOwnedProcessTree(proc.pid).catch(() => {}); };
+  input.signal?.addEventListener("abort", onAbort, { once: true });
+
   let exitCode: number;
   try {
     const readers = Promise.all([
@@ -91,6 +97,7 @@ export async function runCodexTurn(
     await closeOwnedProcessTree(proc.pid);
     await readers;
   } finally {
+    input.signal?.removeEventListener("abort", onAbort);
     // Always release the decision sink — see the matching comment in
     // the Claude Code adapter. A throw between subscribe and here
     // would otherwise leak the listener into the broker.

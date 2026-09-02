@@ -13,7 +13,7 @@ import { getProjectDetail, getSessionInfo } from "../db/seed";
 import { getSqlite } from "../db/sqlite-client";
 import { broker, sequencedBroker } from "./broker";
 import { buildSessionContext } from "./context";
-import { writeTurnCheckpoint } from "./checkpoints";
+import { writePreTurnSnapshot, writeTurnCheckpoint } from "./checkpoints";
 import { ArtifactCoordinator, ArtifactOperationError } from "./artifact-coordinator";
 import { appendSessionTrace } from "./trace";
 import { detectBackends } from "./backends";
@@ -40,9 +40,18 @@ interface ActiveTurn {
    */
   decisionQueue: ToolDecision[];
   decisionHandler: ((decision: ToolDecision) => void) | null;
+  /**
+   * The running turn body, set once `startReservedUserTurn` kicks it off.
+   * Only `interruptAllUserTurns` awaits it, so shutdown can let a turn
+   * unwind instead of killing the process out from under a publication.
+   */
+  completion: Promise<unknown> | null;
 }
 
 const activeTurns = new Map<string, ActiveTurn>();
+
+/** Upper bound on how long shutdown waits for interrupted turns to unwind. */
+const SHUTDOWN_DRAIN_MS = 5_000;
 
 async function listDirSafe(dir: string): Promise<string[] | string> {
   try {
@@ -100,6 +109,25 @@ export function interruptUserTurn(sessionId: string) {
 }
 
 /**
+ * Aborts every running turn and waits — bounded by `SHUTDOWN_DRAIN_MS` — for
+ * the turn bodies to unwind. Called first in the process shutdown path so a
+ * Ctrl+C stops the CLI subprocesses instead of orphaning them.
+ */
+export async function interruptAllUserTurns(): Promise<void> {
+  const pending: Promise<unknown>[] = [];
+  for (const active of activeTurns.values()) {
+    active.interrupted = true;
+    active.abortController.abort();
+    if (active.completion !== null) pending.push(active.completion);
+  }
+  if (pending.length === 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const drainDeadline = new Promise<void>((resolve) => { timer = setTimeout(resolve, SHUTDOWN_DRAIN_MS); });
+  try { await Promise.race([Promise.allSettled(pending), drainDeadline]); }
+  finally { if (timer !== undefined) clearTimeout(timer); }
+}
+
+/**
  * Delivers a tool decision to the running turn's adapter. Called from
  * `routes/session.ts` after a `POST /tool-decision`. Returns:
  *
@@ -144,7 +172,7 @@ export type UserTurnReservation = {
 export function reserveUserTurn(sessionId: string, requestedOperationId?: string): UserTurnReservation | null {
   if (activeTurns.has(sessionId) || isDirectionOperationActive(sessionId)) return null;
   const reservation = { reservationId: ulid(), sessionId, turnId: ulid(), operationId: requestedOperationId ?? ulid() };
-  activeTurns.set(sessionId, { reservationId: reservation.reservationId, abortController: new AbortController(), interrupted: false, decisionQueue: [], decisionHandler: null });
+  activeTurns.set(sessionId, { reservationId: reservation.reservationId, abortController: new AbortController(), interrupted: false, decisionQueue: [], decisionHandler: null, completion: null });
   return reservation;
 }
 
@@ -162,6 +190,7 @@ export function startReservedUserTurn(reservation: UserTurnReservation, payload:
   const promise = runUserTurnInternal(sessionId, payload, activeTurn, turnId, operationId, resolvePrepared)
     .catch((error: unknown) => { rejectPrepared(error); throw error; })
     .finally(() => activeTurns.delete(sessionId));
+  activeTurn.completion = promise;
   return { promise, prepared, turnId, operationId };
 }
 
@@ -257,6 +286,11 @@ async function runUserTurnInternal(
   if (project === null) throw new Error("project_not_found");
   const coordinator = new ArtifactCoordinator(getSqlite());
   const base = await coordinator.initialize(project.id, projectDir);
+  // The revert route only offers a rollback when a pre-turn snapshot exists,
+  // so it has to be taken here — before the adapter can touch the tree. A
+  // failed snapshot costs the user the rollback, never the turn itself.
+  try { await writePreTurnSnapshot(project.id, turnId); }
+  catch (error) { await appendSessionTrace(sessionId, { level: "checkpoint_snapshot_failed", turnId, error: error instanceof Error ? error.message : String(error) }); }
   let operationPrepared = false;
   const terminalEvents: NormalizedEvent[] = [];
   const selectedAttachments = sessionContext.attachments.filter((attachment) => payload.attachments?.includes(attachment.file_path) ?? false);

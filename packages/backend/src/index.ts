@@ -5,6 +5,7 @@ import { pickPort } from "./lib/port";
 import { generateLaunchCapability } from "./security/request-authority";
 import { createApp } from "./server";
 import { closeActiveExportBrowsers } from "./services/export-browser-registry";
+import { interruptAllUserTurns } from "./services/turns";
 
 await bootstrapLocalAppData();
 const config = await loadConfig();
@@ -56,7 +57,9 @@ if (isDev) {
 let shuttingDown = false;
 const shutdown = async (): Promise<void> => {
   if (shuttingDown) return; shuttingDown = true; console.log("\n[burnguard] shutting down");
-  server.stop(false); await closeActiveExportBrowsers(); server.stop(true); process.exit(0);
+  // Turns first: an in-flight CLI subprocess owns the project directory and
+  // would keep writing into it after the server is gone.
+  server.stop(false); await interruptAllUserTurns(); await closeActiveExportBrowsers(); server.stop(true); process.exit(0);
 };
 process.on("SIGINT", () => { void shutdown(); });
 process.on("SIGTERM", () => { void shutdown(); });
