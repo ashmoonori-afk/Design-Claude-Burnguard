@@ -162,6 +162,7 @@ export default function Composer({
         placeholder={placeholder}
         rows={3}
         disabled={disabled}
+        aria-label="메시지 입력"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -170,6 +171,9 @@ export default function Composer({
         }}
         className="w-full resize-none bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
       />
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        Cmd/Ctrl+Enter로 보내기
+      </p>
 
       <div className="flex items-center gap-1 mt-2">
         <input

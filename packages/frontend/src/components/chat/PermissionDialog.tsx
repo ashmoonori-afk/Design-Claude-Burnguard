@@ -38,7 +38,13 @@ export default function PermissionDialog({
         if (!next && !pending && request) onDecide("deny");
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="max-w-md"
+        hideClose
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <div className="mb-3 grid h-10 w-10 place-items-center rounded-md bg-amber-500/10 text-amber-600">
             <ShieldAlert className="h-5 w-5" />

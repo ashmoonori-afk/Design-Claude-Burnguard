@@ -19,7 +19,19 @@ export default function PresentOverlay({
   onClose: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    // Restore focus to whatever had it before the overlay opened once
+    // the overlay closes, so keyboard users land back where they were
+    // instead of at the top of the document.
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => {
+      previouslyFocusedRef.current?.focus?.();
+    };
+  }, []);
 
   useEffect(() => {
     const node = rootRef.current;
@@ -72,13 +84,16 @@ export default function PresentOverlay({
       ref={rootRef}
       className="fixed inset-0 z-[9999] bg-black"
       role="dialog"
+      aria-modal="true"
       aria-label="프레젠테이션"
     >
       <iframe
         key={src}
+        ref={iframeRef}
         title="프레젠테이션"
         src={withPresentFlag(src)}
         sandbox="allow-scripts"
+        onLoad={() => iframeRef.current?.focus()}
         className="absolute inset-0 h-full w-full border-0 bg-black"
       />
       <button

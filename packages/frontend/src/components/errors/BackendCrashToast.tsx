@@ -13,10 +13,15 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 space-y-2 w-80 pointer-events-none">
+    <div
+      className="fixed bottom-4 right-4 z-toast space-y-2 w-80 pointer-events-none"
+      role="status"
+      aria-live="polite"
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
+          role={t.tone === "error" ? "alert" : undefined}
           className={cn(
             "pointer-events-auto rounded-md border shadow-app-3 bg-background p-3",
             t.tone === "error" && "border-destructive/40",
